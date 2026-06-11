@@ -2,6 +2,8 @@ import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { Pool } from "pg";
 
+import { sendWelcomeEmail } from "./email";
+
 const baseURL =
   process.env.BETTER_AUTH_URL ||
   process.env.NEXT_PUBLIC_APP_URL ||
@@ -61,6 +63,21 @@ export const auth = betterAuth({
           },
         }
       : {}),
+  },
+  // Send a no-reply welcome / account-confirmation email on signup
+  // (fires for email/password and social sign-ups alike).
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          try {
+            await sendWelcomeEmail(user.email, user.name);
+          } catch (err) {
+            console.error("[auth] welcome email failed:", err);
+          }
+        },
+      },
+    },
   },
   // Keeps cookies working with Next.js server actions / route handlers.
   plugins: [nextCookies()],
