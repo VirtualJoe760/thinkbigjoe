@@ -31,7 +31,13 @@ export default buildConfig({
   },
   db: postgresAdapter({
     pool: {
-      connectionString: process.env.DATABASE_URI || "",
+      // Vercel's Neon integration injects DATABASE_URL (pooled). Fall back to
+      // other common names / the local .env override.
+      connectionString:
+        process.env.DATABASE_URL ||
+        process.env.POSTGRES_URL ||
+        process.env.DATABASE_URI ||
+        "",
     },
   }),
   sharp,
