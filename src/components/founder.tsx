@@ -39,8 +39,8 @@ export function Founder() {
               <Image
                 src="/joseph-headshot.png"
                 alt="Joseph Sardella, founder of ThinkBigJoe"
-                width={720}
-                height={860}
+                width={713}
+                height={859}
                 priority
                 className="h-auto w-full object-cover"
               />
