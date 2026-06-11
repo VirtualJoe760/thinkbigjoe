@@ -4,7 +4,6 @@ import { fileURLToPath } from "url";
 import { postgresAdapter } from "@payloadcms/db-postgres";
 import { lexicalEditor } from "@payloadcms/richtext-lexical";
 import { buildConfig } from "payload";
-import sharp from "sharp";
 
 import { Users } from "./collections/Users";
 import { Media } from "./collections/Media";
@@ -40,5 +39,9 @@ export default buildConfig({
         "",
     },
   }),
-  sharp,
+  // NOTE: `sharp` is intentionally omitted. It's only needed for image
+  // resizing (we define no imageSizes yet), and its native libvips binary
+  // fails to load in Vercel's serverless runtime under Next 16 Turbopack +
+  // pnpm file tracing. Re-add it once that's solved if/when image sizes are
+  // configured on the Media collection.
 });
