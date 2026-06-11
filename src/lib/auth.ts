@@ -5,6 +5,10 @@ import { Pool } from "pg";
 const baseURL =
   process.env.BETTER_AUTH_URL ||
   process.env.NEXT_PUBLIC_APP_URL ||
+  // On Vercel, derive the stable production URL automatically.
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : undefined) ||
   "http://localhost:3000";
 
 const googleEnabled = Boolean(
