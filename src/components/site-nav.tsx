@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { Logo } from "@/components/logo";
+
 const links = [
   { href: "#services", label: "Services" },
   { href: "#approach", label: "Approach" },
@@ -11,14 +13,7 @@ export function SiteNav() {
   return (
     <header className="sticky top-0 z-50 border-b border-line bg-background/80 backdrop-blur">
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-        <Link href="/" className="flex items-center gap-2 font-bold tracking-tight">
-          <span className="grid h-7 w-7 place-items-center rounded-md bg-ink text-[13px] font-extrabold text-white">
-            T
-          </span>
-          <span className="text-lg">
-            Think<span className="text-brand">Big</span>Joe
-          </span>
-        </Link>
+        <Logo />
 
         <div className="hidden items-center gap-8 md:flex">
           {links.map((l) => (
