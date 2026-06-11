@@ -1,26 +1,46 @@
 @import "tailwindcss";
 
+/* ----------------------------------------------------------------
+   ThinkBigJoe design tokens
+   Palette: crisp white backgrounds, near-black ink, electric blue.
+   Vibe: "Think Different, but Thinking Big." Confident, clean, spacious.
+----------------------------------------------------------------- */
+
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --surface: #f5f7fb; /* soft tint for alternating sections */
+  --ink: #0a0a0b; /* near-black text */
+  --ink-soft: #5b616e; /* muted body text */
+  --line: #e6e9ef; /* hairline borders */
+  --brand: #0047ff; /* electric blue accent */
+  --brand-dark: #0035c4;
+  --brand-tint: #e9f0ff;
 }
 
 @theme inline {
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-tint: var(--brand-tint);
+  --font-sans: var(--font-jost);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  border-color: var(--line);
 }
 
 body {
   background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--ink);
+  font-family: var(--font-jost), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--brand);
+  color: #ffffff;
 }
