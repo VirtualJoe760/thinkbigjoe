@@ -70,6 +70,7 @@ export interface Config {
     users: User;
     media: Media;
     pages: Page;
+    leads: Lead;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -80,6 +81,7 @@ export interface Config {
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     pages: PagesSelect<false> | PagesSelect<true>;
+    leads: LeadsSelect<false> | LeadsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -200,6 +202,42 @@ export interface Page {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "leads".
+ */
+export interface Lead {
+  id: number;
+  name: string;
+  email: string;
+  phone?: string | null;
+  company?: string | null;
+  role?: string | null;
+  /**
+   * Industry slug or free text from the intake.
+   */
+  industry?: string | null;
+  teamSize?: ('1' | '2-10' | '11-50' | '51-200' | '200+') | null;
+  timeline?: ('asap' | 'quarter' | 'year' | 'exploring') | null;
+  problem?: string | null;
+  /**
+   * Business-domain emails are usually stronger leads.
+   */
+  emailType?: ('business' | 'free') | null;
+  source: 'industry-page' | 'booking-page' | 'contact-form';
+  /**
+   * Page the lead came from, e.g. /for/law-firms
+   */
+  sourcePath?: string | null;
+  status?: ('new' | 'booked' | 'contacted' | 'qualified' | 'won' | 'lost') | null;
+  /**
+   * ISO start time of the booked strategy call, if any.
+   */
+  bookedSlot?: string | null;
+  notes?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -233,6 +271,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'pages';
         value: number | Page;
+      } | null)
+    | ({
+        relationTo: 'leads';
+        value: number | Lead;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -332,6 +374,29 @@ export interface PagesSelect<T extends boolean = true> {
         title?: T;
         description?: T;
       };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "leads_select".
+ */
+export interface LeadsSelect<T extends boolean = true> {
+  name?: T;
+  email?: T;
+  phone?: T;
+  company?: T;
+  role?: T;
+  industry?: T;
+  teamSize?: T;
+  timeline?: T;
+  problem?: T;
+  emailType?: T;
+  source?: T;
+  sourcePath?: T;
+  status?: T;
+  bookedSlot?: T;
+  notes?: T;
   updatedAt?: T;
   createdAt?: T;
 }

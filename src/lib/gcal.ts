@@ -18,15 +18,21 @@ export const ADVANCE_BOOKING_DAYS = 30;
 /** Minimum notice before a slot can be booked (ms). */
 export const MIN_NOTICE_MS = 60 * 60 * 1000; // 1 hour
 
-/** Open/close in 24h clock, per weekday (0 = Sunday). null = closed. */
+/**
+ * Sales-call windows in 24h clock, per weekday (0 = Sunday). null = closed.
+ * Deliberately narrow (11am–1pm Pacific, weekdays) — strategy calls are
+ * gated behind the intake funnel and scarce by design; the rest of the day
+ * stays protected for build work. Full-day availability used to live here
+ * (Mon–Sat 9–5) if it's ever needed again.
+ */
 const BUSINESS_HOURS: Array<{ open: [number, number]; close: [number, number] } | null> = [
-  null, //                  Sunday — closed
-  { open: [9, 0], close: [17, 0] }, // Monday
-  { open: [9, 0], close: [17, 0] }, // Tuesday
-  { open: [9, 0], close: [17, 0] }, // Wednesday
-  { open: [9, 0], close: [17, 0] }, // Thursday
-  { open: [9, 0], close: [17, 0] }, // Friday
-  { open: [9, 0], close: [17, 0] }, // Saturday
+  null, //                    Sunday — closed
+  { open: [11, 0], close: [13, 0] }, // Monday
+  { open: [11, 0], close: [13, 0] }, // Tuesday
+  { open: [11, 0], close: [13, 0] }, // Wednesday
+  { open: [11, 0], close: [13, 0] }, // Thursday
+  { open: [11, 0], close: [13, 0] }, // Friday
+  null, //                    Saturday — closed
 ];
 
 // ── Types ─────────────────────────────────────────────────────────────────────

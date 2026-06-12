@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { verifyBookingToken } from "@/lib/booking-token";
 import {
   ADVANCE_BOOKING_DAYS,
   getAvailableSlots,
@@ -12,6 +13,16 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url);
+
+  // The schedule is never freely exposed — availability requires a booking
+  // token, which is only issued after a completed (Turnstile-verified) intake.
+  if (!verifyBookingToken(searchParams.get("token"))) {
+    return NextResponse.json(
+      { error: "A completed intake is required to view availability" },
+      { status: 403 },
+    );
+  }
+
   const date = searchParams.get("date");
 
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {

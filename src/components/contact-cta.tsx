@@ -16,8 +16,17 @@ export function ContactCTA() {
             </p>
           </div>
 
-          {/* Lead-capture funnel — wires to a server action / CRM in a later step */}
+          {/* Lead capture → stores a Lead and unlocks the booking calendar */}
           <form className="space-y-4" action="/api/lead" method="post">
+            {/* Honeypot — hidden from humans, bots fill it */}
+            <input
+              type="text"
+              name="website"
+              tabIndex={-1}
+              autoComplete="off"
+              aria-hidden="true"
+              className="hidden"
+            />
             <div className="grid gap-4 sm:grid-cols-2">
               <Field name="name" label="Name" placeholder="Jane Doe" />
               <Field

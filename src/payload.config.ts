@@ -8,6 +8,7 @@ import { buildConfig } from "payload";
 import { Users } from "./collections/Users";
 import { Media } from "./collections/Media";
 import { Pages } from "./collections/Pages";
+import { Leads } from "./collections/Leads";
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
@@ -22,7 +23,7 @@ export default buildConfig({
       titleSuffix: "· ThinkBigJoe",
     },
   },
-  collections: [Users, Media, Pages],
+  collections: [Users, Media, Pages, Leads],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || "",
   typescript: {

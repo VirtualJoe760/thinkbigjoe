@@ -1,5 +1,8 @@
+import { getPayload } from "payload";
 import { NextResponse } from "next/server";
 
+import config from "@payload-config";
+import { verifyBookingToken } from "@/lib/booking-token";
 import { sendNotificationEmail } from "@/lib/email";
 import {
   BOOKING_TIMEZONE,
@@ -9,7 +12,6 @@ import {
   MIN_NOTICE_MS,
   SLOT_DURATION_MIN,
 } from "@/lib/gcal";
-import { verifyTurnstileToken } from "@/lib/turnstile";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com";
 
@@ -25,24 +27,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const name = String(body.name || "").trim();
-  const email = String(body.email || "").trim();
-  const phone = String(body.phone || "").trim();
-  const message = String(body.message || "").trim();
   const startTime = String(body.startTime || "");
   const endTime = String(body.endTime || "");
-  const captchaToken = typeof body.captchaToken === "string" ? body.captchaToken : null;
+  const bookingToken =
+    typeof body.bookingToken === "string" ? body.bookingToken : null;
 
-  if (!name || !email || !startTime || !endTime) {
+  // The calendar is gated: bookings only happen against a lead created by a
+  // completed (Turnstile-verified) intake. Identity comes from the lead
+  // record, not the request body — the token can't book on someone else's
+  // behalf.
+  const tokenPayload = verifyBookingToken(bookingToken);
+  if (!tokenPayload) {
     return NextResponse.json(
-      { error: "name, email, startTime, and endTime are required" },
+      { error: "A completed intake is required to book" },
+      { status: 403 },
+    );
+  }
+
+  if (!startTime || !endTime) {
+    return NextResponse.json(
+      { error: "startTime and endTime are required" },
       { status: 400 },
     );
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return NextResponse.json({ error: "Invalid email address" }, { status: 400 });
-  }
-
   const start = new Date(startTime);
   const end = new Date(endTime);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
@@ -59,17 +66,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid slot duration" }, { status: 400 });
   }
 
-  // Bot protection (same Turnstile widget as auth).
-  const remoteIp = req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for");
-  const human = await verifyTurnstileToken(captchaToken, remoteIp);
-  if (!human) {
-    return NextResponse.json(
-      { error: "Verification failed — please try again" },
-      { status: 403 },
-    );
-  }
-
   try {
+    const payload = await getPayload({ config });
+
+    let lead;
+    try {
+      lead = await payload.findByID({
+        collection: "leads",
+        id: tokenPayload.leadId,
+        overrideAccess: true,
+      });
+    } catch {
+      lead = null;
+    }
+    if (!lead) {
+      return NextResponse.json({ error: "Intake not found" }, { status: 403 });
+    }
+
+    const name = String(lead.name);
+    const email = String(lead.email);
+
     // Re-check the window is still free (avoid double-booking races).
     const free = await isWindowFree(start.toISOString(), end.toISOString());
     if (!free) {
@@ -80,24 +96,28 @@ export async function POST(req: Request) {
     }
 
     const description = [
-      `Strategy call booked via ${SITE_URL.replace(/^https?:\/\//, "")}`,
+      `Strategy call booked via ${SITE_URL.replace(/^https?:\/\//, "")}${lead.sourcePath ? ` (${lead.sourcePath})` : ""}`,
       ``,
       `Name: ${name}`,
       `Email: ${email}`,
-      phone ? `Phone: ${phone}` : null,
-      message ? `` : null,
-      message ? `Message:\n${message}` : null,
+      lead.phone ? `Phone: ${lead.phone}` : null,
+      lead.company ? `Company: ${lead.company}` : null,
+      lead.role ? `Role: ${lead.role}` : null,
+      lead.industry ? `Industry: ${lead.industry}` : null,
+      lead.teamSize ? `Team size: ${lead.teamSize}` : null,
+      lead.timeline ? `Timeline: ${lead.timeline}` : null,
+      lead.problem ? `` : null,
+      lead.problem ? `What they want to build:\n${lead.problem}` : null,
     ]
       .filter((l): l is string => l !== null)
       .join("\n");
 
     const event = await createEvent({
-      summary: `Strategy Call — ${name}`,
+      summary: `Strategy Call — ${name}${lead.company ? ` (${lead.company})` : ""}`,
       description,
       start: { dateTime: start.toISOString(), timeZone: BOOKING_TIMEZONE },
       end: { dateTime: end.toISOString(), timeZone: BOOKING_TIMEZONE },
       attendees: [{ email, displayName: name }],
-      // Attach a Google Meet link to the invite.
       conferenceData: {
         createRequest: {
           requestId: `tbj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -113,13 +133,25 @@ export async function POST(req: Request) {
       },
     });
 
-    // Admin heads-up via our transactional email (no-ops until SMTP is set;
-    // the Google Calendar invite is the primary notification either way).
+    await payload
+      .update({
+        collection: "leads",
+        id: tokenPayload.leadId,
+        overrideAccess: true,
+        data: {
+          status: "booked" as never,
+          bookedSlot: start.toISOString(),
+        },
+      })
+      .catch((err) => console.error("[appointments] lead update failed:", err));
+
+    // Admin heads-up (no-ops until SMTP is configured; the Google Calendar
+    // invite is the primary notification either way).
     sendNotificationEmail({
       to: process.env.EMAIL_BCC || "no-reply@thinkbigjoe.com",
       subject: `New strategy call booked — ${name}`,
       heading: "New strategy call booked",
-      message: `${name} (${email}${phone ? `, ${phone}` : ""}) booked ${start.toLocaleString("en-US", { timeZone: BOOKING_TIMEZONE, dateStyle: "full", timeStyle: "short" })} (Pacific).${message ? `<br/><br/>"${message}"` : ""}`,
+      message: `${name} (${email}${lead.company ? `, ${lead.company}` : ""}) booked ${start.toLocaleString("en-US", { timeZone: BOOKING_TIMEZONE, dateStyle: "full", timeStyle: "short" })} (Pacific).`,
     }).catch(() => {});
 
     return NextResponse.json({
