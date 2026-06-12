@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { signIn, signUp } from "@/lib/auth-client";
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
 type Mode = "signin" | "signup";
 
@@ -21,8 +24,11 @@ export function AuthCard({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileInstance>(null);
 
   const anySocial = google || facebook;
+  const needsCaptcha = Boolean(TURNSTILE_SITE_KEY);
 
   async function handleSocial(provider: "google" | "facebook") {
     setError(null);
@@ -34,10 +40,13 @@ export function AuthCard({
     setError(null);
     setLoading(true);
     try {
+      const fetchOptions = captchaToken
+        ? { headers: { "x-captcha-response": captchaToken } }
+        : undefined;
       const res =
         mode === "signup"
-          ? await signUp.email({ name, email, password })
-          : await signIn.email({ email, password });
+          ? await signUp.email({ name, email, password }, fetchOptions)
+          : await signIn.email({ email, password }, fetchOptions);
       if (res.error) {
         setError(
           res.error.message ??
@@ -45,12 +54,17 @@ export function AuthCard({
               ? "Could not create your account."
               : "Invalid email or password."),
         );
+        // Turnstile tokens are single-use — refresh for the next attempt.
+        turnstileRef.current?.reset();
+        setCaptchaToken(null);
         return;
       }
       router.push("/portal");
       router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");
+      turnstileRef.current?.reset();
+      setCaptchaToken(null);
     } finally {
       setLoading(false);
     }
@@ -130,11 +144,22 @@ export function AuthCard({
           required
         />
 
+        {needsCaptcha && (
+          <Turnstile
+            ref={turnstileRef}
+            siteKey={TURNSTILE_SITE_KEY as string}
+            onSuccess={setCaptchaToken}
+            onError={() => setCaptchaToken(null)}
+            onExpire={() => setCaptchaToken(null)}
+            options={{ theme: "light" }}
+          />
+        )}
+
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || (needsCaptcha && !captchaToken)}
           className="w-full rounded-full bg-brand px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-60"
         >
           {loading

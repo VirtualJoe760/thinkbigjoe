@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
+import { captcha } from "better-auth/plugins";
 import { Pool } from "pg";
 
 import { sendWelcomeEmail } from "./email";
@@ -19,6 +20,7 @@ const googleEnabled = Boolean(
 const facebookEnabled = Boolean(
   process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET,
 );
+const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
 
 /**
  * Client-portal auth (clients log in here). Separate from Payload's auth,
@@ -79,8 +81,20 @@ export const auth = betterAuth({
       },
     },
   },
-  // Keeps cookies working with Next.js server actions / route handlers.
-  plugins: [nextCookies()],
+  plugins: [
+    // Cloudflare Turnstile bot protection on auth endpoints (sign-up etc.).
+    // Only enabled once the secret key is configured.
+    ...(turnstileSecret
+      ? [
+          captcha({
+            provider: "cloudflare-turnstile",
+            secretKey: turnstileSecret,
+          }),
+        ]
+      : []),
+    // nextCookies must stay last.
+    nextCookies(),
+  ],
 });
 
 /** Which social providers are configured — used to gate the login UI. */
