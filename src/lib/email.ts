@@ -21,9 +21,11 @@ const transporter = isConfigured
     })
   : null;
 
-const FROM =
-  process.env.EMAIL_FROM ||
-  (user ? `ThinkBigJoe <${user}>` : "ThinkBigJoe <no-reply@thinkbigjoe.com>");
+// Transactional emails always send from the brand no-reply address.
+const FROM = process.env.EMAIL_FROM || "ThinkBigJoe <no-reply@thinkbigjoe.com>";
+
+// Forward a copy of every transactional email here (admin visibility).
+const BCC = process.env.EMAIL_BCC;
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com";
 const BRAND = "#2f6bff";
@@ -46,7 +48,13 @@ export async function sendEmail({ to, subject, html }: SendArgs) {
     return { skipped: true as const };
   }
   try {
-    const info = await transporter.sendMail({ from: FROM, to, subject, html });
+    const info = await transporter.sendMail({
+      from: FROM,
+      to,
+      subject,
+      html,
+      ...(BCC ? { bcc: BCC } : {}),
+    });
     return { data: info };
   } catch (err) {
     console.error("[email] send failed:", err);
