@@ -37,7 +37,7 @@ export function Hero() {
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">
           <Link
-            href="#contact"
+            href="/book-appointment"
             className="inline-flex items-center justify-center rounded-full bg-brand px-7 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-dark"
           >
             Book a strategy call

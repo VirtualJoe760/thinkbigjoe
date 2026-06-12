@@ -27,7 +27,7 @@ export function Founder() {
               </p>
             </div>
             <Link
-              href="#contact"
+              href="/book-appointment"
               className="mt-8 inline-flex items-center justify-center rounded-full bg-brand px-7 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-dark"
             >
               Book a strategy call

@@ -35,7 +35,7 @@ export function SiteNav() {
             Client Login
           </Link>
           <Link
-            href="#contact"
+            href="/book-appointment"
             className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
           >
             Book a call
