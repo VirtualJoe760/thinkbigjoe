@@ -1,11 +1,29 @@
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
-const apiKey = process.env.RESEND_API_KEY;
-const resend = apiKey ? new Resend(apiKey) : null;
+const host = process.env.SMTP_HOST;
+const port = Number(process.env.SMTP_PORT || 587);
+const user = process.env.SMTP_USER;
+const pass = process.env.SMTP_PASS;
 
-// Until thinkbigjoe.com is verified in Resend, falls back to Resend's
-// onboarding sender so dev/test sends still work.
-const FROM = process.env.EMAIL_FROM || "ThinkBigJoe <onboarding@resend.dev>";
+const isConfigured = Boolean(host && user && pass);
+
+// Built once per server instance. Null until SMTP env vars are provided so the
+// app (and signups) never break in environments without email configured.
+const transporter = isConfigured
+  ? nodemailer.createTransport({
+      host,
+      port,
+      // 465 = implicit TLS; 587/25 = STARTTLS. Override with SMTP_SECURE=true/false.
+      secure: process.env.SMTP_SECURE
+        ? process.env.SMTP_SECURE === "true"
+        : port === 465,
+      auth: { user, pass },
+    })
+  : null;
+
+const FROM =
+  process.env.EMAIL_FROM ||
+  (user ? `ThinkBigJoe <${user}>` : "ThinkBigJoe <no-reply@thinkbigjoe.com>");
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com";
 const BRAND = "#2f6bff";
@@ -17,30 +35,21 @@ type SendArgs = {
 };
 
 /**
- * Low-level send. No-ops (with a warning) when RESEND_API_KEY is unset so that
- * signups and other flows never break in environments without email configured.
+ * Low-level send via SMTP (Nodemailer). No-ops (with a warning) when SMTP env
+ * vars are unset so signups and other flows never break without email set up.
  */
 export async function sendEmail({ to, subject, html }: SendArgs) {
-  if (!resend) {
+  if (!transporter) {
     console.warn(
-      `[email] RESEND_API_KEY not set — skipping "${subject}" to ${Array.isArray(to) ? to.join(", ") : to}`,
+      `[email] SMTP not configured — skipping "${subject}" to ${Array.isArray(to) ? to.join(", ") : to}`,
     );
     return { skipped: true as const };
   }
   try {
-    const { data, error } = await resend.emails.send({
-      from: FROM,
-      to,
-      subject,
-      html,
-    });
-    if (error) {
-      console.error("[email] send failed:", error);
-      return { error };
-    }
-    return { data };
+    const info = await transporter.sendMail({ from: FROM, to, subject, html });
+    return { data: info };
   } catch (err) {
-    console.error("[email] send threw:", err);
+    console.error("[email] send failed:", err);
     return { error: err };
   }
 }
