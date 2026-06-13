@@ -9,6 +9,8 @@ import { Users } from "./collections/Users";
 import { Media } from "./collections/Media";
 import { Pages } from "./collections/Pages";
 import { Leads } from "./collections/Leads";
+import { Prospects } from "./collections/Prospects";
+import { Outreach } from "./collections/Outreach";
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
@@ -23,7 +25,7 @@ export default buildConfig({
       titleSuffix: "· ThinkBigJoe",
     },
   },
-  collections: [Users, Media, Pages, Leads],
+  collections: [Users, Media, Pages, Leads, Prospects, Outreach],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || "",
   typescript: {

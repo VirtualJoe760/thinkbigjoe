@@ -71,6 +71,8 @@ export interface Config {
     media: Media;
     pages: Page;
     leads: Lead;
+    prospects: Prospect;
+    outreach: Outreach;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -82,6 +84,8 @@ export interface Config {
     media: MediaSelect<false> | MediaSelect<true>;
     pages: PagesSelect<false> | PagesSelect<true>;
     leads: LeadsSelect<false> | LeadsSelect<true>;
+    prospects: ProspectsSelect<false> | ProspectsSelect<true>;
+    outreach: OutreachSelect<false> | OutreachSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -238,6 +242,96 @@ export interface Lead {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "prospects".
+ */
+export interface Prospect {
+  id: number;
+  name: string;
+  title?: string | null;
+  company?: string | null;
+  vertical?: ('insurance' | 'mortgage' | 'wealth' | 'msp' | 'law' | 'other') | null;
+  location?: string | null;
+  /**
+   * Connection degree, e.g. 2nd. Warmth signal.
+   */
+  degree?: string | null;
+  /**
+   * Shared connections, if any.
+   */
+  mutuals?: string | null;
+  niche?: string | null;
+  /**
+   * Personalization hooks pulled from recon.
+   */
+  hook?: string | null;
+  /**
+   * Sales Nav / LinkedIn profile URL.
+   */
+  profileUrl?: string | null;
+  /**
+   * 0–6 from the fit rubric.
+   */
+  fitScore?: number | null;
+  fitReason?: string | null;
+  status?:
+    | (
+        | 'new'
+        | 'qualified'
+        | 'note_ready'
+        | 'connected'
+        | 'diagnostic_sent'
+        | 'replied'
+        | 'invited'
+        | 'prepped'
+        | 'meeting'
+        | 'won'
+        | 'lost'
+        | 'disqualified'
+      )
+    | null;
+  /**
+   * Which search / file the prospect came from.
+   */
+  source?: string | null;
+  /**
+   * Raw recon record (optional).
+   */
+  recon?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "outreach".
+ */
+export interface Outreach {
+  id: number;
+  prospect: number | Prospect;
+  step: 'connection' | 'diagnostic' | 'reflect' | 'invite' | 'followup';
+  /**
+   * The drafted message. Edit before approving if needed.
+   */
+  body: string;
+  status?: ('draft' | 'approved' | 'edited' | 'denied' | 'sent') | null;
+  /**
+   * Why it was denied — feeds back into better drafts.
+   */
+  denyReason?: string | null;
+  approvedAt?: string | null;
+  sentAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -275,6 +369,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'leads';
         value: number | Lead;
+      } | null)
+    | ({
+        relationTo: 'prospects';
+        value: number | Prospect;
+      } | null)
+    | ({
+        relationTo: 'outreach';
+        value: number | Outreach;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -397,6 +499,44 @@ export interface LeadsSelect<T extends boolean = true> {
   status?: T;
   bookedSlot?: T;
   notes?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "prospects_select".
+ */
+export interface ProspectsSelect<T extends boolean = true> {
+  name?: T;
+  title?: T;
+  company?: T;
+  vertical?: T;
+  location?: T;
+  degree?: T;
+  mutuals?: T;
+  niche?: T;
+  hook?: T;
+  profileUrl?: T;
+  fitScore?: T;
+  fitReason?: T;
+  status?: T;
+  source?: T;
+  recon?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "outreach_select".
+ */
+export interface OutreachSelect<T extends boolean = true> {
+  prospect?: T;
+  step?: T;
+  body?: T;
+  status?: T;
+  denyReason?: T;
+  approvedAt?: T;
+  sentAt?: T;
   updatedAt?: T;
   createdAt?: T;
 }

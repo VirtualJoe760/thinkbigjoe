@@ -43,3 +43,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# sales prospecting (contains prospect PII — never commit)
+/prospecting/
