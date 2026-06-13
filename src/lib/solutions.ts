@@ -1,101 +1,71 @@
 /**
- * Productized offerings — the move from one-off custom invoicing toward
- * repeatable products with recurring revenue. Lineup and pricing structure
- * are research-backed (deep-research run 2026-06-12; see memory:
- * productized-solutions). Core principle from the data: AI products under
- * ~$250/mo churn brutally (23% GRR) while those over $250/mo retain (70% GRR),
- * so every offering is premium + embedded-via-MCP + sold as a MANAGED service,
- * not a thin self-serve subscription. Generic customer-service chatbots are
- * deliberately excluded (74% enterprise rollback rate).
- *
- * Pricing shown as "from" anchors — ranges calibrate per engagement. Monthly
- * is a managed-AI-operations retainer (hosting, monitoring, accuracy tuning,
- * model upgrades), which is what produces retention.
+ * Example solution archetypes — illustrative of the kind of custom work we
+ * develop, NOT a product catalog. Deliberately no pricing and no "buy" framing:
+ * every engagement is custom-scoped (a build invoice + an ongoing partnership),
+ * quoted per project, never advertised as a fixed price. These exist to show a
+ * business what developing a solution in their world looks like, and to
+ * cross-link into the matching industry landing page.
  */
 
 export interface Solution {
   slug: string;
   name: string;
-  tagline: string;
+  /** Industries this kind of work tends to land in. */
   verticals: string;
-  /** The problem in one or two sentences. */
+  /** The problem, in the business's own terms. */
   problem: string;
-  /** Bullet list of what the engagement includes. */
-  includes: string[];
-  setupFrom: string;
-  monthlyFrom: string;
-  /** Why a SaaS tool can't commoditize this. */
-  moat: string;
-  /** ROI / proof point to anchor value. */
-  proof: string;
-  /** Best-fit industry slug for the funnel handoff. */
+  /** What a solution like this does, outcome-first. */
+  delivers: string[];
+  /** How it's built — the bespoke, embedded craft (no SaaS equivalent). */
+  craft: string;
+  /** Best-fit industry slug for the landing-page cross-link. */
   industry: string;
-  featured?: boolean;
 }
 
 export const SOLUTIONS: Solution[] = [
   {
     slug: "document-intake-agent",
-    name: "Document Intake & Processing Agent",
-    tagline: "Stop re-keying paper. Agents read, validate, and file it.",
+    name: "Document intake & processing",
     verticals: "Finance & insurance · Law firms",
     problem:
-      "Applications, claims, contracts, and case files arrive as email and PDF, and your team manually collects, checks, and re-keys them. It's the single biggest time sink in a document-heavy business.",
-    includes: [
-      "Custom classification + extraction trained on your document types",
-      "Validation rules and exception flagging (missing items, risk, conflicts)",
-      "MCP integration into your system of record — CRM, AMS, LOS, or DMS",
-      "Human-in-the-loop review queue so nothing files unchecked",
-      "Managed operations: hosting, monitoring, accuracy tuning, model upgrades",
+      "Applications, claims, contracts, and case files arrive as email and PDF, and your team spends its days collecting, checking, and re-keying them — the single biggest time sink in a document-heavy business.",
+    delivers: [
+      "Reads, classifies, and extracts the data from your documents automatically",
+      "Flags exceptions — missing items, risk, conflicts — for a human to review",
+      "Files everything into your system of record, so nothing lives in an inbox",
     ],
-    setupFrom: "$8,000",
-    monthlyFrom: "$750",
-    moat: "It lives inside your systems of record and is trained on your documents and compliance rules. A generic OCR or chatbot tool can't reach into your AMS or know your underwriting logic — so it can't be swapped out for a $40/mo subscription.",
-    proof:
-      "Documented legal example: AI-driven complaint response cut associate time from 16 hours to minutes, with higher accuracy.",
+    craft:
+      "We train it on your document types and your rules, and wire it into your CRM, AMS, LOS, or DMS through MCP — so it works inside the systems your team already uses, not as one more tab to check.",
     industry: "financial-services",
-    featured: true,
   },
   {
-    slug: "msp-service-desk-agent",
-    name: "White-Label Service-Desk Agent",
-    tagline: "Build it once. Your MSP resells it to every client.",
+    slug: "service-desk-agent",
+    name: "Service-desk & internal support",
     verticals: "MSPs & IT services",
     problem:
-      "Tier-1 tickets — password resets, status checks, known issues — burn tech hours you could bill at project rates. Meanwhile your clients are asking you for AI you don't yet offer.",
-    includes: [
-      "Tier-1 triage, deduplication, and runbook-based resolution",
-      "Knowledge assistant over past tickets, docs, and configs (with citations)",
-      "MCP integration into your PSA/RMM — ConnectWise, Autotask, HaloPSA",
-      "Deployed under YOUR brand, as a new line item on every managed contract",
-      "Per-client provisioning so one build serves your whole book",
+      "Tier-1 tickets — password resets, status checks, the same known issues — burn the hours your best people should spend on real work, and the answer is usually buried in an old ticket or one senior tech's head.",
+    delivers: [
+      "Triages, deduplicates, and resolves routine tickets against your runbooks",
+      "Answers from your past tickets, docs, and configs — with citations",
+      "Hands anything it can't solve to a person, with the full context attached",
     ],
-    setupFrom: "$10,000",
-    monthlyFrom: "$1,000",
-    moat: "The best scaling economics of the lineup: one build, deployed to all your clients through a single relationship. Service desk is the #1 production agentic use case, and the white-label model turns you into our channel.",
-    proof:
-      "51% of SMBs already buy technology through an MSP — the distribution is built in.",
+    craft:
+      "Built into your PSA/RMM (ConnectWise, Autotask, HaloPSA) through MCP, and — for MSPs — deployable under your own brand, so it becomes part of what you offer your clients.",
     industry: "msps",
   },
   {
     slug: "order-intake-agent",
-    name: "Quote & Order Intake Agent",
-    tagline: "RFQs and POs into your ERP — without the transcription.",
+    name: "Quote & order intake",
     verticals: "Manufacturing & logistics",
     problem:
-      "RFQs, purchase orders, and order changes arrive as emails and PDFs that someone re-keys into the ERP. It's slow, error-prone, and the skilled staff to do it are hard to hire.",
-    includes: [
-      "Parse RFQs, POs, and order changes from email and PDF",
-      "Price and validate against your business rules",
-      "MCP integration into your ERP / WMS / EDI flows",
-      "Approval queue — your team confirms, never transcribes",
-      "Managed operations and ongoing rule tuning",
+      "RFQs, purchase orders, and order changes arrive as emails and PDFs that someone has to re-key into the ERP — slow, error-prone, and dependent on staff that's hard to hire and keep.",
+    delivers: [
+      "Reads RFQs and POs and pulls out the line items, quantities, and terms",
+      "Prices and validates each one against your business rules",
+      "Stages it in your ERP for a quick human approval — never blind transcription",
     ],
-    setupFrom: "$10,000",
-    monthlyFrom: "$1,000",
-    moat: "The ERP and pricing-logic integration is the moat. No off-the-shelf tool knows your part numbers, customer-specific pricing, or order rules — it's irreducibly tied to your systems.",
-    proof:
-      "Gartner forecasts supply-chain-management software with agentic AI growing from under $2B to $53B by 2030.",
+    craft:
+      "The value is in the fit: we build it around your part numbers, customer-specific pricing, and order logic, integrated into your ERP/WMS/EDI flows. Nothing off-the-shelf knows your business this well.",
     industry: "manufacturing",
   },
 ];

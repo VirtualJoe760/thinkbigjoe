@@ -6,26 +6,31 @@ import { SiteNav } from "@/components/site-nav";
 import { SOLUTIONS } from "@/lib/solutions";
 
 export const metadata: Metadata = {
-  title: "Solutions",
+  title: "How We Build",
   description:
-    "Productized AI automation built once and deployed into your systems — document intake, white-label service desk, and order-intake agents. Setup plus a managed monthly retainer.",
+    "What it looks like to have a custom AI solution developed for your business — from understanding the work, to building agents into your systems, to a long-term partnership that keeps them running.",
 };
 
-const STEPS = [
+const PHASES = [
   {
     n: "01",
-    title: "Paid audit",
-    body: "A fixed-price workflow audit maps where AI pays back fastest and proves it with a working slice — never free scoping.",
+    title: "Understand the work",
+    body: "We start by learning how your business actually runs — the workflows, the systems, where time and money leak. No two businesses are the same, so nothing is templated until we've seen yours.",
   },
   {
     n: "02",
-    title: "Build",
-    body: "We build the agent against your real systems and data, with a human-in-the-loop review queue from day one.",
+    title: "Design the solution",
+    body: "We map the highest-leverage place to start and design an agent around it — what it does, where a human stays in the loop, and how it lives inside the tools you already use.",
   },
   {
     n: "03",
-    title: "Managed operations",
-    body: "A monthly retainer keeps it accurate as your business changes — hosting, monitoring, tuning, and model upgrades.",
+    title: "Build it into your systems",
+    body: "We build it custom and wire it into your systems of record through MCP. You see it working against your real data, with a review queue from day one — not a demo on fake inputs.",
+  },
+  {
+    n: "04",
+    title: "Partner for the long run",
+    body: "Software that isn't maintained gets ripped out. We stay on as an ongoing partner — monitoring, tuning accuracy, and expanding what the agent handles as your business grows.",
   },
 ];
 
@@ -50,17 +55,16 @@ export default function SolutionsPage() {
           <div className="relative mx-auto max-w-6xl px-6 pt-20 pb-16 md:pt-28 md:pb-20">
             <div className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-xs font-semibold tracking-wide text-ink-soft uppercase">
               <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-              Productized solutions
+              How we build
             </div>
             <h1 className="mt-8 max-w-4xl text-4xl font-extrabold leading-[1.05] tracking-tight text-balance md:text-6xl">
-              AI agents built once. Deployed into your business. Managed for the
-              long run.
+              Custom AI, built for how your business actually works.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft md:text-xl">
-              Not another SaaS login you&apos;ll cancel in three months. These are
-              agents wired directly into your systems of record — priced as a
-              setup build plus a managed monthly retainer, because the work that
-              actually moves your business is worth keeping running.
+              We don&apos;t sell software seats or one-size-fits-all tools. We
+              develop agents tailored to your workflows and built into your
+              systems — then stay on to keep them running as your business
+              changes.
             </p>
             <div className="mt-10">
               <Link
@@ -73,147 +77,110 @@ export default function SolutionsPage() {
           </div>
         </section>
 
-        {/* Why this model */}
+        {/* Principles */}
         <section className="border-t border-line bg-surface">
           <div className="mx-auto max-w-6xl px-6 py-16 md:py-20">
             <div className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line md:grid-cols-3">
               <div className="bg-background p-8">
                 <h3 className="text-lg font-bold tracking-tight">
-                  Embedded, not bolted on
+                  Built around your business
                 </h3>
                 <p className="mt-3 leading-relaxed text-ink-soft">
-                  Every agent connects into your CRM, ERP, PSA, or DMS through
-                  MCP — it works inside the systems your team already runs on.
+                  Every engagement starts from your actual workflows and data —
+                  not a generic template you bend yourself to fit.
                 </p>
               </div>
               <div className="bg-background p-8">
                 <h3 className="text-lg font-bold tracking-tight">
-                  Trained on your data
+                  Embedded in your systems
                 </h3>
                 <p className="mt-3 leading-relaxed text-ink-soft">
-                  Your documents, your rules, your tone. That&apos;s the
-                  difference between a tool anyone can buy and one only you can
-                  use.
+                  Agents connect into your CRM, ERP, PSA, or DMS through MCP, so
+                  they work inside the tools your team already runs on.
                 </p>
               </div>
               <div className="bg-background p-8">
                 <h3 className="text-lg font-bold tracking-tight">
-                  Managed, not abandoned
+                  A partnership, not a handoff
                 </h3>
                 <p className="mt-3 leading-relaxed text-ink-soft">
-                  The monthly retainer keeps accuracy high as your business
-                  changes. AI that isn&apos;t maintained is AI that gets ripped
-                  out.
+                  We don&apos;t ship and disappear. We stay on to keep accuracy
+                  high and grow the solution alongside you.
                 </p>
               </div>
             </div>
           </div>
         </section>
 
-        {/* The products */}
+        {/* What developing a solution looks like */}
         <section className="mx-auto max-w-6xl px-6 py-20 md:py-28">
           <p className="text-sm font-semibold tracking-wide text-brand uppercase">
-            What we package
+            Examples of the work
           </p>
           <h2 className="mt-3 max-w-2xl text-3xl font-extrabold tracking-tight md:text-4xl">
-            Three agents proven to pay for themselves.
+            What developing a solution looks like.
           </h2>
+          <p className="mt-4 max-w-2xl leading-relaxed text-ink-soft">
+            Every project is custom, but the shape is often familiar. Here are a
+            few of the problems we develop solutions for — and what building one
+            into your business actually involves.
+          </p>
 
-          <div className="mt-12 space-y-6">
-            {SOLUTIONS.map((s) => (
+          <div className="mt-12 space-y-12">
+            {SOLUTIONS.map((s, i) => (
               <div
                 key={s.slug}
-                className={`rounded-2xl border bg-background p-8 md:p-10 ${
-                  s.featured ? "border-brand shadow-sm" : "border-line"
+                className={`grid gap-8 lg:grid-cols-[1fr_1.2fr] lg:gap-16 ${
+                  i > 0 ? "border-t border-line pt-12" : ""
                 }`}
               >
-                <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="lg:max-w-xl">
-                    <div className="flex items-center gap-3">
-                      <p className="text-xs font-semibold tracking-wide text-ink-soft uppercase">
-                        {s.verticals}
-                      </p>
-                      {s.featured && (
-                        <span className="rounded-full bg-brand-tint px-2.5 py-0.5 text-xs font-semibold text-brand">
-                          Best starting point
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="mt-3 text-2xl font-bold tracking-tight md:text-3xl">
-                      {s.name}
-                    </h3>
-                    <p className="mt-2 text-lg font-medium text-brand">
-                      {s.tagline}
-                    </p>
-                    <p className="mt-4 leading-relaxed text-ink-soft">
-                      {s.problem}
-                    </p>
-
-                    <ul className="mt-6 space-y-2.5">
-                      {s.includes.map((item) => (
-                        <li key={item} className="flex gap-3 text-sm leading-relaxed">
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="mt-0.5 h-4 w-4 flex-shrink-0 text-brand"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth={3}
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M20 6 9 17l-5-5" />
-                          </svg>
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="w-full lg:w-72 lg:flex-shrink-0">
-                    <div className="rounded-xl border border-line bg-surface p-6">
-                      <p className="text-xs font-semibold tracking-wide text-ink-soft uppercase">
-                        Investment
-                      </p>
-                      <p className="mt-3 text-3xl font-extrabold tracking-tight">
-                        {s.setupFrom}
-                        <span className="text-base font-semibold text-ink-soft">
-                          {" "}
-                          setup
-                        </span>
-                      </p>
-                      <p className="mt-1 text-lg font-bold tracking-tight text-ink-soft">
-                        + {s.monthlyFrom}
-                        <span className="text-sm font-medium"> /mo managed</span>
-                      </p>
-                      <p className="mt-3 text-xs leading-relaxed text-ink-soft">
-                        Final scope set by your audit. Monthly is a managed-AI
-                        retainer, not a software seat.
-                      </p>
-                      <Link
-                        href={`/for/${s.industry}#intake`}
-                        className="mt-5 inline-flex w-full items-center justify-center rounded-full bg-brand px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
-                      >
-                        Start with an audit
-                      </Link>
-                    </div>
-                  </div>
+                <div>
+                  <p className="text-xs font-semibold tracking-wide text-ink-soft uppercase">
+                    {s.verticals}
+                  </p>
+                  <h3 className="mt-3 text-2xl font-bold tracking-tight md:text-3xl">
+                    {s.name}
+                  </h3>
+                  <p className="mt-4 leading-relaxed text-ink-soft">
+                    {s.problem}
+                  </p>
+                  <Link
+                    href={`/for/${s.industry}`}
+                    className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-brand hover:underline"
+                  >
+                    See how this fits your industry
+                    <span aria-hidden>→</span>
+                  </Link>
                 </div>
 
-                <div className="mt-8 grid gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-2">
-                  <div className="bg-surface p-5">
+                <div>
+                  <p className="text-sm font-semibold tracking-tight">
+                    What a solution like this does
+                  </p>
+                  <ul className="mt-3 space-y-2.5">
+                    {s.delivers.map((item) => (
+                      <li key={item} className="flex gap-3 text-sm leading-relaxed">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="mt-0.5 h-4 w-4 flex-shrink-0 text-brand"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={3}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M20 6 9 17l-5-5" />
+                        </svg>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-5 rounded-xl border border-line bg-surface p-5">
                     <p className="text-xs font-semibold tracking-wide text-brand uppercase">
-                      Why it can&apos;t be commoditized
+                      How we build it
                     </p>
                     <p className="mt-2 text-sm leading-relaxed text-ink-soft">
-                      {s.moat}
-                    </p>
-                  </div>
-                  <div className="bg-surface p-5">
-                    <p className="text-xs font-semibold tracking-wide text-brand uppercase">
-                      The proof
-                    </p>
-                    <p className="mt-2 text-sm leading-relaxed text-ink-soft">
-                      {s.proof}
+                      {s.craft}
                     </p>
                   </div>
                 </div>
@@ -221,46 +188,51 @@ export default function SolutionsPage() {
             ))}
           </div>
 
-          <p className="mt-8 max-w-3xl text-sm leading-relaxed text-ink-soft">
-            Need something outside these three? Most engagements start as a
-            custom build — these are simply the patterns we&apos;ve productized.
-            A strategy call is the fastest way to find yours.
+          <p className="mt-12 max-w-3xl leading-relaxed text-ink-soft">
+            These are just starting points. The first conversation is about your
+            business — we figure out together where a custom solution earns its
+            keep, and what it would take to build it.
           </p>
         </section>
 
-        {/* How it works */}
+        {/* The development journey */}
         <section className="border-t border-line bg-surface">
           <div className="mx-auto max-w-6xl px-6 py-20 md:py-28">
             <p className="text-sm font-semibold tracking-wide text-brand uppercase">
-              How engagements work
+              How we work together
             </p>
             <h2 className="mt-3 max-w-2xl text-3xl font-extrabold tracking-tight md:text-4xl">
-              Audit first. Build what pays back. Keep it running.
+              From your workflows to a working solution.
             </h2>
-            <div className="mt-12 grid gap-px overflow-hidden rounded-2xl border border-line bg-line md:grid-cols-3">
-              {STEPS.map((step) => (
-                <div key={step.n} className="bg-background p-8">
-                  <span className="text-sm font-bold text-brand">{step.n}</span>
+            <div className="mt-12 grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
+              {PHASES.map((phase) => (
+                <div key={phase.n} className="bg-background p-8">
+                  <span className="text-sm font-bold text-brand">{phase.n}</span>
                   <h3 className="mt-4 text-xl font-bold tracking-tight">
-                    {step.title}
+                    {phase.title}
                   </h3>
-                  <p className="mt-3 leading-relaxed text-ink-soft">
-                    {step.body}
+                  <p className="mt-3 text-sm leading-relaxed text-ink-soft">
+                    {phase.body}
                   </p>
                 </div>
               ))}
             </div>
+            <p className="mt-8 max-w-3xl leading-relaxed text-ink-soft">
+              Every engagement is scoped to your project — a build, and an
+              ongoing partnership to keep it running. We&apos;ll walk you through
+              exactly what that looks like for your business on the first call.
+            </p>
           </div>
         </section>
 
         {/* CTA */}
         <section className="mx-auto max-w-3xl px-6 py-20 text-center md:py-28">
           <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl">
-            Find the agent worth building first.
+            Let&apos;s find what&apos;s worth building first.
           </h2>
           <p className="mx-auto mt-4 max-w-xl leading-relaxed text-ink-soft">
             Tell us about your business and book a free 30-minute strategy call.
-            We&apos;ll map the highest-ROI workflow to automate — no pitch.
+            We&apos;ll map the highest-leverage place to start — no pitch.
           </p>
           <Link
             href="/book-appointment"
