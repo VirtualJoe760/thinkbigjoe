@@ -76,7 +76,12 @@ export default async function CommandPage() {
         profileUrl: p.profileUrl || "",
       };
     })
-    .sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9));
+    .sort(
+      (a, b) =>
+        (rank[a.status] ?? 9) - (rank[b.status] ?? 9) ||
+        b.fitScore - a.fitScore ||
+        a.name.localeCompare(b.name),
+    );
 
   // counts
   const prospectStatus: Record<string, number> = {};
