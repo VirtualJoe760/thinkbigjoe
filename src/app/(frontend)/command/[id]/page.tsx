@@ -70,7 +70,7 @@ export default async function ProspectPage({
   }
   if (!prospect) notFound();
 
-  const p = prospect as Record<string, unknown> & {
+  const p = prospect as unknown as {
     id: string;
     name?: string;
     title?: string;
@@ -87,9 +87,10 @@ export default async function ProspectPage({
   const company = p.company || "";
 
   // ensure the full sequence exists (idempotent): diagnostic + invite drafts
+  const pid = Number(id);
   const existing = await payload.find({
     collection: "outreach",
-    where: { prospect: { equals: id } },
+    where: { prospect: { equals: pid } },
     limit: 50,
     overrideAccess: true,
   });
@@ -101,7 +102,7 @@ export default async function ProspectPage({
         collection: "outreach",
         overrideAccess: true,
         data: {
-          prospect: id,
+          prospect: pid,
           step: "diagnostic" as never,
           body: DIAGNOSTIC[vertical] || DIAGNOSTIC.other,
           status: "draft" as never,
@@ -115,7 +116,7 @@ export default async function ProspectPage({
         collection: "outreach",
         overrideAccess: true,
         data: {
-          prospect: id,
+          prospect: pid,
           step: "invite" as never,
           body: inviteBody(company, vertical),
           status: "draft" as never,
@@ -128,7 +129,7 @@ export default async function ProspectPage({
   const refreshed = creates.length
     ? await payload.find({
         collection: "outreach",
-        where: { prospect: { equals: id } },
+        where: { prospect: { equals: pid } },
         limit: 50,
         overrideAccess: true,
       })
