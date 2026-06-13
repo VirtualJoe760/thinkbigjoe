@@ -1,106 +1,71 @@
 "use server";
 
-import { headers as nextHeaders } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { getPayload } from "payload";
+import { eq, inArray } from "drizzle-orm";
 
-import config from "@payload-config";
-import { isAdminEmail } from "@/lib/admin";
+import { db, outreach, prospects } from "@/db";
+import { assertAdmin } from "@/lib/require-admin";
 
-async function requireAdmin() {
-  const payload = await getPayload({ config });
-  const { user } = await payload.auth({ headers: await nextHeaders() });
-  if (!user || !isAdminEmail((user as { email?: string }).email)) {
-    throw new Error("Unauthorized");
-  }
-  return payload;
-}
+const now = () => new Date().toISOString();
 
 export async function approveDraft(id: string) {
-  const payload = await requireAdmin();
-  await payload.update({
-    collection: "outreach",
-    id,
-    overrideAccess: true,
-    data: { status: "approved", approvedAt: new Date().toISOString() },
-  });
+  await assertAdmin();
+  await db
+    .update(outreach)
+    .set({ status: "approved", approvedAt: now() })
+    .where(eq(outreach.id, Number(id)));
   revalidatePath("/command");
 }
 
 export async function denyDraft(id: string, reason?: string) {
-  const payload = await requireAdmin();
-  await payload.update({
-    collection: "outreach",
-    id,
-    overrideAccess: true,
-    data: { status: "denied", denyReason: reason || undefined },
-  });
+  await assertAdmin();
+  await db
+    .update(outreach)
+    .set({ status: "denied", denyReason: reason || null })
+    .where(eq(outreach.id, Number(id)));
   revalidatePath("/command");
 }
 
 export async function editDraft(id: string, body: string) {
-  const payload = await requireAdmin();
-  await payload.update({
-    collection: "outreach",
-    id,
-    overrideAccess: true,
-    data: { body, status: "edited" },
-  });
+  await assertAdmin();
+  await db
+    .update(outreach)
+    .set({ body, status: "edited" })
+    .where(eq(outreach.id, Number(id)));
   revalidatePath("/command");
 }
 
 export async function approveMany(ids: string[]) {
-  const payload = await requireAdmin();
-  const now = new Date().toISOString();
-  await Promise.all(
-    ids.map((id) =>
-      payload
-        .update({
-          collection: "outreach",
-          id,
-          overrideAccess: true,
-          data: { status: "approved", approvedAt: now },
-        })
-        .catch(() => {}),
-    ),
-  );
+  await assertAdmin();
+  if (!ids.length) return;
+  await db
+    .update(outreach)
+    .set({ status: "approved", approvedAt: now() })
+    .where(inArray(outreach.id, ids.map(Number)));
   revalidatePath("/command");
 }
 
 export async function denyMany(ids: string[], reason?: string) {
-  const payload = await requireAdmin();
-  await Promise.all(
-    ids.map((id) =>
-      payload
-        .update({
-          collection: "outreach",
-          id,
-          overrideAccess: true,
-          data: { status: "denied", denyReason: reason || undefined },
-        })
-        .catch(() => {}),
-    ),
-  );
+  await assertAdmin();
+  if (!ids.length) return;
+  await db
+    .update(outreach)
+    .set({ status: "denied", denyReason: reason || null })
+    .where(inArray(outreach.id, ids.map(Number)));
   revalidatePath("/command");
 }
 
 export async function markSent(id: string, prospectId: string) {
-  const payload = await requireAdmin();
-  await payload.update({
-    collection: "outreach",
-    id,
-    overrideAccess: true,
-    data: { status: "sent", sentAt: new Date().toISOString() },
-  });
+  await assertAdmin();
+  await db
+    .update(outreach)
+    .set({ status: "sent", sentAt: now() })
+    .where(eq(outreach.id, Number(id)));
   if (prospectId) {
-    await payload
-      .update({
-        collection: "prospects",
-        id: prospectId,
-        overrideAccess: true,
-        data: { status: "connected" },
-      })
-      .catch(() => {});
+    await db
+      .update(prospects)
+      .set({ status: "connected" })
+      .where(eq(prospects.id, Number(prospectId)));
   }
   revalidatePath("/command");
 }

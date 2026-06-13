@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import { headers as nextHeaders } from "next/headers";
-import { redirect } from "next/navigation";
-import { getPayload } from "payload";
+import { eq } from "drizzle-orm";
 
-import config from "@payload-config";
-import { isAdminEmail } from "@/lib/admin";
+import { db, outreach, prospects } from "@/db";
+import { requireAdmin } from "@/lib/require-admin";
 import { Logo } from "@/components/logo";
 import { ReviewQueue, type QueueItem } from "./review-queue";
+import { SignOut } from "./sign-out";
 
 export const dynamic = "force-dynamic";
 
@@ -43,12 +42,7 @@ export default async function CommandPage({
 }: {
   searchParams: Promise<{ view?: string; page?: string; v?: string; q?: string }>;
 }) {
-  const payload = await getPayload({ config });
-  const { user } = await payload.auth({ headers: await nextHeaders() });
-  const email = (user as { email?: string } | null)?.email;
-  if (!user || !isAdminEmail(email)) {
-    redirect("/admin/login");
-  }
+  const { email } = await requireAdmin();
 
   const sp = await searchParams;
   const view: View = (["priority", "queue", "ready", "sent"] as const).includes(
@@ -61,62 +55,59 @@ export default async function CommandPage({
   const q = (sp.q || "").trim();
   const qLower = q.toLowerCase();
 
-  const [outreachRes, prospectsRes] = await Promise.all([
-    payload.find({
-      collection: "outreach",
-      where: { step: { equals: "connection" } },
-      depth: 1,
-      limit: 1000,
-      overrideAccess: true,
-    }),
-    payload.find({ collection: "prospects", limit: 1000, overrideAccess: true }),
+  const [rows, allProspects] = await Promise.all([
+    db
+      .select({
+        id: outreach.id,
+        body: outreach.body,
+        status: outreach.status,
+        updatedAt: outreach.updatedAt,
+        approvedAt: outreach.approvedAt,
+        sentAt: outreach.sentAt,
+        prospectId: prospects.id,
+        name: prospects.name,
+        title: prospects.title,
+        company: prospects.company,
+        vertical: prospects.vertical,
+        location: prospects.location,
+        degree: prospects.degree,
+        hook: prospects.hook,
+        fitScore: prospects.fitScore,
+        profileUrl: prospects.profileUrl,
+      })
+      .from(outreach)
+      .innerJoin(prospects, eq(outreach.prospectId, prospects.id))
+      .where(eq(outreach.step, "connection")),
+    db.select({ status: prospects.status }).from(prospects),
   ]);
 
-  type ProspectRel = {
-    id?: string;
-    name?: string;
-    title?: string;
-    company?: string;
-    vertical?: string;
-    location?: string;
-    degree?: string;
-    hook?: string;
-    fitScore?: number;
-    profileUrl?: string;
-  };
-
-  const all: QueueItem[] = outreachRes.docs.map((d) => {
-    const p = (typeof d.prospect === "object" ? d.prospect : {}) as ProspectRel;
-    return {
-      id: String(d.id),
-      body: String(d.body || ""),
-      status: String(d.status),
-      prospectId: String(p.id || ""),
-      name: p.name || "Unknown",
-      title: p.title || "",
-      company: p.company || "",
-      vertical: p.vertical || "",
-      location: p.location || "",
-      degree: p.degree || "",
-      hook: p.hook || "",
-      fitScore: Number(p.fitScore || 0),
-      profileUrl: p.profileUrl || "",
-      updatedAt: (d.updatedAt as string) || "",
-      approvedAt: (d.approvedAt as string) || "",
-      sentAt: (d.sentAt as string) || "",
-    };
-  });
+  const all: QueueItem[] = rows.map((r) => ({
+    id: String(r.id),
+    body: r.body || "",
+    status: String(r.status || "draft"),
+    prospectId: String(r.prospectId),
+    name: r.name || "Unknown",
+    title: r.title || "",
+    company: r.company || "",
+    vertical: r.vertical ? String(r.vertical) : "",
+    location: r.location || "",
+    degree: r.degree || "",
+    hook: r.hook || "",
+    fitScore: Number(r.fitScore || 0),
+    profileUrl: r.profileUrl || "",
+    updatedAt: r.updatedAt || "",
+    approvedAt: r.approvedAt || "",
+    sentAt: r.sentAt || "",
+  }));
 
   const isPending = (i: QueueItem) =>
     i.status === "draft" || i.status === "edited";
 
-  // vertical chip counts (over pending, unfiltered)
   const verticalCounts: Record<string, number> = {};
   for (const i of all.filter(isPending)) {
     verticalCounts[i.vertical] = (verticalCounts[i.vertical] || 0) + 1;
   }
 
-  // apply vertical + search scope
   const scoped = all.filter((i) => {
     if (vertical && i.vertical !== vertical) return false;
     if (qLower && !`${i.name} ${i.company}`.toLowerCase().includes(qLower))
@@ -161,7 +152,7 @@ export default async function CommandPage({
   );
 
   const prospectStatus: Record<string, number> = {};
-  for (const p of prospectsRes.docs) {
+  for (const p of allProspects) {
     const s = String(p.status || "new");
     prospectStatus[s] = (prospectStatus[s] || 0) + 1;
   }
@@ -176,7 +167,6 @@ export default async function CommandPage({
     { label: "Sent this week", value: sentWeek, accent: "" },
   ];
 
-  // querystring helper preserving view + vertical + search
   const qs = (over: Record<string, string>) => {
     const params = new URLSearchParams();
     params.set("view", over.view ?? view);
@@ -191,7 +181,6 @@ export default async function CommandPage({
   return (
     <div className="flex flex-1 flex-col">
       <div className="mx-auto w-full max-w-5xl px-6 py-8">
-        {/* nav */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Logo />
@@ -200,20 +189,14 @@ export default async function CommandPage({
             </span>
           </div>
           <nav className="flex items-center gap-4 text-sm">
-            <a href="/admin" className="font-medium text-ink-soft hover:text-ink">
-              Payload admin
-            </a>
             <a href="/" className="font-medium text-ink-soft hover:text-ink">
               Site
             </a>
-            <a href="/admin/logout" className="font-medium text-ink-soft hover:text-ink">
-              Sign out
-            </a>
+            <SignOut />
             <span className="hidden text-xs text-ink-soft sm:inline">{email}</span>
           </nav>
         </div>
 
-        {/* metrics */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {metrics.map((m) => (
             <div key={m.label} className="rounded-xl bg-surface p-4">
@@ -225,7 +208,6 @@ export default async function CommandPage({
           ))}
         </div>
 
-        {/* pipeline */}
         <div className="mt-5 flex items-stretch gap-1.5 overflow-x-auto">
           {PIPELINE.map((stage, i) => (
             <div key={stage.key} className="flex items-center gap-1.5">
@@ -238,7 +220,6 @@ export default async function CommandPage({
           ))}
         </div>
 
-        {/* tabs */}
         <div className="mt-8 flex flex-wrap gap-2 border-b border-line">
           {tabs.map((t) => {
             const active = t.key === view;
@@ -257,7 +238,6 @@ export default async function CommandPage({
           })}
         </div>
 
-        {/* filter bar: vertical chips + search */}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-1.5">
             <a
@@ -306,7 +286,6 @@ export default async function CommandPage({
           <ReviewQueue items={pageItems} />
         </div>
 
-        {/* pagination */}
         {totalPages > 1 && (
           <div className="mt-6 flex items-center justify-center gap-2 text-sm">
             {clampedPage > 1 ? (

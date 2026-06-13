@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Jost } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const jost = Jost({
@@ -33,6 +34,7 @@ export default function FrontendLayout({
     <html lang="en" className={`${jost.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-background text-ink">
         {children}
+        <Analytics />
       </body>
     </html>
   );

@@ -1,7 +1,6 @@
-import { getPayload } from "payload";
 import { NextResponse } from "next/server";
 
-import config from "@payload-config";
+import { db, leads } from "@/db";
 import { issueBookingToken } from "@/lib/booking-token";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 
@@ -62,28 +61,26 @@ export async function POST(req: Request) {
   const emailType = FREE_MAIL.has(domain) ? "free" : "business";
 
   try {
-    const payload = await getPayload({ config });
-    const lead = await payload.create({
-      collection: "leads",
-      overrideAccess: true,
-      data: {
+    const [lead] = await db
+      .insert(leads)
+      .values({
         name,
         email,
-        phone: phone || undefined,
+        phone: phone || null,
         company,
-        role: role || undefined,
-        industry: industry || undefined,
-        teamSize: (teamSize || undefined) as never,
-        timeline: (timeline || undefined) as never,
+        role: role || null,
+        industry: industry || null,
+        teamSize: (teamSize || null) as never,
+        timeline: (timeline || null) as never,
         problem,
         emailType: emailType as never,
         source: (sourcePath.startsWith("/for/")
           ? "industry-page"
           : "booking-page") as never,
-        sourcePath: sourcePath || undefined,
-        status: "new" as never,
-      },
-    });
+        sourcePath: sourcePath || null,
+        status: "new",
+      })
+      .returning({ id: leads.id });
 
     return NextResponse.json({
       ok: true,

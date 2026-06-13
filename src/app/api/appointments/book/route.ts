@@ -1,7 +1,7 @@
-import { getPayload } from "payload";
 import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
 
-import config from "@payload-config";
+import { db, leads } from "@/db";
 import { verifyBookingToken } from "@/lib/booking-token";
 import { sendNotificationEmail } from "@/lib/email";
 import {
@@ -67,18 +67,13 @@ export async function POST(req: Request) {
   }
 
   try {
-    const payload = await getPayload({ config });
-
-    let lead;
-    try {
-      lead = await payload.findByID({
-        collection: "leads",
-        id: tokenPayload.leadId,
-        overrideAccess: true,
-      });
-    } catch {
-      lead = null;
-    }
+    const leadId = Number(tokenPayload.leadId);
+    const foundLeads = await db
+      .select()
+      .from(leads)
+      .where(eq(leads.id, leadId))
+      .limit(1);
+    const lead = foundLeads[0];
     if (!lead) {
       return NextResponse.json({ error: "Intake not found" }, { status: 403 });
     }
@@ -133,16 +128,10 @@ export async function POST(req: Request) {
       },
     });
 
-    await payload
-      .update({
-        collection: "leads",
-        id: tokenPayload.leadId,
-        overrideAccess: true,
-        data: {
-          status: "booked" as never,
-          bookedSlot: start.toISOString(),
-        },
-      })
+    await db
+      .update(leads)
+      .set({ status: "booked", bookedSlot: start.toISOString() })
+      .where(eq(leads.id, leadId))
       .catch((err) => console.error("[appointments] lead update failed:", err));
 
     // Admin heads-up (no-ops until SMTP is configured; the Google Calendar

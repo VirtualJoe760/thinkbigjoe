@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import { withPayload } from "@payloadcms/next/withPayload";
 
 const nextConfig: NextConfig = {
   // Nodemailer uses dynamic requires for its transports — keep it external so
@@ -7,4 +6,4 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["nodemailer"],
 };
 
-export default withPayload(nextConfig);
+export default nextConfig;

@@ -1,7 +1,6 @@
-import { getPayload } from "payload";
 import { NextResponse } from "next/server";
 
-import config from "@payload-config";
+import { db, leads } from "@/db";
 import { issueBookingToken } from "@/lib/booking-token";
 
 /**
@@ -38,20 +37,18 @@ export async function POST(req: Request) {
   }
 
   try {
-    const payload = await getPayload({ config });
-    const lead = await payload.create({
-      collection: "leads",
-      overrideAccess: true,
-      data: {
+    const [lead] = await db
+      .insert(leads)
+      .values({
         name,
         email,
-        company: company || undefined,
-        problem: message || undefined,
-        source: "contact-form" as never,
+        company: company || null,
+        problem: message || null,
+        source: "contact-form",
         sourcePath: "/",
-        status: "new" as never,
-      },
-    });
+        status: "new",
+      })
+      .returning({ id: leads.id });
 
     const dest = new URL("/book-appointment", req.url);
     dest.searchParams.set("t", issueBookingToken(String(lead.id)));

@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
-import { headers as nextHeaders } from "next/headers";
-import { notFound, redirect } from "next/navigation";
-import { getPayload } from "payload";
+import { notFound } from "next/navigation";
+import { eq } from "drizzle-orm";
 
-import config from "@payload-config";
-import { isAdminEmail } from "@/lib/admin";
+import { db, outreach, prospects } from "@/db";
+import { requireAdmin } from "@/lib/require-admin";
 import { Logo } from "@/components/logo";
 import { StepCard, type Step } from "./step-card";
 
@@ -51,94 +50,46 @@ export default async function ProspectPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireAdmin();
   const { id } = await params;
-  const payload = await getPayload({ config });
-  const { user } = await payload.auth({ headers: await nextHeaders() });
-  if (!user || !isAdminEmail((user as { email?: string }).email)) {
-    redirect("/admin/login");
-  }
+  const pid = Number(id);
+  if (!Number.isFinite(pid)) notFound();
 
-  let prospect;
-  try {
-    prospect = await payload.findByID({
-      collection: "prospects",
-      id,
-      overrideAccess: true,
-    });
-  } catch {
-    notFound();
-  }
-  if (!prospect) notFound();
+  const found = await db
+    .select()
+    .from(prospects)
+    .where(eq(prospects.id, pid))
+    .limit(1);
+  const p = found[0];
+  if (!p) notFound();
 
-  const p = prospect as unknown as {
-    id: string;
-    name?: string;
-    title?: string;
-    company?: string;
-    vertical?: string;
-    location?: string;
-    degree?: string;
-    hook?: string;
-    fitScore?: number;
-    fitReason?: string;
-    profileUrl?: string;
-  };
-  const vertical = p.vertical || "other";
+  const vertical = p.vertical ? String(p.vertical) : "other";
   const company = p.company || "";
 
   // ensure the full sequence exists (idempotent): diagnostic + invite drafts
-  const pid = Number(id);
-  const existing = await payload.find({
-    collection: "outreach",
-    where: { prospect: { equals: pid } },
-    limit: 50,
-    overrideAccess: true,
-  });
-  const haveSteps = new Set(existing.docs.map((d) => String(d.step)));
-  const creates: Promise<unknown>[] = [];
+  const existing = await db
+    .select({ step: outreach.step })
+    .from(outreach)
+    .where(eq(outreach.prospectId, pid));
+  const haveSteps = new Set(existing.map((d) => String(d.step)));
+  const toInsert: Array<{ prospectId: number; step: "diagnostic" | "invite"; body: string; status: "draft" }> = [];
   if (!haveSteps.has("diagnostic")) {
-    creates.push(
-      payload.create({
-        collection: "outreach",
-        overrideAccess: true,
-        data: {
-          prospect: pid,
-          step: "diagnostic" as never,
-          body: DIAGNOSTIC[vertical] || DIAGNOSTIC.other,
-          status: "draft" as never,
-        },
-      }),
-    );
+    toInsert.push({ prospectId: pid, step: "diagnostic", body: DIAGNOSTIC[vertical] || DIAGNOSTIC.other, status: "draft" });
   }
   if (!haveSteps.has("invite")) {
-    creates.push(
-      payload.create({
-        collection: "outreach",
-        overrideAccess: true,
-        data: {
-          prospect: pid,
-          step: "invite" as never,
-          body: inviteBody(company, vertical),
-          status: "draft" as never,
-        },
-      }),
-    );
+    toInsert.push({ prospectId: pid, step: "invite", body: inviteBody(company, vertical), status: "draft" });
   }
-  if (creates.length) await Promise.all(creates);
+  if (toInsert.length) await db.insert(outreach).values(toInsert);
 
-  const refreshed = creates.length
-    ? await payload.find({
-        collection: "outreach",
-        where: { prospect: { equals: pid } },
-        limit: 50,
-        overrideAccess: true,
-      })
-    : existing;
+  const rows = await db
+    .select({ id: outreach.id, step: outreach.step, body: outreach.body, status: outreach.status })
+    .from(outreach)
+    .where(eq(outreach.prospectId, pid));
 
   const order: Record<string, number> = { connection: 0, diagnostic: 1, invite: 2, followup: 3 };
-  const steps: Step[] = refreshed.docs
+  const steps: Step[] = rows
     .filter((d) => String(d.step) !== "reflect")
-    .map((d) => ({ id: String(d.id), step: String(d.step), body: String(d.body || ""), status: String(d.status) }))
+    .map((d) => ({ id: String(d.id), step: String(d.step), body: String(d.body || ""), status: String(d.status || "draft") }))
     .sort((a, b) => (order[a.step] ?? 9) - (order[b.step] ?? 9));
 
   const initials = (p.name || "?")
@@ -159,7 +110,6 @@ export default async function ProspectPage({
           </a>
         </div>
 
-        {/* prospect header */}
         <div className="rounded-2xl border border-line bg-background p-6">
           <div className="flex items-start gap-4">
             <div className="grid h-12 w-12 flex-shrink-0 place-items-center rounded-full bg-brand-tint text-base font-semibold text-brand">
@@ -169,7 +119,7 @@ export default async function ProspectPage({
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-xl font-bold tracking-tight">{p.name}</h1>
                 <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700">
-                  fit {p.fitScore ?? 0}/6
+                  fit {Number(p.fitScore || 0)}/6
                 </span>
                 {p.degree && (
                   <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-ink-soft">
@@ -201,21 +151,18 @@ export default async function ProspectPage({
           </div>
         </div>
 
-        {/* sequence */}
         <h2 className="mt-8 mb-3 text-lg font-bold tracking-tight">Outreach sequence</h2>
         <div className="space-y-3">
           {steps.map((s) => (
             <StepCard key={s.id} step={s} prospectId={id} canApprove={s.step === "connection"} />
           ))}
 
-          {/* reflect — reply-dependent guidance */}
           <div className="rounded-2xl border border-line bg-surface p-5">
             <span className="text-sm font-bold tracking-tight">3 · Reflect (after they reply)</span>
             <p className="mt-2 text-sm leading-relaxed text-ink-soft">{REFLECT_GUIDANCE}</p>
           </div>
         </div>
 
-        {/* solution sketch scaffold */}
         <h2 className="mt-8 mb-3 text-lg font-bold tracking-tight">Pre-call solution sketch</h2>
         <div className="rounded-2xl border border-line bg-background p-6 text-sm leading-relaxed text-ink-soft">
           <p className="font-medium text-ink">Fill before the call:</p>
