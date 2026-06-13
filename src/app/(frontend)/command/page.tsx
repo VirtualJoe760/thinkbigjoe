@@ -24,22 +24,40 @@ const PIPELINE: Array<{ key: string; label: string }> = [
   { key: "meeting", label: "Booked" },
 ];
 
-export default async function CommandPage() {
+const PAGE_SIZE = 10;
+const PRIORITY_MIN_FIT = 5;
+
+type View = "priority" | "queue" | "ready" | "sent";
+
+export default async function CommandPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string; page?: string }>;
+}) {
   const payload = await getPayload({ config });
   const { user } = await payload.auth({ headers: await nextHeaders() });
-  if (!user || !isAdminEmail((user as { email?: string }).email)) {
+  const email = (user as { email?: string } | null)?.email;
+  if (!user || !isAdminEmail(email)) {
     redirect("/admin/login");
   }
+
+  const sp = await searchParams;
+  const view: View = (["priority", "queue", "ready", "sent"] as const).includes(
+    sp.view as View,
+  )
+    ? (sp.view as View)
+    : "priority";
+  const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
 
   const [outreachRes, prospectsRes] = await Promise.all([
     payload.find({
       collection: "outreach",
       where: { step: { equals: "connection" } },
       depth: 1,
-      limit: 300,
+      limit: 1000,
       overrideAccess: true,
     }),
-    payload.find({ collection: "prospects", limit: 500, overrideAccess: true }),
+    payload.find({ collection: "prospects", limit: 1000, overrideAccess: true }),
   ]);
 
   type ProspectRel = {
@@ -55,71 +73,110 @@ export default async function CommandPage() {
     profileUrl?: string;
   };
 
-  const rank: Record<string, number> = { draft: 0, edited: 1, approved: 2 };
-  const queue: QueueItem[] = outreachRes.docs
-    .filter((d) => ["draft", "edited", "approved"].includes(String(d.status)))
-    .map((d) => {
-      const p = (typeof d.prospect === "object" ? d.prospect : {}) as ProspectRel;
-      return {
-        id: String(d.id),
-        body: String(d.body || ""),
-        status: String(d.status),
-        prospectId: String(p.id || ""),
-        name: p.name || "Unknown",
-        title: p.title || "",
-        company: p.company || "",
-        vertical: p.vertical || "",
-        location: p.location || "",
-        degree: p.degree || "",
-        hook: p.hook || "",
-        fitScore: Number(p.fitScore || 0),
-        profileUrl: p.profileUrl || "",
-      };
-    })
-    .sort(
-      (a, b) =>
-        (rank[a.status] ?? 9) - (rank[b.status] ?? 9) ||
-        b.fitScore - a.fitScore ||
-        a.name.localeCompare(b.name),
-    );
+  const all: QueueItem[] = outreachRes.docs.map((d) => {
+    const p = (typeof d.prospect === "object" ? d.prospect : {}) as ProspectRel;
+    return {
+      id: String(d.id),
+      body: String(d.body || ""),
+      status: String(d.status),
+      prospectId: String(p.id || ""),
+      name: p.name || "Unknown",
+      title: p.title || "",
+      company: p.company || "",
+      vertical: p.vertical || "",
+      location: p.location || "",
+      degree: p.degree || "",
+      hook: p.hook || "",
+      fitScore: Number(p.fitScore || 0),
+      profileUrl: p.profileUrl || "",
+      updatedAt: (d.updatedAt as string) || "",
+      approvedAt: (d.approvedAt as string) || "",
+      sentAt: (d.sentAt as string) || "",
+    };
+  });
 
-  // counts
+  const isPending = (i: QueueItem) =>
+    i.status === "draft" || i.status === "edited";
+  const statusRank: Record<string, number> = { draft: 0, edited: 1 };
+
+  const byView: Record<View, QueueItem[]> = {
+    priority: all
+      .filter((i) => isPending(i) && i.fitScore >= PRIORITY_MIN_FIT)
+      .sort((a, b) => b.fitScore - a.fitScore || a.name.localeCompare(b.name)),
+    queue: all
+      .filter(isPending)
+      .sort(
+        (a, b) =>
+          (statusRank[a.status] ?? 9) - (statusRank[b.status] ?? 9) ||
+          b.fitScore - a.fitScore ||
+          a.name.localeCompare(b.name),
+      ),
+    ready: all
+      .filter((i) => i.status === "approved")
+      .sort((a, b) => (b.approvedAt || "").localeCompare(a.approvedAt || "")),
+    sent: all
+      .filter((i) => i.status === "sent")
+      .sort((a, b) => (b.sentAt || "").localeCompare(a.sentAt || "")),
+  };
+
+  const tabs: Array<{ key: View; label: string; count: number }> = [
+    { key: "priority", label: "Priority", count: byView.priority.length },
+    { key: "queue", label: "All pending", count: byView.queue.length },
+    { key: "ready", label: "Ready to send", count: byView.ready.length },
+    { key: "sent", label: "Sent", count: byView.sent.length },
+  ];
+
+  const items = byView[view];
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const clampedPage = Math.min(page, totalPages);
+  const pageItems = items.slice(
+    (clampedPage - 1) * PAGE_SIZE,
+    clampedPage * PAGE_SIZE,
+  );
+
+  // pipeline + metrics
   const prospectStatus: Record<string, number> = {};
   for (const p of prospectsRes.docs) {
     const s = String(p.status || "new");
     prospectStatus[s] = (prospectStatus[s] || 0) + 1;
   }
-  const inQueue = queue.filter((q) => q.status !== "approved").length;
-  const ready = queue.filter((q) => q.status === "approved").length;
-
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const sentWeek = outreachRes.docs.filter(
-    (d) =>
-      String(d.status) === "sent" &&
-      d.sentAt &&
-      new Date(d.sentAt as string).getTime() > weekAgo,
+  const sentWeek = all.filter(
+    (i) => i.status === "sent" && i.sentAt && new Date(i.sentAt).getTime() > weekAgo,
   ).length;
-
   const metrics = [
-    { label: "Awaiting review", value: inQueue, accent: "text-brand" },
-    { label: "Ready to send", value: ready, accent: "" },
+    { label: "Priority", value: byView.priority.length, accent: "text-brand" },
+    { label: "All pending", value: byView.queue.length, accent: "" },
+    { label: "Ready to send", value: byView.ready.length, accent: "" },
     { label: "Sent this week", value: sentWeek, accent: "" },
-    { label: "Booked", value: prospectStatus["meeting"] || 0, accent: "text-brand" },
   ];
 
   return (
     <div className="flex flex-1 flex-col">
       <div className="mx-auto w-full max-w-5xl px-6 py-8">
-        <div className="mb-6 flex items-center justify-between">
+        {/* nav */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Logo />
             <span className="rounded-full border border-line px-2.5 py-1 text-xs font-semibold text-ink-soft">
               command center
             </span>
           </div>
-          <span className="text-xs text-ink-soft">
-            signed in as {(user as { email?: string }).email}
-          </span>
+          <nav className="flex items-center gap-4 text-sm">
+            <a href="/admin" className="font-medium text-ink-soft hover:text-ink">
+              Payload admin
+            </a>
+            <a href="/" className="font-medium text-ink-soft hover:text-ink">
+              Site
+            </a>
+            <a
+              href="/admin/logout"
+              className="font-medium text-ink-soft hover:text-ink"
+            >
+              Sign out
+            </a>
+            <span className="hidden text-xs text-ink-soft sm:inline">{email}</span>
+          </nav>
         </div>
 
         {/* metrics */}
@@ -147,14 +204,63 @@ export default async function CommandPage() {
           ))}
         </div>
 
-        {/* review queue */}
-        <div className="mt-8 mb-3 flex items-center gap-2">
-          <h1 className="text-lg font-bold tracking-tight">Review queue</h1>
-          <span className="text-sm text-ink-soft">
-            {inQueue} awaiting · {ready} ready to send
-          </span>
+        {/* tabs */}
+        <div className="mt-8 flex flex-wrap gap-2 border-b border-line">
+          {tabs.map((t) => {
+            const active = t.key === view;
+            return (
+              <a
+                key={t.key}
+                href={`/command?view=${t.key}`}
+                className={`-mb-px border-b-2 px-3 py-2 text-sm font-semibold transition-colors ${
+                  active
+                    ? "border-brand text-brand"
+                    : "border-transparent text-ink-soft hover:text-ink"
+                }`}
+              >
+                {t.label}
+                <span className="ml-1.5 text-xs text-ink-soft">{t.count}</span>
+              </a>
+            );
+          })}
         </div>
-        <ReviewQueue items={queue} />
+
+        <div className="mt-5">
+          <ReviewQueue items={pageItems} />
+        </div>
+
+        {/* pagination */}
+        {totalPages > 1 && (
+          <div className="mt-6 flex items-center justify-center gap-2 text-sm">
+            {clampedPage > 1 ? (
+              <a
+                href={`/command?view=${view}&page=${clampedPage - 1}`}
+                className="rounded-full border border-line px-4 py-2 font-semibold transition-colors hover:bg-surface"
+              >
+                ‹ Prev
+              </a>
+            ) : (
+              <span className="rounded-full border border-line px-4 py-2 font-semibold opacity-40">
+                ‹ Prev
+              </span>
+            )}
+            <span className="px-2 text-ink-soft">
+              Page {clampedPage} of {totalPages}
+            </span>
+            {clampedPage < totalPages ? (
+              <a
+                href={`/command?view=${view}&page=${clampedPage + 1}`}
+                className="rounded-full border border-line px-4 py-2 font-semibold transition-colors hover:bg-surface"
+              >
+                Next ›
+              </a>
+            ) : (
+              <span className="rounded-full border border-line px-4 py-2 font-semibold opacity-40">
+                Next ›
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

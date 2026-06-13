@@ -18,6 +18,9 @@ export type QueueItem = {
   hook: string;
   fitScore: number;
   profileUrl: string;
+  updatedAt: string;
+  approvedAt: string;
+  sentAt: string;
 };
 
 function initials(name: string) {
@@ -36,13 +39,40 @@ function fitColor(score: number) {
   return "bg-surface text-ink-soft";
 }
 
+function when(iso: string) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  const mins = Math.round(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function statusLine(item: QueueItem): { text: string; tone: string } {
+  switch (item.status) {
+    case "approved":
+      return { text: `approved ${when(item.approvedAt || item.updatedAt)}`, tone: "text-brand" };
+    case "sent":
+      return { text: `sent ${when(item.sentAt || item.updatedAt)}`, tone: "text-green-700" };
+    case "edited":
+      return { text: `edited ${when(item.updatedAt)}`, tone: "text-ink-soft" };
+    case "denied":
+      return { text: `denied ${when(item.updatedAt)}`, tone: "text-red-600" };
+    default:
+      return { text: `drafted ${when(item.updatedAt)}`, tone: "text-ink-soft" };
+  }
+}
+
 export function ReviewQueue({ items }: { items: QueueItem[] }) {
   if (items.length === 0) {
     return (
       <div className="rounded-2xl border border-line bg-background p-10 text-center">
-        <p className="text-ink-soft">
-          Nothing awaiting review. New drafts will appear here.
-        </p>
+        <p className="text-ink-soft">Nothing here yet.</p>
       </div>
     );
   }
@@ -72,6 +102,8 @@ function Card({ item }: { item: QueueItem }) {
   }
 
   const approved = item.status === "approved";
+  const sent = item.status === "sent";
+  const sline = statusLine(item);
 
   return (
     <div
@@ -94,11 +126,7 @@ function Card({ item }: { item: QueueItem }) {
                 {item.degree}
               </span>
             )}
-            {approved && (
-              <span className="rounded-full bg-brand-tint px-2 py-0.5 text-xs font-semibold text-brand">
-                approved · ready to send
-              </span>
-            )}
+            <span className={`text-xs font-medium ${sline.tone}`}>· {sline.text}</span>
           </div>
           <p className="text-sm text-ink-soft">
             {[item.title, item.company].filter(Boolean).join(", ")}
@@ -117,9 +145,7 @@ function Card({ item }: { item: QueueItem }) {
         )}
       </div>
 
-      {item.hook && (
-        <p className="mt-3 text-xs text-ink-soft">💡 {item.hook}</p>
-      )}
+      {item.hook && <p className="mt-3 text-xs text-ink-soft">💡 {item.hook}</p>}
 
       {editing ? (
         <textarea
@@ -163,6 +189,8 @@ function Card({ item }: { item: QueueItem }) {
               Cancel
             </button>
           </>
+        ) : sent ? (
+          <span className="text-sm text-ink-soft">Sent — awaiting their reply.</span>
         ) : approved ? (
           <button
             disabled={pending}
@@ -210,14 +238,12 @@ function Card({ item }: { item: QueueItem }) {
             </button>
           </>
         )}
-        {item.profileUrl && (
-          <button
-            onClick={() => navigator.clipboard?.writeText(body)}
-            className="ml-auto rounded-full border border-line px-4 py-2 text-sm font-semibold transition-colors hover:bg-surface"
-          >
-            Copy note
-          </button>
-        )}
+        <button
+          onClick={() => navigator.clipboard?.writeText(body)}
+          className="ml-auto rounded-full border border-line px-4 py-2 text-sm font-semibold transition-colors hover:bg-surface"
+        >
+          Copy note
+        </button>
       </div>
     </div>
   );
