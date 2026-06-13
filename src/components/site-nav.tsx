@@ -3,10 +3,11 @@ import Link from "next/link";
 import { Logo } from "@/components/logo";
 
 const links = [
-  { href: "#services", label: "Services" },
-  { href: "#approach", label: "Approach" },
-  { href: "#about", label: "About" },
-  { href: "#contact", label: "Contact" },
+  { href: "/solutions", label: "Solutions" },
+  { href: "/#services", label: "Services" },
+  { href: "/#approach", label: "Approach" },
+  { href: "/#about", label: "About" },
+  { href: "/#contact", label: "Contact" },
 ];
 
 export function SiteNav() {
