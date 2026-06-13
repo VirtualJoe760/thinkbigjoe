@@ -11,7 +11,11 @@ export const Users: CollectionConfig = {
     useAsTitle: "email",
     group: "Team",
   },
-  auth: true,
+  // Stay signed in for 30 days (default is 2h) — this is a solo internal tool.
+  auth: {
+    tokenExpiration: 60 * 60 * 24 * 30,
+    cookies: { sameSite: "Lax" },
+  },
   fields: [
     {
       name: "name",

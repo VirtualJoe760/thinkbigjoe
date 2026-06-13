@@ -2,7 +2,14 @@
 
 import { useState, useTransition } from "react";
 
-import { approveDraft, denyDraft, editDraft, markSent } from "./actions";
+import {
+  approveDraft,
+  approveMany,
+  denyDraft,
+  denyMany,
+  editDraft,
+  markSent,
+} from "./actions";
 
 export type QueueItem = {
   id: string;
@@ -89,7 +96,12 @@ function statusLine(item: QueueItem): { text: string; tone: string } {
   }
 }
 
+const isPending = (s: string) => s === "draft" || s === "edited";
+
 export function ReviewQueue({ items }: { items: QueueItem[] }) {
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [pending, start] = useTransition();
+
   if (items.length === 0) {
     return (
       <div className="rounded-2xl border border-line bg-background p-10 text-center">
@@ -97,16 +109,82 @@ export function ReviewQueue({ items }: { items: QueueItem[] }) {
       </div>
     );
   }
+
+  const pendingIds = items.filter((i) => isPending(i.status)).map((i) => i.id);
+  const selectedPending = [...sel].filter((id) => pendingIds.includes(id));
+  const allSelected = pendingIds.length > 0 && selectedPending.length === pendingIds.length;
+
+  const toggle = (id: string) =>
+    setSel((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
   return (
     <div className="space-y-3">
+      {pendingIds.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl bg-surface px-4 py-2.5">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={() => setSel(allSelected ? new Set() : new Set(pendingIds))}
+              className="h-4 w-4 accent-brand"
+            />
+            {selectedPending.length > 0 ? `${selectedPending.length} selected` : "Select all"}
+          </label>
+          {selectedPending.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                disabled={pending}
+                onClick={() => start(async () => { await approveMany(selectedPending); setSel(new Set()); })}
+                className="rounded-full bg-brand px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-60"
+              >
+                Approve {selectedPending.length}
+              </button>
+              <button
+                disabled={pending}
+                onClick={() => start(async () => { await denyMany(selectedPending); setSel(new Set()); })}
+                className="rounded-full border border-line bg-background px-4 py-1.5 text-sm font-semibold text-red-600 transition-colors hover:bg-background/60 disabled:opacity-60"
+              >
+                Deny {selectedPending.length}
+              </button>
+              <button
+                onClick={() => setSel(new Set())}
+                className="text-sm font-semibold text-ink-soft hover:text-ink"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {items.map((item) => (
-        <Card key={item.id} item={item} />
+        <Card
+          key={item.id}
+          item={item}
+          selectable={isPending(item.status)}
+          checked={sel.has(item.id)}
+          onToggle={() => toggle(item.id)}
+        />
       ))}
     </div>
   );
 }
 
-function Card({ item }: { item: QueueItem }) {
+function Card({
+  item,
+  selectable,
+  checked,
+  onToggle,
+}: {
+  item: QueueItem;
+  selectable: boolean;
+  checked: boolean;
+  onToggle: () => void;
+}) {
   const [pending, start] = useTransition();
   const [editing, setEditing] = useState(false);
   const [denying, setDenying] = useState(false);
@@ -130,8 +208,17 @@ function Card({ item }: { item: QueueItem }) {
   const diagnostic = DIAGNOSTIC[item.vertical] || DIAGNOSTIC.other;
 
   return (
-    <div className={`rounded-2xl border bg-background p-5 md:p-6 ${approved ? "border-brand" : "border-line"}`}>
+    <div className={`rounded-2xl border bg-background p-5 md:p-6 ${approved ? "border-brand" : "border-line"} ${checked ? "ring-2 ring-brand/30" : ""}`}>
       <div className="flex items-start gap-3">
+        {selectable && (
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={onToggle}
+            className="mt-1 h-4 w-4 flex-shrink-0 accent-brand"
+            aria-label={`Select ${item.name}`}
+          />
+        )}
         <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-full bg-brand-tint text-sm font-semibold text-brand">
           {initials(item.name)}
         </div>
@@ -186,7 +273,6 @@ function Card({ item }: { item: QueueItem }) {
         </div>
       )}
 
-      {/* next-step preview */}
       {!sent && (
         <details className="mt-2 text-sm">
           <summary className="cursor-pointer list-none text-xs font-semibold text-ink-soft hover:text-ink">

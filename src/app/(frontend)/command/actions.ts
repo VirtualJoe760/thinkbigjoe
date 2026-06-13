@@ -49,6 +49,41 @@ export async function editDraft(id: string, body: string) {
   revalidatePath("/command");
 }
 
+export async function approveMany(ids: string[]) {
+  const payload = await requireAdmin();
+  const now = new Date().toISOString();
+  await Promise.all(
+    ids.map((id) =>
+      payload
+        .update({
+          collection: "outreach",
+          id,
+          overrideAccess: true,
+          data: { status: "approved", approvedAt: now },
+        })
+        .catch(() => {}),
+    ),
+  );
+  revalidatePath("/command");
+}
+
+export async function denyMany(ids: string[], reason?: string) {
+  const payload = await requireAdmin();
+  await Promise.all(
+    ids.map((id) =>
+      payload
+        .update({
+          collection: "outreach",
+          id,
+          overrideAccess: true,
+          data: { status: "denied", denyReason: reason || undefined },
+        })
+        .catch(() => {}),
+    ),
+  );
+  revalidatePath("/command");
+}
+
 export async function markSent(id: string, prospectId: string) {
   const payload = await requireAdmin();
   await payload.update({
