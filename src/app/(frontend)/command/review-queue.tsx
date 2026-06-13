@@ -23,6 +23,28 @@ export type QueueItem = {
   sentAt: string;
 };
 
+const VERTICAL_LABEL: Record<string, string> = {
+  insurance: "Insurance",
+  mortgage: "Mortgage",
+  wealth: "Wealth",
+  law: "Law",
+  msp: "MSP",
+  other: "Other",
+};
+
+const DIAGNOSTIC: Record<string, string> = {
+  insurance:
+    "Between application/quote intake, policy docs, and client retention follow-up — which eats the most of your team's day right now?",
+  mortgage:
+    "In your pipeline, where's the biggest time-sink: pulling loan docs and conditions, or keeping borrowers updated?",
+  wealth:
+    "Where does the most manual work pile up — client onboarding paperwork, reviews, or compliance comms?",
+  law: "If one thing at your firm could draft or process itself — intake, first-draft docs, or case-file research — which would free up the most billable time?",
+  msp: "Two things I help MSPs with — tier-1 ticket automation, and white-label AI you resell to clients. Which is more on your radar?",
+  other:
+    "What's the one workflow that, if it basically ran itself, would give your team the most time back?",
+};
+
 function initials(name: string) {
   return name
     .split(/\s+/)
@@ -42,8 +64,7 @@ function fitColor(score: number) {
 function when(iso: string) {
   if (!iso) return "";
   const d = new Date(iso);
-  const diff = Date.now() - d.getTime();
-  const mins = Math.round(diff / 60000);
+  const mins = Math.round((Date.now() - d.getTime()) / 60000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.round(mins / 60);
@@ -88,6 +109,8 @@ export function ReviewQueue({ items }: { items: QueueItem[] }) {
 function Card({ item }: { item: QueueItem }) {
   const [pending, start] = useTransition();
   const [editing, setEditing] = useState(false);
+  const [denying, setDenying] = useState(false);
+  const [reason, setReason] = useState("");
   const [body, setBody] = useState(item.body);
   const [done, setDone] = useState<string | null>(null);
 
@@ -104,13 +127,10 @@ function Card({ item }: { item: QueueItem }) {
   const approved = item.status === "approved";
   const sent = item.status === "sent";
   const sline = statusLine(item);
+  const diagnostic = DIAGNOSTIC[item.vertical] || DIAGNOSTIC.other;
 
   return (
-    <div
-      className={`rounded-2xl border bg-background p-5 md:p-6 ${
-        approved ? "border-brand" : "border-line"
-      }`}
-    >
+    <div className={`rounded-2xl border bg-background p-5 md:p-6 ${approved ? "border-brand" : "border-line"}`}>
       <div className="flex items-start gap-3">
         <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-full bg-brand-tint text-sm font-semibold text-brand">
           {initials(item.name)}
@@ -121,6 +141,11 @@ function Card({ item }: { item: QueueItem }) {
             <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${fitColor(item.fitScore)}`}>
               fit {item.fitScore}/6
             </span>
+            {item.vertical && (
+              <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-ink-soft">
+                {VERTICAL_LABEL[item.vertical] || item.vertical}
+              </span>
+            )}
             {item.degree && (
               <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-ink-soft">
                 {item.degree}
@@ -156,34 +181,59 @@ function Card({ item }: { item: QueueItem }) {
         />
       ) : (
         <div className="mt-3 rounded-xl bg-surface px-4 py-3 text-sm leading-relaxed">
-          <span className="mb-1 block text-xs text-ink-soft">
-            connection note · {body.length} chars
-          </span>
+          <span className="mb-1 block text-xs text-ink-soft">connection note · {body.length} chars</span>
           {body}
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      {/* next-step preview */}
+      {!sent && (
+        <details className="mt-2 text-sm">
+          <summary className="cursor-pointer list-none text-xs font-semibold text-ink-soft hover:text-ink">
+            Next step on accept → diagnostic question
+          </summary>
+          <p className="mt-2 rounded-xl border border-line bg-background px-4 py-3 leading-relaxed text-ink-soft">
+            {diagnostic}
+          </p>
+        </details>
+      )}
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         {editing ? (
           <>
             <button
               disabled={pending}
-              onClick={() =>
-                start(async () => {
-                  await editDraft(item.id, body);
-                  setEditing(false);
-                })
-              }
+              onClick={() => start(async () => { await editDraft(item.id, body); setEditing(false); })}
               className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-60"
             >
               Save
             </button>
             <button
               disabled={pending}
-              onClick={() => {
-                setBody(item.body);
-                setEditing(false);
-              }}
+              onClick={() => { setBody(item.body); setEditing(false); }}
+              className="rounded-full border border-line px-4 py-2 text-sm font-semibold transition-colors hover:bg-surface"
+            >
+              Cancel
+            </button>
+          </>
+        ) : denying ? (
+          <>
+            <input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Why? (optional — improves future drafts)"
+              className="flex-1 rounded-full border border-line bg-surface px-4 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
+            />
+            <button
+              disabled={pending}
+              onClick={() => start(async () => { await denyDraft(item.id, reason); setDone("denied"); })}
+              className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-surface disabled:opacity-60"
+            >
+              Confirm deny
+            </button>
+            <button
+              disabled={pending}
+              onClick={() => { setDenying(false); setReason(""); }}
               className="rounded-full border border-line px-4 py-2 text-sm font-semibold transition-colors hover:bg-surface"
             >
               Cancel
@@ -194,12 +244,7 @@ function Card({ item }: { item: QueueItem }) {
         ) : approved ? (
           <button
             disabled={pending}
-            onClick={() =>
-              start(async () => {
-                await markSent(item.id, item.prospectId);
-                setDone("marked sent");
-              })
-            }
+            onClick={() => start(async () => { await markSent(item.id, item.prospectId); setDone("marked sent"); })}
             className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-60"
           >
             Mark sent
@@ -208,11 +253,7 @@ function Card({ item }: { item: QueueItem }) {
           <>
             <button
               disabled={pending}
-              onClick={() =>
-                start(async () => {
-                  await approveDraft(item.id);
-                })
-              }
+              onClick={() => start(async () => { await approveDraft(item.id); })}
               className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-60"
             >
               Approve
@@ -226,24 +267,21 @@ function Card({ item }: { item: QueueItem }) {
             </button>
             <button
               disabled={pending}
-              onClick={() =>
-                start(async () => {
-                  await denyDraft(item.id);
-                  setDone("denied");
-                })
-              }
+              onClick={() => setDenying(true)}
               className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-surface disabled:opacity-60"
             >
               Deny
             </button>
           </>
         )}
-        <button
-          onClick={() => navigator.clipboard?.writeText(body)}
-          className="ml-auto rounded-full border border-line px-4 py-2 text-sm font-semibold transition-colors hover:bg-surface"
-        >
-          Copy note
-        </button>
+        {!denying && (
+          <button
+            onClick={() => navigator.clipboard?.writeText(body)}
+            className="ml-auto rounded-full border border-line px-4 py-2 text-sm font-semibold transition-colors hover:bg-surface"
+          >
+            Copy note
+          </button>
+        )}
       </div>
     </div>
   );
