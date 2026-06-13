@@ -224,7 +224,12 @@ function Card({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold">{item.name}</span>
+            <a
+              href={`/command/${item.prospectId}`}
+              className="font-semibold hover:text-brand hover:underline"
+            >
+              {item.name}
+            </a>
             <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${fitColor(item.fitScore)}`}>
               fit {item.fitScore}/6
             </span>
