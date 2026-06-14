@@ -1,16 +1,13 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { eq } from "drizzle-orm";
 
-import { db, outreach, prospects } from "@/db";
+import { db, outreach, prospects, leads } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
-import { Logo } from "@/components/logo";
-import { ReviewQueue, type QueueItem } from "./review-queue";
-import { SignOut } from "./sign-out";
 
 export const dynamic = "force-dynamic";
-
 export const metadata: Metadata = {
-  title: "Command Center",
+  title: "Overview",
   robots: { index: false, follow: false },
 };
 
@@ -23,181 +20,68 @@ const PIPELINE: Array<{ key: string; label: string }> = [
   { key: "meeting", label: "Booked" },
 ];
 
-const VERTICALS: Array<{ key: string; label: string }> = [
-  { key: "insurance", label: "Insurance" },
-  { key: "mortgage", label: "Mortgage" },
-  { key: "wealth", label: "Wealth" },
-  { key: "law", label: "Law" },
-  { key: "msp", label: "MSP" },
-  { key: "other", label: "Other" },
-];
+export default async function OverviewPage() {
+  await requireAdmin();
 
-const PAGE_SIZE = 10;
-const PRIORITY_MIN_FIT = 5;
-
-type View = "priority" | "queue" | "ready" | "sent";
-
-export default async function CommandPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ view?: string; page?: string; v?: string; q?: string }>;
-}) {
-  const { email } = await requireAdmin();
-
-  const sp = await searchParams;
-  const view: View = (["priority", "queue", "ready", "sent"] as const).includes(
-    sp.view as View,
-  )
-    ? (sp.view as View)
-    : "priority";
-  const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
-  const vertical = VERTICALS.some((x) => x.key === sp.v) ? (sp.v as string) : "";
-  const q = (sp.q || "").trim();
-  const qLower = q.toLowerCase();
-
-  const [rows, allProspects] = await Promise.all([
+  const [rows, leadRows] = await Promise.all([
     db
       .select({
-        id: outreach.id,
-        body: outreach.body,
-        status: outreach.status,
-        updatedAt: outreach.updatedAt,
-        approvedAt: outreach.approvedAt,
+        outreachStatus: outreach.status,
         sentAt: outreach.sentAt,
-        prospectId: prospects.id,
-        name: prospects.name,
-        title: prospects.title,
-        company: prospects.company,
-        vertical: prospects.vertical,
-        location: prospects.location,
-        degree: prospects.degree,
-        hook: prospects.hook,
         fitScore: prospects.fitScore,
-        profileUrl: prospects.profileUrl,
+        name: prospects.name,
+        prospectId: prospects.id,
+        vertical: prospects.vertical,
+        pstatus: prospects.status,
       })
       .from(outreach)
       .innerJoin(prospects, eq(outreach.prospectId, prospects.id))
       .where(eq(outreach.step, "connection")),
-    db.select({ status: prospects.status }).from(prospects),
+    db.select().from(leads),
   ]);
 
-  const all: QueueItem[] = rows.map((r) => ({
-    id: String(r.id),
-    body: r.body || "",
-    status: String(r.status || "draft"),
-    prospectId: String(r.prospectId),
-    name: r.name || "Unknown",
-    title: r.title || "",
-    company: r.company || "",
-    vertical: r.vertical ? String(r.vertical) : "",
-    location: r.location || "",
-    degree: r.degree || "",
-    hook: r.hook || "",
-    fitScore: Number(r.fitScore || 0),
-    profileUrl: r.profileUrl || "",
-    updatedAt: r.updatedAt || "",
-    approvedAt: r.approvedAt || "",
-    sentAt: r.sentAt || "",
-  }));
-
-  const isPending = (i: QueueItem) =>
-    i.status === "draft" || i.status === "edited";
-
-  const verticalCounts: Record<string, number> = {};
-  for (const i of all.filter(isPending)) {
-    verticalCounts[i.vertical] = (verticalCounts[i.vertical] || 0) + 1;
-  }
-
-  const scoped = all.filter((i) => {
-    if (vertical && i.vertical !== vertical) return false;
-    if (qLower && !`${i.name} ${i.company}`.toLowerCase().includes(qLower))
-      return false;
-    return true;
-  });
-
-  const statusRank: Record<string, number> = { draft: 0, edited: 1 };
-  const byView: Record<View, QueueItem[]> = {
-    priority: scoped
-      .filter((i) => isPending(i) && i.fitScore >= PRIORITY_MIN_FIT)
-      .sort((a, b) => b.fitScore - a.fitScore || a.name.localeCompare(b.name)),
-    queue: scoped
-      .filter(isPending)
-      .sort(
-        (a, b) =>
-          (statusRank[a.status] ?? 9) - (statusRank[b.status] ?? 9) ||
-          b.fitScore - a.fitScore ||
-          a.name.localeCompare(b.name),
-      ),
-    ready: scoped
-      .filter((i) => i.status === "approved")
-      .sort((a, b) => (b.approvedAt || "").localeCompare(a.approvedAt || "")),
-    sent: scoped
-      .filter((i) => i.status === "sent")
-      .sort((a, b) => (b.sentAt || "").localeCompare(a.sentAt || "")),
-  };
-
-  const tabs: Array<{ key: View; label: string; count: number }> = [
-    { key: "priority", label: "Priority", count: byView.priority.length },
-    { key: "queue", label: "All pending", count: byView.queue.length },
-    { key: "ready", label: "Ready to send", count: byView.ready.length },
-    { key: "sent", label: "Sent", count: byView.sent.length },
-  ];
-
-  const items = byView[view];
-  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
-  const clampedPage = Math.min(page, totalPages);
-  const pageItems = items.slice(
-    (clampedPage - 1) * PAGE_SIZE,
-    clampedPage * PAGE_SIZE,
+  const pending = rows.filter(
+    (r) => r.outreachStatus === "draft" || r.outreachStatus === "edited",
   );
-
-  const prospectStatus: Record<string, number> = {};
-  for (const p of allProspects) {
-    const s = String(p.status || "new");
-    prospectStatus[s] = (prospectStatus[s] || 0) + 1;
-  }
+  const priority = pending.filter((r) => Number(r.fitScore || 0) >= 5);
+  const ready = rows.filter((r) => r.outreachStatus === "approved").length;
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const sentWeek = all.filter(
-    (i) => i.status === "sent" && i.sentAt && new Date(i.sentAt).getTime() > weekAgo,
+  const sentWeek = rows.filter(
+    (r) => r.outreachStatus === "sent" && r.sentAt && new Date(r.sentAt).getTime() > weekAgo,
   ).length;
-  const metrics = [
-    { label: "Priority", value: all.filter((i) => isPending(i) && i.fitScore >= PRIORITY_MIN_FIT).length, accent: "text-brand" },
-    { label: "All pending", value: all.filter(isPending).length, accent: "" },
-    { label: "Ready to send", value: all.filter((i) => i.status === "approved").length, accent: "" },
-    { label: "Sent this week", value: sentWeek, accent: "" },
-  ];
 
-  const qs = (over: Record<string, string>) => {
-    const params = new URLSearchParams();
-    params.set("view", over.view ?? view);
-    const vv = over.v ?? vertical;
-    if (vv) params.set("v", vv);
-    const qq = over.q ?? q;
-    if (qq) params.set("q", qq);
-    if (over.page) params.set("page", over.page);
-    return `/command?${params.toString()}`;
-  };
+  const booked = leadRows.filter((l) => l.status === "booked" || l.bookedSlot).length;
+
+  const pipelineCounts: Record<string, number> = {};
+  for (const r of rows) {
+    const s = String(r.pstatus || "new");
+    pipelineCounts[s] = (pipelineCounts[s] || 0) + 1;
+  }
+
+  const topPriority = [...priority]
+    .sort((a, b) => Number(b.fitScore || 0) - Number(a.fitScore || 0))
+    .slice(0, 5);
+
+  const recentLeads = [...leadRows]
+    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))
+    .slice(0, 5);
+
+  const metrics = [
+    { label: "Prospects", value: rows.length, accent: "" },
+    { label: "Priority", value: priority.length, accent: "text-brand" },
+    { label: "Ready to send", value: ready, accent: "" },
+    { label: "Sent this week", value: sentWeek, accent: "" },
+    { label: "Inbound leads", value: leadRows.length, accent: "" },
+    { label: "Booked calls", value: booked, accent: "text-brand" },
+  ];
 
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="mx-auto w-full max-w-5xl px-6 py-8">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Logo />
-            <span className="rounded-full border border-line px-2.5 py-1 text-xs font-semibold text-ink-soft">
-              command center
-            </span>
-          </div>
-          <nav className="flex items-center gap-4 text-sm">
-            <a href="/" className="font-medium text-ink-soft hover:text-ink">
-              Site
-            </a>
-            <SignOut />
-            <span className="hidden text-xs text-ink-soft sm:inline">{email}</span>
-          </nav>
-        </div>
+    <div className="px-6 py-8">
+      <div className="mx-auto w-full max-w-4xl">
+        <h1 className="text-2xl font-extrabold tracking-tight">Overview</h1>
+        <p className="mt-1 text-sm text-ink-soft">Your prospecting and pipeline at a glance.</p>
 
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3">
           {metrics.map((m) => (
             <div key={m.label} className="rounded-xl bg-surface p-4">
               <div className="text-sm text-ink-soft">{m.label}</div>
@@ -208,103 +92,71 @@ export default async function CommandPage({
           ))}
         </div>
 
-        <div className="mt-5 flex items-stretch gap-1.5 overflow-x-auto">
+        <h2 className="mt-8 mb-2 text-sm font-bold tracking-wide text-ink-soft uppercase">
+          Pipeline
+        </h2>
+        <div className="flex items-stretch gap-1.5 overflow-x-auto">
           {PIPELINE.map((stage, i) => (
             <div key={stage.key} className="flex items-center gap-1.5">
               {i > 0 && <span className="text-ink-soft/40">›</span>}
               <div className="min-w-[84px] rounded-xl bg-surface px-3 py-2 text-center">
-                <div className="text-lg font-bold">{prospectStatus[stage.key] || 0}</div>
+                <div className="text-lg font-bold">{pipelineCounts[stage.key] || 0}</div>
                 <div className="text-[11px] text-ink-soft">{stage.label}</div>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="mt-8 flex flex-wrap gap-2 border-b border-line">
-          {tabs.map((t) => {
-            const active = t.key === view;
-            return (
-              <a
-                key={t.key}
-                href={qs({ view: t.key })}
-                className={`-mb-px border-b-2 px-3 py-2 text-sm font-semibold transition-colors ${
-                  active ? "border-brand text-brand" : "border-transparent text-ink-soft hover:text-ink"
-                }`}
-              >
-                {t.label}
-                <span className="ml-1.5 text-xs text-ink-soft">{t.count}</span>
-              </a>
-            );
-          })}
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <a
-              href={qs({ v: "" })}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                !vertical ? "bg-brand text-white" : "bg-surface text-ink-soft hover:text-ink"
-              }`}
-            >
-              All
-            </a>
-            {VERTICALS.map((vt) => {
-              const active = vertical === vt.key;
-              const c = verticalCounts[vt.key] || 0;
-              return (
-                <a
-                  key={vt.key}
-                  href={qs({ v: active ? "" : vt.key })}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                    active ? "bg-brand text-white" : "bg-surface text-ink-soft hover:text-ink"
-                  }`}
-                >
-                  {vt.label}
-                  {c ? <span className="ml-1 opacity-70">{c}</span> : null}
-                </a>
-              );
-            })}
-          </div>
-          <form action="/command" method="get" className="flex items-center gap-2">
-            <input type="hidden" name="view" value={view} />
-            {vertical && <input type="hidden" name="v" value={vertical} />}
-            <input
-              name="q"
-              defaultValue={q}
-              placeholder="Search name or company"
-              className="w-52 rounded-full border border-line bg-background px-4 py-1.5 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
-            />
-            {q && (
-              <a href={qs({ q: "" })} className="text-xs font-semibold text-ink-soft hover:text-ink">
-                clear
-              </a>
-            )}
-          </form>
-        </div>
-
-        <div className="mt-5">
-          <ReviewQueue items={pageItems} />
-        </div>
-
-        {totalPages > 1 && (
-          <div className="mt-6 flex items-center justify-center gap-2 text-sm">
-            {clampedPage > 1 ? (
-              <a href={qs({ page: String(clampedPage - 1) })} className="rounded-full border border-line px-4 py-2 font-semibold transition-colors hover:bg-surface">
-                ‹ Prev
-              </a>
+        <div className="mt-8 grid gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-line bg-background p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-bold tracking-tight">Top priority</h2>
+              <Link href="/command/prospects?view=priority" className="text-xs font-semibold text-brand hover:underline">
+                Open queue
+              </Link>
+            </div>
+            {topPriority.length === 0 ? (
+              <p className="text-sm text-ink-soft">No priority prospects pending.</p>
             ) : (
-              <span className="rounded-full border border-line px-4 py-2 font-semibold opacity-40">‹ Prev</span>
-            )}
-            <span className="px-2 text-ink-soft">Page {clampedPage} of {totalPages}</span>
-            {clampedPage < totalPages ? (
-              <a href={qs({ page: String(clampedPage + 1) })} className="rounded-full border border-line px-4 py-2 font-semibold transition-colors hover:bg-surface">
-                Next ›
-              </a>
-            ) : (
-              <span className="rounded-full border border-line px-4 py-2 font-semibold opacity-40">Next ›</span>
+              <ul className="space-y-2">
+                {topPriority.map((p) => (
+                  <li key={p.prospectId}>
+                    <Link
+                      href={`/command/${p.prospectId}`}
+                      className="flex items-center justify-between rounded-lg px-2 py-1.5 text-sm hover:bg-surface"
+                    >
+                      <span className="font-medium">{p.name}</span>
+                      <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700">
+                        fit {Number(p.fitScore || 0)}/6
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
-        )}
+
+          <div className="rounded-2xl border border-line bg-background p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-bold tracking-tight">Recent inbound leads</h2>
+              <Link href="/command/leads" className="text-xs font-semibold text-brand hover:underline">
+                All leads
+              </Link>
+            </div>
+            {recentLeads.length === 0 ? (
+              <p className="text-sm text-ink-soft">No inbound leads yet — they arrive via the site forms.</p>
+            ) : (
+              <ul className="space-y-2">
+                {recentLeads.map((l) => (
+                  <li key={l.id} className="rounded-lg px-2 py-1.5 text-sm">
+                    <span className="font-medium">{l.name}</span>
+                    {l.company ? <span className="text-ink-soft"> · {l.company}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

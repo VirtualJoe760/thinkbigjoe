@@ -14,7 +14,7 @@ export async function approveDraft(id: string) {
     .update(outreach)
     .set({ status: "approved", approvedAt: now() })
     .where(eq(outreach.id, Number(id)));
-  revalidatePath("/command");
+  revalidatePath("/command", "layout");
 }
 
 export async function denyDraft(id: string, reason?: string) {
@@ -23,7 +23,7 @@ export async function denyDraft(id: string, reason?: string) {
     .update(outreach)
     .set({ status: "denied", denyReason: reason || null })
     .where(eq(outreach.id, Number(id)));
-  revalidatePath("/command");
+  revalidatePath("/command", "layout");
 }
 
 export async function editDraft(id: string, body: string) {
@@ -32,7 +32,7 @@ export async function editDraft(id: string, body: string) {
     .update(outreach)
     .set({ body, status: "edited" })
     .where(eq(outreach.id, Number(id)));
-  revalidatePath("/command");
+  revalidatePath("/command", "layout");
 }
 
 export async function approveMany(ids: string[]) {
@@ -42,7 +42,7 @@ export async function approveMany(ids: string[]) {
     .update(outreach)
     .set({ status: "approved", approvedAt: now() })
     .where(inArray(outreach.id, ids.map(Number)));
-  revalidatePath("/command");
+  revalidatePath("/command", "layout");
 }
 
 export async function denyMany(ids: string[], reason?: string) {
@@ -52,7 +52,7 @@ export async function denyMany(ids: string[], reason?: string) {
     .update(outreach)
     .set({ status: "denied", denyReason: reason || null })
     .where(inArray(outreach.id, ids.map(Number)));
-  revalidatePath("/command");
+  revalidatePath("/command", "layout");
 }
 
 export async function markSent(id: string, prospectId: string) {
@@ -67,5 +67,5 @@ export async function markSent(id: string, prospectId: string) {
       .set({ status: "connected" })
       .where(eq(prospects.id, Number(prospectId)));
   }
-  revalidatePath("/command");
+  revalidatePath("/command", "layout");
 }

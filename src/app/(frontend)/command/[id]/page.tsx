@@ -4,7 +4,6 @@ import { eq } from "drizzle-orm";
 
 import { db, outreach, prospects } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
-import { Logo } from "@/components/logo";
 import { StepCard, type Step } from "./step-card";
 
 export const dynamic = "force-dynamic";
@@ -101,11 +100,10 @@ export default async function ProspectPage({
     .toUpperCase();
 
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="mx-auto w-full max-w-3xl px-6 py-8">
-        <div className="mb-6 flex items-center justify-between">
-          <Logo />
-          <a href="/command" className="text-sm font-medium text-ink-soft hover:text-ink">
+    <div className="px-6 py-8">
+      <div className="mx-auto w-full max-w-3xl">
+        <div className="mb-6">
+          <a href="/command/prospects" className="text-sm font-medium text-ink-soft hover:text-ink">
             ‹ Back to queue
           </a>
         </div>
