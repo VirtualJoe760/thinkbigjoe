@@ -41,15 +41,15 @@ const VERTICAL_LABEL: Record<string, string> = {
 
 const DIAGNOSTIC: Record<string, string> = {
   insurance:
-    "Between application/quote intake, policy docs, and client retention follow-up — which eats the most of your team's day right now?",
+    "Thanks so much for connecting — no agenda here, just genuinely curious: what's the part of running the agency that eats more of your week than it probably should?",
   mortgage:
-    "In your pipeline, where's the biggest time-sink: pulling loan docs and conditions, or keeping borrowers updated?",
+    "Thanks for connecting — genuinely curious, no pitch: in your pipeline, what quietly eats the most time — chasing docs and conditions, or keeping borrowers in the loop?",
   wealth:
-    "Where does the most manual work pile up — client onboarding paperwork, reviews, or compliance comms?",
-  law: "If one thing at your firm could draft or process itself — intake, first-draft docs, or case-file research — which would free up the most billable time?",
-  msp: "Two things I help MSPs with — tier-1 ticket automation, and white-label AI you resell to clients. Which is more on your radar?",
+    "Thanks for connecting — no agenda, just curious: where does the most manual or admin work tend to pile up for your team these days?",
+  law: "Thanks for connecting — genuinely curious, and not selling anything: what's the work at the firm that eats the most time but doesn't really need a lawyer's brain to do?",
+  msp: "Thanks for connecting — curious, no pitch: what's the most repetitive thing your team handles day to day that you kind of wish just took care of itself?",
   other:
-    "What's the one workflow that, if it basically ran itself, would give your team the most time back?",
+    "Thanks for connecting — no agenda, just curious: what's the one task that eats more of your team's week than it probably should?",
 };
 
 function initials(name: string) {

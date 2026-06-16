@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { db, leads } from "@/db";
 import { sendNotificationEmail } from "@/lib/email";
+import { notifyTelegram } from "@/lib/telegram";
 
 /**
  * Homepage contact form — a plain "email me" message. Captures the message as a
@@ -46,6 +47,10 @@ export async function POST(req: Request) {
       heading: "New contact message",
       message: `${name} (${email})<br/><br/>${message.replace(/</g, "&lt;").replace(/\n/g, "<br/>")}`,
     }).catch(() => {});
+
+    notifyTelegram(
+      `💬 <b>New contact message</b>\n${name} (${email})\n\n${message.slice(0, 500)}`,
+    ).catch(() => {});
   } catch (err) {
     console.error("[contact] failed:", err);
     // Still bounce them to the success state — the message attempt shouldn't

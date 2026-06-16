@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db, leads } from "@/db";
 import { verifyBookingToken } from "@/lib/booking-token";
 import { sendNotificationEmail } from "@/lib/email";
+import { notifyTelegram } from "@/lib/telegram";
 import {
   BOOKING_TIMEZONE,
   createEvent,
@@ -142,6 +143,10 @@ export async function POST(req: Request) {
       heading: "New strategy call booked",
       message: `${name} (${email}${lead.company ? `, ${lead.company}` : ""}) booked ${start.toLocaleString("en-US", { timeZone: BOOKING_TIMEZONE, dateStyle: "full", timeStyle: "short" })} (Pacific).`,
     }).catch(() => {});
+
+    notifyTelegram(
+      `📅 <b>New strategy call booked</b>\n${name}${lead.company ? ` · ${lead.company}` : ""}\n${start.toLocaleString("en-US", { timeZone: BOOKING_TIMEZONE, dateStyle: "medium", timeStyle: "short" })} PT`,
+    ).catch(() => {});
 
     return NextResponse.json({
       booked: true,
