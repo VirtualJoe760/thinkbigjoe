@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd service for the Cowork runner.
+  Install: copy to ~/Library/LaunchAgents/, edit the REPLACE_* values below,
+  then `launchctl load -w ~/Library/LaunchAgents/com.thinkbigjoe.cowork.plist`.
+  Logs: ~/Library/Logs/cowork-runner.{out,err}.log
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.thinkbigjoe.cowork</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>REPLACE_REPO_DIR/macmini-runner/run-cowork.mjs</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>COWORK_RUNNER_TOKEN</key>
+    <string>REPLACE_RUNNER_TOKEN</string>
+    <key>COWORK_REPO_DIR</key>
+    <string>REPLACE_REPO_DIR</string>
+    <key>COWORK_SITE_URL</key>
+    <string>https://thinkbigjoe.com</string>
+    <key>COWORK_POLL_MS</key>
+    <string>120000</string>
+    <key>COWORK_AUTOSEND</key>
+    <string>1</string>
+    <key>CLAUDE_BIN</key>
+    <string>REPLACE_CLAUDE_BIN</string>
+    <!-- PATH so `node` and `claude` resolve under launchd's minimal env -->
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>REPLACE_HOME/Library/Logs/cowork-runner.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>REPLACE_HOME/Library/Logs/cowork-runner.err.log</string>
+</dict>
+</plist>
