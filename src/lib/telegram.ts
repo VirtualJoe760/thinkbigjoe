@@ -13,8 +13,18 @@ export function isTelegramConfigured(): boolean {
   return Boolean(token && chatId);
 }
 
-export async function notifyTelegram(text: string) {
-  if (!token || !chatId) {
+/** The chat id Joe controls — only this chat may issue commands to the bot. */
+export function adminChatId(): string | undefined {
+  return chatId;
+}
+
+/**
+ * Low-level send. Defaults to Joe's configured chat, but accepts an override
+ * so the inbound webhook can reply to whatever chat sent the command.
+ */
+export async function sendTelegram(text: string, toChatId?: string) {
+  const target = toChatId || chatId;
+  if (!token || !target) {
     console.warn("[telegram] not configured — skipping:", text.slice(0, 80));
     return { skipped: true as const };
   }
@@ -23,7 +33,7 @@ export async function notifyTelegram(text: string) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: chatId,
+        chat_id: target,
         text,
         parse_mode: "HTML",
         disable_web_page_preview: true,
@@ -38,4 +48,9 @@ export async function notifyTelegram(text: string) {
     console.error("[telegram] error:", err);
     return { error: true as const };
   }
+}
+
+/** Outbound notification to Joe (the configured chat). */
+export async function notifyTelegram(text: string) {
+  return sendTelegram(text);
 }
