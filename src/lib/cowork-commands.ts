@@ -50,11 +50,13 @@ function parseCount(text: string): number | null {
 
 function parseLocation(text: string): string | null {
   // "in Texas", "in the bay area", "near Dallas TX" — capture up to a comma,
-  // end, or a trailing clause word.
-  const m = text.match(/\b(?:in|near|around|across)\s+([a-z .,'-]{2,40}?)(?:\s*(?:\.|,|$|that|who|with|for|and))/i);
-  if (m) return m[1].trim().replace(/\s+/g, " ");
-  const m2 = text.match(/\b(?:in|near|around)\s+([a-z .'-]{2,40})$/i);
-  return m2 ? m2[1].trim() : null;
+  // period, end-of-string, or a *whole-word* connector that starts a new clause.
+  // The connector words need \b on both sides so we don't truncate a location
+  // that merely contains those letters (e.g. Cali-FOR-nia, Fl-OR-ida).
+  const m = text.match(
+    /\b(?:in|near|around|across)\s+([a-z][a-z .'-]{1,38}?)(?=\s*[.,]|\s+\b(?:that|who|which|with|for|and|to|so)\b|\s*$)/i,
+  );
+  return m ? m[1].trim().replace(/\s+/g, " ") : null;
 }
 
 export function parseCommand(raw: string): ParsedCommand {
