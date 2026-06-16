@@ -4,6 +4,7 @@ import { captcha } from "better-auth/plugins";
 import { Pool } from "pg";
 
 import { sendWelcomeEmail } from "./email";
+import { notifyTelegram } from "./telegram";
 
 const baseURL =
   process.env.BETTER_AUTH_URL ||
@@ -77,6 +78,9 @@ export const auth = betterAuth({
           } catch (err) {
             console.error("[auth] welcome email failed:", err);
           }
+          notifyTelegram(
+            `👤 <b>New signup</b>\n${user.name ? `${user.name} · ` : ""}${user.email}`,
+          ).catch(() => {});
         },
       },
     },
