@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { AccountForm } from "@/components/portal/account-form";
 import { PortalHeader } from "@/components/portal/portal-header";
 import { auth } from "@/lib/auth";
+import { hasBrokeAccess } from "@/lib/broke-access";
 
 export const metadata: Metadata = {
   title: "Account",
@@ -46,6 +47,22 @@ export default async function AccountPage() {
               Manage billing
             </Link>
           </section>
+
+          {hasBrokeAccess(user.email) && (
+            <section className="rounded-2xl border border-line bg-surface p-8">
+              <h2 className="text-xl font-bold tracking-tight">broke</h2>
+              <p className="mt-2 leading-relaxed text-ink-soft">
+                Your AI trading-augmentation workspace — customizable feed, signals, and
+                copy-trade ideas.
+              </p>
+              <Link
+                href="/portal/broke"
+                className="mt-4 inline-flex items-center justify-center rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
+              >
+                Launch broke
+              </Link>
+            </section>
+          )}
         </div>
       </main>
     </div>
