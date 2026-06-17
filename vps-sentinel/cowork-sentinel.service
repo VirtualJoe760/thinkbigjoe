@@ -1,0 +1,22 @@
+# systemd unit for the Reply Sentinel.
+# Install: sudo cp cowork-sentinel.service /etc/systemd/system/
+#          edit REPLACE_* paths below, then:
+#          sudo systemctl daemon-reload && sudo systemctl enable --now cowork-sentinel
+# Logs: journalctl -u cowork-sentinel -f
+[Unit]
+Description=ThinkBigJoe Reply Sentinel (LinkedIn email -> Telegram)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# absolute path to the repo's vps-sentinel dir, e.g. /root/thinkbigjoe/vps-sentinel
+WorkingDirectory=REPLACE_SENTINEL_DIR
+EnvironmentFile=REPLACE_SENTINEL_DIR/.env
+ExecStart=/usr/bin/node REPLACE_SENTINEL_DIR/sentinel.mjs
+Restart=always
+RestartSec=10
+User=REPLACE_USER
+
+[Install]
+WantedBy=multi-user.target

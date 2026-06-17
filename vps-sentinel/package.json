@@ -1,0 +1,14 @@
+{
+  "name": "thinkbigjoe-reply-sentinel",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Watches Gmail for LinkedIn notification emails and pings Telegram. No LinkedIn login.",
+  "main": "sentinel.mjs",
+  "scripts": {
+    "start": "node sentinel.mjs"
+  },
+  "dependencies": {
+    "imapflow": "^1.0.218"
+  }
+}
