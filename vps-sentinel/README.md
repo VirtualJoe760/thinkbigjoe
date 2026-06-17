@@ -44,6 +44,11 @@ nano .env              # fill GMAIL_USER, GMAIL_APP_PASSWORD, TELEGRAM_BOT_TOKEN
 ```
 The Telegram values are the same ones in your site's Vercel env / local `.env.local`.
 
+**Mailbox = the `LinkedIn` label.** A Gmail filter routes all `linkedin.com` mail to a
+`LinkedIn` label and skips the inbox, so the Sentinel watches that label (`MAILBOX="LinkedIn"`,
+already set in `.env.example`) — verified IMAP-visible. If it ever can't find it, check
+Gmail → Settings → Labels → `LinkedIn` → "Show in IMAP" is on.
+
 ## 4. Run it as a service
 ```bash
 sudo cp cowork-sentinel.service /etc/systemd/system/
