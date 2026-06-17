@@ -1,4 +1,4 @@
-import { pgTable, index, serial, varchar, timestamp, uniqueIndex, jsonb, numeric, foreignKey, integer, pgEnum } from "drizzle-orm/pg-core"
+import { pgTable, index, serial, varchar, timestamp, uniqueIndex, jsonb, numeric, foreignKey, integer, pgEnum, boolean, date } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 export const enumLeadsEmailType = pgEnum("enum_leads_email_type", ['business', 'free'])
@@ -248,6 +248,7 @@ export const prospects = pgTable("prospects", {
 	status: enumProspectsStatus().default('qualified'),
 	source: varchar(),
 	recon: jsonb(),
+	paused: boolean().default(false),
 	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	createdAt: timestamp("created_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
@@ -271,6 +272,21 @@ export const coworkJobs = pgTable("cowork_jobs", {
 	index("cowork_jobs_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
 	index("cowork_jobs_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
 ]);
+
+export const automationSettings = pgTable("automation_settings", {
+	id: serial().primaryKey().notNull(),
+	enabled: boolean().default(false).notNull(),
+	timezone: varchar().default('America/Los_Angeles').notNull(),
+	workDays: varchar("work_days").default('Mon,Tue,Wed,Thu,Fri').notNull(),
+	workStartHour: integer("work_start_hour").default(9).notNull(),
+	workEndHour: integer("work_end_hour").default(17).notNull(),
+	dailyGoal: integer("daily_goal").default(30).notNull(),
+	rampEnabled: boolean("ramp_enabled").default(true).notNull(),
+	rampStart: integer("ramp_start").default(10).notNull(),
+	rampWeeklyStep: integer("ramp_weekly_step").default(5).notNull(),
+	rampStartedOn: date("ramp_started_on"),
+	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+});
 
 export const outreach = pgTable("outreach", {
 	id: serial().primaryKey().notNull(),
