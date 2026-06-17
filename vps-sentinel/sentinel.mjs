@@ -52,27 +52,30 @@ function loadState() { try { return JSON.parse(readFileSync(STATE_FILE, "utf8"))
 function saveState(s) { try { writeFileSync(STATE_FILE, JSON.stringify(s)); } catch (e) { log("[sentinel] state save error:", e.message); } }
 
 /** Turn a LinkedIn notification email into a Telegram alert (or null if not one). */
+function stripName(n) {
+  // LinkedIn prefixes the recipient ("Joseph, X accepted...") — strip that + trailing "has".
+  return (n || "Someone").replace(/^(?:hi\s+)?joseph,?\s*/i, "").replace(/\s+has$/i, "").trim() || "Someone";
+}
+
 function classify(fromAddr, subject) {
   if (!(fromAddr || "").toLowerCase().includes("linkedin.com")) return null;
   const s = subject || "";
 
   if (/accepted your invitation|you are now connected|is now a connection|now connected/i.test(s)) {
-    const name = (s.match(/^(.*?)\s+accepted your invitation/i) || [])[1]
+    const name = stripName((s.match(/^(.*?)\s+(?:has\s+)?accepted your invitation/i) || [])[1]
       || (s.match(/(?:now connected (?:with|to)|connected with)\s+(.*)/i) || [])[1]
-      || (s.match(/^(.*?)\s+is now a connection/i) || [])[1]
-      || "Someone";
+      || (s.match(/^(.*?)\s+is now a connection/i) || [])[1]);
     return {
       kind: "accepted",
       text: `✅ <b>${escapeHtml(name.trim())} accepted your connection request</b>\nThat's your opening — ask the one diagnostic question (no pitch). Open LinkedIn when ready.`,
     };
   }
 
-  if (/sent you a message|replied to|messaged you|new message from|sent you the following/i.test(s)) {
-    const name = (s.match(/^(.*?)\s+sent you a message/i) || [])[1]
-      || (s.match(/new message from\s+(.*)/i) || [])[1]
+  if (/sent you a message|replied to|messaged you|new message from|sent you the following|new inmail|sent you an inmail|inmail (?:message|from)/i.test(s)) {
+    const name = stripName((s.match(/^(.*?)\s+sent you (?:a message|an inmail)/i) || [])[1]
+      || (s.match(/(?:new message|new inmail|inmail) from\s+(.*)/i) || [])[1]
       || (s.match(/^(.*?)\s+replied/i) || [])[1]
-      || (s.match(/^(.*?):/) || [])[1]
-      || "Someone";
+      || (s.match(/^(.*?):/) || [])[1]);
     return {
       kind: "message",
       text: `💬 <b>${escapeHtml(name.trim())} replied on LinkedIn</b>\n<i>${escapeHtml(s)}</i>\n\nPaused — review and reply in LinkedIn yourself (we don't auto-reply into a live conversation).`,
