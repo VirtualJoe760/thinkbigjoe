@@ -1,0 +1,10 @@
+{
+  "name": "thinkbigjoe-windows-sender",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Unattended LinkedIn drip-sender + reply-poster (Playwright, drives your logged-in Chrome).",
+  "dependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}

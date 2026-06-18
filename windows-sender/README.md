@@ -1,55 +1,63 @@
-# Windows drip-sender setup
+# Windows drip-sender + reply-poster (Playwright)
 
 Sends your **approved** LinkedIn connection requests on a human-paced drip during your
-working hours — on this Windows machine (residential IP, your real session = safe). It reads
-all its rules from the dashboard at **/command/automation**; you never edit code to tune it.
+working hours, and posts your **approved** replies — all on this Windows machine (residential
+IP, your real logged-in Chrome = safest IP-wise). It drives Chrome with **Playwright** against a
+persistent profile (no extension, no Claude). It reads all its rules from **/command/automation**.
 
 ```
-Task Scheduler (every ~10 min)  →  run-sender.mjs (the brain)
-   reads /command/automation config · checks day/hours · paces vs ramp target
-   → when it's time, hands ONE invite to headless Claude → clicks it in your browser
-   → marks it sent · pings Telegram · stops + alerts on any LinkedIn checkpoint
+Task Scheduler (every ~10 min)  →  run-sender.mjs (brain)
+   reads config · checks day/hours · paces vs ramp · picks next APPROVED prospect
+   → Playwright opens your logged-in Chrome → Connect + note → Send → mark + Telegram
+   (auto-pauses automation on any LinkedIn checkpoint)
 ```
 
-## How sending stays safe
-- **Only human-approved prospects go out.** It sends from `outreach.status = 'approved'` — so you
-  approve a batch in `/command` (Prospecting → Approve), and the sender drips them over days.
-- **Hard daily cap + ramp** from the dashboard (start ~10/day → 30). **Paused** prospects are skipped.
-- **Even drip + jitter** across your hours — never bursts.
-- **Stops itself** on any captcha/verification and Telegrams you (then you re-enable in the dashboard).
+> ⚠️ **This is the unattended automation bot — it carries the most LinkedIn ToS/ban risk.**
+> The caps (≤daily ramp), human pacing, paused-skip, and checkpoint-stop are there to protect
+> your account, but the residual risk is real. Start with the ramp low.
 
-## Prerequisites
-- This repo cloned here with `node_modules` installed (`pnpm install` already done).
-- **Claude Code** installed + signed in (`claude` on PATH).
-- **Chrome** logged into your LinkedIn, with the **Claude-in-Chrome extension** connected (that's
-  how the headless `claude` session clicks the invite).
-- `.env.local` present in the repo root (has `DATABASE_URL` + `TELEGRAM_*`).
+## 1. Install Playwright-core
+Uses your installed Chrome (no big browser download):
+```cmd
+cd /d F:\web-clients\joseph-sardella\thinkbigjoe\windows-sender
+npm install
+```
 
-## 1. Confirm it runs
+## 2. Log into LinkedIn once (creates the persistent profile)
 ```cmd
 cd /d F:\web-clients\joseph-sardella\thinkbigjoe
-node windows-sender\run-sender.mjs
+node windows-sender\linkedin.mjs --login
 ```
-With automation OFF it prints `disabled — exit`. That's correct — turn it on in the dashboard
-when you're ready.
+A Chrome window opens with a fresh automation profile — log into LinkedIn there, then close it.
+The session persists in `windows-sender\chrome-profile` and is reused every run. (This profile is
+separate from your everyday Chrome so automation never disrupts your normal browsing.)
 
-## 2. Schedule it (every 10 min, all day — the runner self-gates)
-Open **Task Scheduler → Create Task**:
-- **General:** name `ThinkBigJoe Sender`; "Run only when user is logged on" (it needs your browser session).
-- **Triggers:** New → "On a schedule" → Daily → **Repeat task every 10 minutes** for a duration of "Indefinitely".
-- **Actions:** New → Start a program → Program: `F:\web-clients\joseph-sardella\thinkbigjoe\windows-sender\run-sender.cmd`
-- **Conditions:** uncheck "Start only if on AC power" if it's a desktop.
-- Save.
+## 3. DRY RUN first — verify the buttons before anything sends
+LinkedIn's page layout shifts, so confirm the selectors find Connect / Add-a-note / Send **without
+clicking Send.** Approve a prospect in `/command` first, then:
+```cmd
+cd /d F:\web-clients\joseph-sardella\thinkbigjoe
+set DRY_RUN=1 && node windows-sender\run-sender.mjs
+```
+It should open the profile and log `DRY RUN ok — DRYRUN ready-to-send` (nothing sent). If it logs
+`SKIP no-connect-option` or an error, the selectors need a tweak — send me the log and I'll adjust
+`linkedin.mjs`. **Do not schedule live sends until a dry run passes.**
 
-(You don't need to restrict the trigger to 9–5 / weekdays — the runner reads your dashboard hours
-and exits quietly outside them. One schedule, fully controlled from `/command/automation`.)
+## 4. Schedule (every ~10 min; the runner self-gates on your dashboard hours)
+Task Scheduler → Create Task (run only when logged on):
+- **Sender:** Trigger: daily, repeat every **10 min**, indefinitely. Action: `…\windows-sender\run-sender.cmd`
+- **Reply-poster:** Trigger: daily, repeat every **5 min**. Action: `…\windows-sender\run-replies.cmd`
 
-## 3. Go live
-1. In `/command` → Prospecting, **Approve** the prospects you want sent.
-2. In `/command/automation`, set hours + daily goal/ramp, then flip **Automated prospecting ON**.
-3. Watch `windows-sender\sender.log` and your Telegram — you'll get a ✅ ping per send.
+(No need to limit triggers to 9–5/weekdays — the runner reads your dashboard window and exits
+outside it.)
+
+## 5. Go live
+1. `/command` → Prospecting → **Approve** the prospects to send to.
+2. `/command/automation` → set hours + ramp/goal → flip **ON**.
+3. Watch `windows-sender\sender.log` + Telegram.
 
 ## Manage
-- Pause everything instantly: toggle OFF in `/command/automation` (or disable the Task).
-- Pause one conversation: the `paused` flag on a prospect (skipped by the sender).
-- It auto-pauses + alerts on a LinkedIn checkpoint — if that happens, check your account before re-enabling.
+- Pause everything: toggle OFF in `/command/automation` (or disable the Tasks).
+- Pause one conversation: a prospect's `paused` flag (skipped).
+- Auto-pauses + alerts on a LinkedIn checkpoint — check your account before re-enabling.
+- `DRY_RUN=1` anytime to rehearse without sending.

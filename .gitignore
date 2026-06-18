@@ -46,3 +46,10 @@ next-env.d.ts
 
 # sales prospecting (contains prospect PII — never commit)
 /prospecting/
+
+.vercel
+.env*.local
+
+# Windows sender: never commit the logged-in session profile or logs
+windows-sender/chrome-profile/
+windows-sender/*.log
