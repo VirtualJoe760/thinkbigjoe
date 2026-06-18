@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { desc, eq, sql } from "drizzle-orm";
 
-import { db, coworkJobs, prospects, outreach } from "@/db";
+import { db, coworkJobs, prospects, outreach, replyDrafts } from "@/db";
 import { sendTelegram, adminChatId } from "@/lib/telegram";
 import { parseCommand, describeCommand, verticalLabel } from "@/lib/cowork-commands";
 
@@ -101,6 +101,38 @@ export async function POST(req: Request) {
           `(LinkedIn sends stay supervised). Every reply pauses + pings you here.`,
         fromChat,
       );
+      return NextResponse.json({ ok: true });
+    }
+
+    // Reply-action: if a drafted reply is awaiting Joe's call, this message
+    // steers it — "send" to post the draft, "pause" to mute, or any other text
+    // becomes his edited version to send.
+    const pending = (
+      await db
+        .select()
+        .from(replyDrafts)
+        .where(eq(replyDrafts.status, "awaiting"))
+        .orderBy(desc(replyDrafts.createdAt))
+        .limit(1)
+    )[0];
+    if (pending) {
+      const lower = text.toLowerCase();
+      if (/^(send|yes|go|approve|ok|sure|send it)\b/.test(lower)) {
+        await db.update(replyDrafts).set({ status: "approved", finalText: pending.draft, updatedAt: new Date().toISOString() }).where(eq(replyDrafts.id, pending.id));
+        await sendTelegram(`✅ Queued to send to <b>${pending.prospectName}</b>. The sender will post it shortly.`, fromChat);
+        return NextResponse.json({ ok: true });
+      }
+      if (/^(pause|skip|stop|hold|mute|ignore|no)\b/.test(lower)) {
+        await db.update(replyDrafts).set({ status: "paused", updatedAt: new Date().toISOString() }).where(eq(replyDrafts.id, pending.id));
+        if (pending.prospectId) {
+          await db.update(prospects).set({ paused: true, updatedAt: new Date().toISOString() }).where(eq(prospects.id, pending.prospectId));
+        }
+        await sendTelegram(`⏸ Paused <b>${pending.prospectName}</b> — nothing sent, that conversation is muted.`, fromChat);
+        return NextResponse.json({ ok: true });
+      }
+      // Anything else = Joe's own version of the reply.
+      await db.update(replyDrafts).set({ status: "approved", finalText: text, updatedAt: new Date().toISOString() }).where(eq(replyDrafts.id, pending.id));
+      await sendTelegram(`✅ Got it — I'll send your version to <b>${pending.prospectName}</b>:\n<i>${text.slice(0, 400)}</i>`, fromChat);
       return NextResponse.json({ ok: true });
     }
 

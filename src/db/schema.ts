@@ -288,6 +288,21 @@ export const automationSettings = pgTable("automation_settings", {
 	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });
 
+export const replyDrafts = pgTable("reply_drafts", {
+	id: serial().primaryKey().notNull(),
+	prospectId: integer("prospect_id"),
+	prospectName: varchar("prospect_name"),
+	theirMessage: varchar("their_message"),
+	draft: varchar(),
+	finalText: varchar("final_text"),
+	status: varchar().default('awaiting').notNull(),
+	source: varchar().default('sentinel').notNull(),
+	createdAt: timestamp("created_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("reply_drafts_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+]);
+
 export const outreach = pgTable("outreach", {
 	id: serial().primaryKey().notNull(),
 	prospectId: integer("prospect_id").notNull(),
