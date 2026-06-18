@@ -27,6 +27,8 @@ const {
   MAILBOX = "INBOX",
   POLL_MS = "60000",
   STATE_FILE = "./.sentinel-state.json",
+  SITE_URL = "https://thinkbigjoe.com",
+  COWORK_RUNNER_TOKEN, // enables AI-drafted replies (POST to the site); without it, replies are notify-only
 } = process.env;
 
 for (const [k, v] of Object.entries({ GMAIL_USER, GMAIL_APP_PASSWORD, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID })) {
@@ -78,15 +80,59 @@ function classify(fromAddr, subject) {
       || (s.match(/^(.*?):/) || [])[1]);
     return {
       kind: "message",
-      text: `💬 <b>${escapeHtml(name.trim())} replied on LinkedIn</b>\n<i>${escapeHtml(s)}</i>\n\nPaused — review and reply in LinkedIn yourself (we don't auto-reply into a live conversation).`,
+      name: name.trim(),
+      text: `💬 <b>${escapeHtml(name.trim())} replied on LinkedIn</b>\n<i>${escapeHtml(s)}</i>\n\nOpen LinkedIn to read + reply (AI draft unavailable).`,
     };
   }
 
   return null;
 }
 
+// Best-effort: pull the human message text out of a LinkedIn notification email.
+// LinkedIn HTML varies, so this is a starting point — refine against the first
+// real reply. Joe always sees + edits the draft, so a rough snippet is fine.
+function extractMessage(raw) {
+  if (!raw) return "";
+  let html = raw;
+  const idx = raw.search(/Content-Type:\s*text\/html/i);
+  if (idx >= 0) html = raw.slice(idx);
+  const text = html
+    .replace(/=\r?\n/g, "")            // quoted-printable soft breaks
+    .replace(/=3D/g, "=")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")          // strip tags
+    .replace(/&nbsp;|&zwnj;|&#8203;/gi, " ")
+    .replace(/&amp;/g, "&").replace(/&#39;|&rsquo;/g, "'").replace(/&quot;/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+  // Grab the chunk around the message body, trimming common LinkedIn chrome.
+  const cleaned = text
+    .replace(/.*?(?:sent you the following message|sent the following|wrote:|says:)/i, "")
+    .replace(/(Reply to|View (?:message|conversation)|Unsubscribe|This email was|LinkedIn Corporation).*/i, "")
+    .trim();
+  return (cleaned || text).slice(0, 600);
+}
+
+async function postReply(client, uid, name) {
+  if (!COWORK_RUNNER_TOKEN) return false;
+  let message = "";
+  try {
+    const full = await client.fetchOne(uid, { uid: true, source: true });
+    message = extractMessage(full?.source?.toString() || "");
+  } catch (e) { log("[sentinel] body fetch failed:", e.message); }
+  try {
+    const r = await fetch(`${SITE_URL}/api/replies/incoming`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${COWORK_RUNNER_TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ name, message: message || "(could not read message — open LinkedIn)" }),
+    });
+    return r.ok; // the endpoint drafts + Telegrams Joe
+  } catch (e) { log("[sentinel] postReply failed:", e.message); return false; }
+}
+
 async function checkNew(client, state) {
   const lock = await client.getMailboxLock(MAILBOX);
+  const replyHits = [];
   try {
     let max = state.lastUid;
     for await (const msg of client.fetch({ uid: `${state.lastUid + 1}:*` }, { envelope: true, uid: true })) {
@@ -95,9 +141,18 @@ async function checkNew(client, state) {
       const from = msg.envelope?.from?.[0]?.address || "";
       const subject = msg.envelope?.subject || "";
       const hit = classify(from, subject);
-      if (hit) { log("[sentinel] HIT", hit.kind, "|", subject); await telegram(hit.text); }
+      if (!hit) continue;
+      log("[sentinel] HIT", hit.kind, "|", subject);
+      if (hit.kind === "message") replyHits.push({ uid: msg.uid, name: hit.name, text: hit.text });
+      else await telegram(hit.text); // accepts: notify immediately
     }
     if (max > state.lastUid) { state.lastUid = max; saveState(state); }
+    // Message replies: hand to the drafting endpoint (it drafts + Telegrams Joe).
+    // Fall back to a plain notify if drafting isn't wired up or fails.
+    for (const h of replyHits) {
+      const drafted = await postReply(client, h.uid, h.name);
+      if (!drafted) await telegram(h.text);
+    }
   } finally { lock.release(); }
 }
 
