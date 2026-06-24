@@ -1,0 +1,14 @@
+{
+  "name": "tbj-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "MCP server that gives Venus (OpenClaw) access to the ThinkBigJoe prospecting DB",
+  "scripts": {
+    "start": "node tbj-mcp.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.13.1",
+    "pg": "^8.21.0"
+  }
+}
