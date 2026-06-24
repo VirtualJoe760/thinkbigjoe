@@ -2,7 +2,20 @@
 
 > **Status**: Gameplan (Phase 1 in development)
 > **Owner**: Joseph Sardella
-> **Last updated**: 2026-06-24
+> **Last updated**: 2026-06-24 (answers incorporated)
+
+---
+
+## Decisions locked in
+
+| Question | Answer |
+|---|---|
+| **ICP (who Scout targets)** | Two modes: (1) **business owners to pitch TBJ services** — insurance, mortgage, wealth, MSP, law firm owners/principals. (2) **job postings to apply to as a contractor** — Scout finds openings at companies that would hire someone with Joe's skill set. Both run from the same Scout agent, flagged by `scout_mode`. |
+| **Pilot vertical** | Finance & insurance first — most prospect data already exists, strongest AI ROI proof, local + nationwide |
+| **Email sending** | `joe@thinkbigjoe.com` via **Zoho Mail free tier** (IMAP + SMTP, custom domain, Apple Mail compatible). Marketing/outreach sends use the same domain initially; move to `mail.thinkbigjoe.com` subdomain once volume ramps past 50/day to protect root domain reputation. |
+| **Sending domain setup** | See **Email Setup** section below |
+| **Scout queue target** | Scout keeps running until there are **50 `pending_review` rows** in `scout_prospects`. When count drops below 50 (because Joe approved/skipped some), Scout auto-queues a new batch. |
+| **Meta ads** | Collect the data now; set up audiences when creative is ready. No blocker to data collection. |
 
 This document is the single source of truth for ThinkBigJoe's automated client acquisition
 pipeline. Read this before touching any agent, runner, schema, or outreach code.
@@ -519,20 +532,156 @@ Prospect converts (Joe marks won in dashboard)
 
 ---
 
-## Open questions before build starts
+## Email setup — Zoho Mail + Apple Mail
 
-1. **ICP finalization**: Insurance, mortgage, wealth, MSP, law — are all five verticals
-   in scope for Scout? Or focus on one first?
+**Goal**: `joe@thinkbigjoe.com` as a real IMAP/SMTP mailbox, free, working in Apple Mail.
 
-2. **Job applications**: Are we applying as Joe (contractor/freelancer) or pitching
-   ThinkBigJoe as a service to companies who are hiring? Different resume, different angle.
+### Step 1 — Create Zoho Mail account
+1. Go to zoho.com/mail → "Sign Up for Free" → choose "Forever Free Plan"
+2. Add domain `thinkbigjoe.com` (Zoho walks you through DNS verification)
 
-3. **Email address**: Will outreach come from `joe@thinkbigjoe.com` or a separate
-   sending domain (e.g., `hello@mail.thinkbigjoe.com`)? Separate sending domain
-   is recommended to protect the root domain's reputation.
+### Step 2 — Add DNS records to thinkbigjoe.com
+thinkbigjoe.com is managed on Vercel. Add these records in Vercel → Domains → DNS:
 
-4. **Meta ad creative**: What offer? Free consultation, audit, case study? Need this
-   defined before Phase 3.
+| Type | Name | Value |
+|---|---|---|
+| TXT | `@` | `zoho-verification=...` (Zoho gives you this) |
+| MX | `@` | `mx.zoho.com` priority 10 |
+| MX | `@` | `mx2.zoho.com` priority 20 |
+| MX | `@` | `mx3.zoho.com` priority 50 |
+| TXT | `@` | `v=spf1 include:zoho.com ~all` |
+| TXT | `_dmarc` | `v=DMARC1; p=none; rua=mailto:joe@thinkbigjoe.com` |
 
-5. **Daily volume target**: How many new prospects per day does Joe want to review?
-   10? 50? This sets the Scout run frequency and Apify/Hunter.io API usage (cost).
+DKIM: Zoho generates a DKIM key during setup — add as a TXT record on `zmail._domainkey`.
+
+### Step 3 — Create the mailbox
+In Zoho admin: Add User → `joe@thinkbigjoe.com` → set password
+
+### Step 4 — Configure Apple Mail
+Open Mail → Add Account → Other Mail Account:
+```
+Email:    joe@thinkbigjoe.com
+Password: (Zoho password)
+
+Incoming (IMAP):
+  Server:   imap.zoho.com
+  Port:     993
+  SSL:      on
+
+Outgoing (SMTP):
+  Server:   smtp.zoho.com
+  Port:     465
+  SSL:      on
+```
+
+### Step 5 — Generate App Password for Apple Mail
+Zoho requires an App Password for third-party clients (Apple Mail is one).
+Zoho → My Account → Security → App Passwords → Generate → use it in Apple Mail instead of your main password.
+
+### Sending domain strategy
+- **Now**: send from `joe@thinkbigjoe.com` (personal + low volume outreach)
+- **Later** (>50 emails/day): add `mail.thinkbigjoe.com` subdomain as a Resend sending domain,
+  send marketing email from `joe@mail.thinkbigjoe.com`. This protects the root domain's
+  deliverability reputation if a campaign gets flagged.
+
+---
+
+## Scout modes — two jobs, one agent
+
+Scout runs in two modes, set per job:
+
+### Mode A — Business development (pitch TBJ services)
+Scout finds **owners and principals** who would benefit from AI automation services.
+- Target: insurance agencies, mortgage brokers, wealth advisors, MSPs, law firms
+- Finds: the owner's name, email, phone, LinkedIn
+- Drafts: a humble, curious outreach message (see `prospecting/outreach-templates.md` for tone)
+- Outreach sent by: **email first** (Zoho), **LinkedIn connection** second (Browserbase sender)
+
+### Mode B — Contractor job applications
+Scout finds **companies posting jobs** that match Joe's skill set (AI, automation, web dev).
+- Target: Lever/Greenhouse/company career pages with relevant openings
+- Finds: job title, job URL, hiring manager if visible
+- Drafts: a personalized cover letter or application note
+- Outreach sent by: **job application form** (OpenClaw browser, Mac Mini), not email
+
+The `cowork_jobs.intent` field gains a new value: `scout_biz` (mode A) and `scout_jobs` (mode B).
+Scout agent is the same — it reads the mode from the job and adjusts its research and draft accordingly.
+
+---
+
+## Scout queue management — 50-prospect target
+
+The Scout runner checks `pending_review` count before each run:
+
+```
+count = SELECT count(*) FROM scout_prospects WHERE status = 'pending_review'
+
+if count >= 50:
+  log("queue full — nothing to do")
+  exit
+
+else:
+  needed = 50 - count
+  run Scout for min(needed, 10) prospects this session  # 10 per run to stay light
+  exit, poll again in 5 min
+```
+
+This means Scout runs continuously in the background but never floods the approval queue past 50.
+As Joe reviews (approves/skips), Scout automatically refills.
+
+---
+
+## What's already built (local files inventory)
+
+These files exist locally but are gitignored — **they are the starting point**, not new work:
+
+### `prospecting/` — 50 pre-researched prospects across 5 CSVs
+Already researched from LinkedIn (Sales Navigator). Ready to import into `scout_prospects`
+as the seed data for Phase 1. **No Scout agent needed to research these — they're done.**
+
+| File | Count | Vertical |
+|---|---|---|
+| `finance-insurance-prospects.csv` | 18 rows | Insurance agencies, mostly local |
+| `finance-insurance-salesnav-qualified.csv` | 12 rows | Insurance (Sales Nav qualified) |
+| `law-firms-salesnav.csv` | 8 rows | Law firms |
+| `msps-it-salesnav.csv` | 3 rows | MSPs / IT services |
+| `wealth-salesnav.csv` | 4 rows | Wealth management |
+
+**Action**: Write `scripts/import-prospecting-csvs.mjs` to seed these into `scout_prospects`
+as `source = 'csv_import'` and `status = 'pending_review'`. This gives Joe 50 prospects to
+review immediately in Phase 1 before Scout is even fully built.
+
+### `linkedin-sender/` — Cloud LinkedIn sender (Browserbase) — **NOT YET COMMITTED**
+This is new code that supersedes `windows-sender/` entirely. It runs via **GitHub Actions**
+(`.github/workflows/linkedin-sender.yml`) on a cron every 10 minutes, using Browserbase
+cloud Chromium + residential proxy. No Mac Mini or Windows PC needed for LinkedIn sends.
+
+**Files to commit**:
+- `linkedin-sender/` (whole directory)
+- `.github/workflows/linkedin-sender.yml`
+
+**Required before it works**:
+1. Browserbase account (browserbase.com) — get API key + Project ID
+2. Run `node seed-auth.mjs` once on any machine to log into LinkedIn and save the session Context
+3. Add GitHub repo secrets: `BROWSERBASE_API_KEY`, `BROWSERBASE_PROJECT_ID`, `BROWSERBASE_CONTEXT_ID`, `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+4. Do a dry run first: Actions tab → "Run workflow" with dry_run = true
+
+**`windows-sender/` is now obsolete** once linkedin-sender is committed and verified.
+
+### `.env` / `.env.local` / `.env.development.local` — additional secrets
+The env files contain Google OAuth IDs, Facebook App ID, better-auth secret, and gcal config
+not currently in the Mac Mini's `.env.local`. Copy the missing vars over.
+
+Notable additions:
+- `GOOGLE_CLIENT_ID` — for Google OAuth login on the dashboard
+- `FACEBOOK_CLIENT_ID` — for Meta/Facebook integration (needed for Meta Ads API later)
+- `EMAIL_FROM` / `EMAIL_BCC` — email display name already configured as `joe@thinkbigjoe.com`
+- `GCAL_CLIENT_ID` / `GCAL_CALENDAR_ID` — Google Calendar for appointment booking
+
+---
+
+## Open questions
+
+1. **Meta ad creative**: What offer? Free consultation, audit, case study? Needed before Phase 3 ad setup.
+2. **Browserbase account**: Do you have one, or does this need to be created?
+3. **Sales Navigator**: 2FA was pending — is it now working? (Affects whether Scout can use it for prospecting.)
