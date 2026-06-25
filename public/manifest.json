@@ -1,0 +1,37 @@
+{
+  "name": "ThinkBigJoe",
+  "short_name": "TBJ",
+  "description": "Agentic AI & MCP Development",
+  "start_url": "/command",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0047ff",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Prospects",
+      "url": "/command/prospects",
+      "description": "Prospecting dashboard"
+    },
+    {
+      "name": "Command",
+      "url": "/command",
+      "description": "Command center overview"
+    }
+  ]
+}

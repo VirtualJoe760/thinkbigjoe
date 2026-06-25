@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Jost } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
 const jost = Jost({
@@ -23,6 +24,12 @@ export const metadata: Metadata = {
       "Agentic software and MCP solutions for businesses ready to think big.",
     type: "website",
   },
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "ThinkBigJoe",
+  },
 };
 
 export default function FrontendLayout({
@@ -32,9 +39,14 @@ export default function FrontendLayout({
 }>) {
   return (
     <html lang="en" className={`${jost.variable} h-full antialiased`}>
+      <head>
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+        <meta name="theme-color" content="#0047ff" />
+      </head>
       <body className="min-h-full flex flex-col bg-background text-ink">
         {children}
         <Analytics />
+        <PwaRegister />
       </body>
     </html>
   );
