@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { payloadLockedDocuments, payloadLockedDocumentsRels, users, media, pages, leads, prospects, outreach, usersSessions, payloadPreferences, payloadPreferencesRels, followUps } from "./schema";
+import { payloadLockedDocuments, payloadLockedDocumentsRels, users, media, pages, leads, prospects, outreach, usersSessions, payloadPreferences, payloadPreferencesRels, followUps, conversations } from "./schema";
 
 export const payloadLockedDocumentsRelsRelations = relations(payloadLockedDocumentsRels, ({one}) => ({
 	payloadLockedDocument: one(payloadLockedDocuments, {
@@ -58,6 +58,7 @@ export const prospectsRelations = relations(prospects, ({many}) => ({
 	payloadLockedDocumentsRels: many(payloadLockedDocumentsRels),
 	outreaches: many(outreach),
 	followUps: many(followUps),
+	conversations: many(conversations),
 }));
 
 export const outreachRelations = relations(outreach, ({one, many}) => ({
@@ -93,6 +94,13 @@ export const payloadPreferencesRelations = relations(payloadPreferences, ({many}
 export const followUpsRelations = relations(followUps, ({one}) => ({
 	prospect: one(prospects, {
 		fields: [followUps.prospectId],
+		references: [prospects.id]
+	}),
+}));
+
+export const conversationsRelations = relations(conversations, ({one}) => ({
+	prospect: one(prospects, {
+		fields: [conversations.prospectId],
 		references: [prospects.id]
 	}),
 }));

@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { eq, asc, desc } from "drizzle-orm";
 
-import { db, outreach, prospects } from "@/db";
+import { db, outreach, prospects, conversations, replyDrafts } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { parseProspectRecon } from "@/lib/prospect-recon";
 import { StepCard, type Step } from "./step-card";
+import { ReplyPanel } from "./reply-panel";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -83,10 +84,24 @@ export default async function ProspectPage({
   }
   if (toInsert.length) await db.insert(outreach).values(toInsert);
 
-  const rows = await db
-    .select({ id: outreach.id, step: outreach.step, body: outreach.body, status: outreach.status })
-    .from(outreach)
-    .where(eq(outreach.prospectId, pid));
+  const [rows, thread, pendingDraft] = await Promise.all([
+    db
+      .select({ id: outreach.id, step: outreach.step, body: outreach.body, status: outreach.status })
+      .from(outreach)
+      .where(eq(outreach.prospectId, pid)),
+    db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.prospectId, pid))
+      .orderBy(asc(conversations.createdAt)),
+    db
+      .select()
+      .from(replyDrafts)
+      .where(eq(replyDrafts.prospectId, pid))
+      .orderBy(desc(replyDrafts.createdAt))
+      .limit(1)
+      .then((r) => r[0] ?? null),
+  ]);
 
   const order: Record<string, number> = { connection: 0, diagnostic: 1, invite: 2, followup: 3 };
   const steps: Step[] = rows
@@ -241,6 +256,88 @@ export default async function ProspectPage({
             <p className="mt-2 text-sm leading-relaxed text-ink-soft">{REFLECT_GUIDANCE}</p>
           </div>
         </div>
+
+        {/* ── Conversation thread ── */}
+        {(thread.length > 0 || pendingDraft) && (
+          <div className="mt-8">
+            <h2 className="mb-3 text-lg font-bold tracking-tight">LinkedIn conversation</h2>
+            <div className="rounded-xl border border-line bg-background p-4 sm:p-5">
+              {thread.length > 0 && (
+                <div className="space-y-3">
+                  {thread.map((msg) => {
+                    const isInbound = msg.direction === "inbound";
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`flex ${isInbound ? "justify-start" : "justify-end"}`}
+                      >
+                        <div
+                          className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                            isInbound
+                              ? "rounded-tl-sm bg-surface text-ink"
+                              : "rounded-tr-sm bg-brand text-white"
+                          }`}
+                        >
+                          <p>{msg.body}</p>
+                          <p
+                            className={`mt-1 text-[11px] ${
+                              isInbound ? "text-ink-soft" : "text-white/70"
+                            }`}
+                          >
+                            {isInbound ? p.name?.split(" ")[0] : "Joe"} ·{" "}
+                            {new Date(msg.createdAt!).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {pendingDraft && pendingDraft.status === "awaiting" && (
+                <div className="mt-5 border-t border-line pt-5">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-soft">
+                    Draft reply — approve or edit before sending
+                  </p>
+                  <ReplyPanel
+                    draftId={pendingDraft.id}
+                    prospectId={pid}
+                    draft={pendingDraft.draft ?? ""}
+                  />
+                </div>
+              )}
+
+              {pendingDraft && pendingDraft.status === "approved" && (
+                <div className="mt-5 border-t border-line pt-5">
+                  <p className="text-sm font-medium text-green-700">
+                    ✓ Reply approved — queued for Venus to send.
+                  </p>
+                  {pendingDraft.finalText && (
+                    <p className="mt-1 rounded-xl bg-brand px-4 py-3 text-sm text-white">
+                      {pendingDraft.finalText}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {pendingDraft && pendingDraft.status === "sent" && (
+                <div className="mt-5 border-t border-line pt-5">
+                  <p className="text-sm font-medium text-ink-soft">✓ Reply sent.</p>
+                  {pendingDraft.finalText && (
+                    <p className="mt-1 rounded-xl bg-brand px-4 py-3 text-sm text-white">
+                      {pendingDraft.finalText}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <h2 className="mt-8 mb-3 text-lg font-bold tracking-tight">Pre-call solution sketch</h2>
         <div className="rounded-xl border border-line bg-background p-5 text-sm leading-relaxed text-ink-soft sm:p-6">
