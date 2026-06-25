@@ -10,6 +10,7 @@
  *   add_prospect             — add a researched prospect to the review queue
  *   list_approved_for_outreach — find approved connection requests to send
  *   mark_sent                — record that a LinkedIn connection request was sent
+ *   run_scout                — search Google Maps + Yelp for local business leads
  *
  * Reads DATABASE_URL from env (passed via OpenClaw mcp.servers config).
  * No Vercel deploy needed — runs locally on the Mac Mini.
@@ -232,17 +233,38 @@ async function toolHandleReply({ draft_id, action }) {
 async function toolAddProspect({
   name, title, company, vertical, location, profile_url,
   fit_score, fit_reason, hook, source = "venus_scout",
+  website_url, photo_url, website_status, website_rating, website_notes,
+  sales_opportunities = [],
 }) {
-  const res = await query(
-    `INSERT INTO prospects (name, title, company, vertical, location, profile_url, fit_score, fit_reason, hook, source, status, paused)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'new', false)
-     ON CONFLICT (profile_url) DO NOTHING
-     RETURNING id`,
-    [name, title, company, vertical, location, profile_url, fit_score, fit_reason, hook, source],
-  );
-  if (!res.rows.length) {
+  const existing = profile_url
+    ? await query(`SELECT id FROM prospects WHERE profile_url = $1 LIMIT 1`, [profile_url])
+    : { rows: [] };
+  if (existing.rows.length) {
     return { content: [{ type: "text", text: `⚠️ ${name} is already in the DB (duplicate URL).` }] };
   }
+
+  const opportunities = Array.isArray(sales_opportunities)
+    ? sales_opportunities.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 5)
+    : String(sales_opportunities || "").trim()
+      ? [String(sales_opportunities).trim()]
+      : [];
+
+  const rating = Number(website_rating);
+  const recon = {
+    websiteUrl: String(website_url || "").trim(),
+    photoUrl: String(photo_url || "").trim(),
+    websiteStatus: String(website_status || "").trim(),
+    websiteRating: Number.isFinite(rating) ? Math.max(1, Math.min(10, Math.round(rating))) : null,
+    websiteNotes: String(website_notes || "").trim(),
+    salesOpportunities: opportunities,
+  };
+
+  const res = await query(
+    `INSERT INTO prospects (name, title, company, vertical, location, profile_url, fit_score, fit_reason, hook, source, recon, status, paused)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, 'new', false)
+     RETURNING id`,
+    [name, title, company, vertical, location, profile_url, fit_score, fit_reason, hook, source, JSON.stringify(recon)],
+  );
   const prospect_id = res.rows[0].id;
   await query(
     `INSERT INTO outreach (prospect_id, step, status, body) VALUES ($1, 'connection', 'draft', $2)`,
@@ -348,8 +370,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           location: { type: "string", description: "City, state or region." },
           profile_url: { type: "string", description: "LinkedIn profile URL (used as unique key)." },
+          website_url: { type: "string", description: "Company website URL found during research." },
+          photo_url: { type: "string", description: "LinkedIn profile photo URL, when visible." },
           fit_score: { type: "number", description: "Fit score 1–10." },
           fit_reason: { type: "string", description: "Why this prospect is a good fit." },
+          website_status: { type: "string", description: "Short status summary of the company website." },
+          website_rating: { type: "number", description: "Website quality/opportunity rating from 1–10." },
+          website_notes: { type: "string", description: "Specific notes from reviewing the website." },
+          sales_opportunities: {
+            type: "array",
+            items: { type: "string" },
+            description: "Sales opportunities uncovered through website and deeper research.",
+          },
           hook: { type: "string", description: "The personalized LinkedIn connection note Venus will send." },
           source: { type: "string", description: "How the prospect was found. Defaults to 'venus_scout'." },
         },
@@ -373,6 +405,34 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["outreach_id"],
       },
     },
+    {
+      name: "run_scout",
+      description: "Search Google Maps and/or Yelp for local businesses matching a vertical and location, and add them to the prospect review queue. Use this to fill the pipeline with local leads.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          vertical: {
+            type: "string",
+            enum: ["insurance", "mortgage", "wealth", "msp", "law", "other"],
+            description: "Industry vertical to search for.",
+          },
+          location: {
+            type: "string",
+            description: "City and state to search in, e.g. 'Phoenix, AZ' or 'Chicago, IL'.",
+          },
+          sources: {
+            type: "array",
+            items: { type: "string", enum: ["google_maps", "yelp"] },
+            description: "Which sources to search. Defaults to both.",
+          },
+          limit: {
+            type: "number",
+            description: "Max prospects to add per run (default 20, max 50).",
+          },
+        },
+        required: ["vertical", "location"],
+      },
+    },
   ],
 }));
 
@@ -386,10 +446,45 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "add_prospect": return toolAddProspect(args);
     case "list_approved_for_outreach": return toolListApprovedForOutreach();
     case "mark_sent": return toolMarkSent(args);
+    case "run_scout": return toolRunScout(args);
     default:
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }
 });
+
+// ---------------------------------------------------------------------------
+// toolRunScout
+// ---------------------------------------------------------------------------
+async function toolRunScout(args) {
+  const { vertical = "insurance", location, sources = ["google_maps", "yelp"], limit = 20 } = args;
+  const runnerToken = process.env.COWORK_RUNNER_TOKEN;
+  const baseUrl = process.env.TBJ_API_BASE || "https://thinkbigjoe.com";
+
+  if (!runnerToken) {
+    return { content: [{ type: "text", text: "❌ COWORK_RUNNER_TOKEN not set — can't call /api/scout." }], isError: true };
+  }
+
+  try {
+    const res = await fetch(`${baseUrl}/api/scout`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${runnerToken}`,
+      },
+      body: JSON.stringify({ vertical, location, sources, limit }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return {
+      content: [{
+        type: "text",
+        text: `✅ Scout complete for ${vertical} in ${location}.\nAdded: ${data.inserted} new prospects | Skipped: ${data.skipped} duplicates\nSources: ${sources.join(", ")}`,
+      }],
+    };
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Scout failed: ${err.message}` }], isError: true };
+  }
+}
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

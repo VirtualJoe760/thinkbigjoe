@@ -3,7 +3,9 @@ import { eq } from "drizzle-orm";
 
 import { db, outreach, prospects } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
+import { parseProspectRecon } from "@/lib/prospect-recon";
 import { ReviewQueue, type QueueItem } from "../review-queue";
+import { ScoutForm } from "./scout-form";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -62,6 +64,7 @@ export default async function ProspectsPage({
       hook: prospects.hook,
       fitScore: prospects.fitScore,
       profileUrl: prospects.profileUrl,
+      recon: prospects.recon,
     })
     .from(outreach)
     .innerJoin(prospects, eq(outreach.prospectId, prospects.id))
@@ -81,6 +84,7 @@ export default async function ProspectsPage({
     hook: r.hook || "",
     fitScore: Number(r.fitScore || 0),
     profileUrl: r.profileUrl || "",
+    ...parseProspectRecon(r.recon),
     updatedAt: r.updatedAt || "",
     approvedAt: r.approvedAt || "",
     sentAt: r.sentAt || "",
@@ -95,7 +99,7 @@ export default async function ProspectsPage({
 
   const scoped = all.filter((i) => {
     if (vertical && i.vertical !== vertical) return false;
-    if (qLower && !`${i.name} ${i.company}`.toLowerCase().includes(qLower)) return false;
+    if (qLower && !`${i.name} ${i.company} ${i.websiteUrl}`.toLowerCase().includes(qLower)) return false;
     return true;
   });
 
@@ -144,11 +148,15 @@ export default async function ProspectsPage({
   };
 
   return (
-    <div className="px-6 py-8">
-      <div className="mx-auto w-full max-w-4xl">
+    <div className="px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mx-auto w-full max-w-5xl">
         <h1 className="text-2xl font-extrabold tracking-tight">Prospecting</h1>
 
-        <div className="mt-6 flex flex-wrap gap-2 border-b border-line">
+        <div className="mt-6">
+          <ScoutForm />
+        </div>
+
+        <div className="mt-8 flex flex-wrap gap-2 border-b border-line">
           {tabs.map((t) => {
             const active = t.key === view;
             return (
@@ -166,7 +174,7 @@ export default async function ProspectsPage({
           })}
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-1.5">
             <a
               href={qs({ v: "" })}
@@ -193,14 +201,14 @@ export default async function ProspectsPage({
               );
             })}
           </div>
-          <form action={BASE} method="get" className="flex items-center gap-2">
+          <form action={BASE} method="get" className="flex w-full items-center gap-2 lg:w-auto">
             <input type="hidden" name="view" value={view} />
             {vertical && <input type="hidden" name="v" value={vertical} />}
             <input
               name="q"
               defaultValue={q}
-              placeholder="Search name or company"
-              className="w-52 rounded-full border border-line bg-background px-4 py-1.5 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
+              placeholder="Search name, company, or site"
+              className="min-w-0 flex-1 rounded-full border border-line bg-background px-4 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 lg:w-64"
             />
             {q && (
               <a href={qs({ q: "" })} className="text-xs font-semibold text-ink-soft hover:text-ink">
