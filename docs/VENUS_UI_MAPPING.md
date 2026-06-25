@@ -6,6 +6,45 @@ this doc and update the cron/tool that feeds it — and vice versa.**
 
 ---
 
+## THE RULE: Venus features ship full-stack, in one PR
+
+A Venus feature is never "just UI" or "just backend." Every Venus capability is **three layers
+that ship together** so we never build the feature twice:
+
+1. **UI surface** — the page/section in `/command/**` where Joe sees or controls it.
+2. **MCP tool** — a named tool in `mcp-server/tbj-mcp.mjs` that reads/writes the right DB table.
+3. **Cron entry** — a declaration in `src/lib/venus-crons.mjs` (the manifest) so Venus actually
+   runs it on a schedule, then `npm run venus:sync` to push it to OpenClaw.
+
+If any layer is missing, the feature is half-built and will silently fail:
+- UI with no tool → the page is forever empty (this was the LinkedIn-replies bug).
+- Tool with no cron → Venus has the ability but never uses it.
+- Cron with no UI → work happens invisibly with no way to review or control it.
+
+**Build all three in the same change.** The checklist at the bottom enforces this.
+
+---
+
+## Crons-as-code architecture (the scalable part)
+
+Venus's crons are **declared in the repo**, not buried in CLI history on the Mac:
+
+```
+  src/lib/venus-crons.mjs   ← SOURCE OF TRUTH (schedule, prompt, tools, uiSurface per cron)
+        │
+        ├── npm run venus:sync ──→ reconciles OpenClaw (add/edit by name) — OpenClaw just executes
+        │
+        └── imported by /command/crons ──→ dashboard: schedule, tools, prompt, last-run (activity_log)
+```
+
+- **Editing a cron**: change `venus-crons.mjs`, run `npm run venus:sync`. Never edit prompts via
+  `openclaw cron edit` directly — that drift is invisible and gets overwritten on the next sync.
+- **Seeing what runs**: the `/command/crons` tab renders the manifest + last-run from `activity_log`.
+  If every "last ran" is stale, the OpenClaw gateway (Joe's Mac) is down.
+- **`npm run venus:sync -- --dry`**: preview changes without touching OpenClaw.
+
+---
+
 ## Rule: UI feature = agent workflow
 
 If a UI surface shows data that Venus is supposed to populate, there must be a named MCP tool
@@ -111,12 +150,25 @@ aren't being sent.
 
 ---
 
-## Adding a new UI surface — checklist
+## Shipping a Venus feature — full-stack checklist
 
-Before shipping a new page or section that Venus should populate:
+Every Venus feature ships all three layers in the same PR. Before merging:
 
-- [ ] Is there an MCP tool that writes to the correct DB table/column? If not, add one to `mcp-server/tbj-mcp.mjs`.
-- [ ] Is there a cron that calls that tool? If not, update or create one via `openclaw cron`.
-- [ ] Does the tool's output match the column name/type the UI query expects?
-- [ ] Did you add the tool to both the `ListToolsRequestSchema` handler AND the `CallToolRequestSchema` switch?
-- [ ] Did you update this doc?
+**Backend (MCP tool)**
+- [ ] Tool added to `mcp-server/tbj-mcp.mjs` that reads/writes the correct DB table/column.
+- [ ] Tool registered in BOTH the `ListToolsRequestSchema` handler AND the `CallToolRequestSchema` switch.
+- [ ] Tool output column names/types match what the UI query expects.
+- [ ] MCP server `version` bumped.
+
+**Schedule (cron manifest)**
+- [ ] Cron entry added/updated in `src/lib/venus-crons.mjs` with `tools`, `uiSurface`, `eventTypes`, and the exact prompt.
+- [ ] The prompt actually calls the new tool (by name).
+- [ ] `npm run venus:sync -- --dry` shows the expected change, then `npm run venus:sync` applied it.
+
+**UI surface**
+- [ ] Page/section under `/command/**` renders the data the tool writes.
+- [ ] If it's a new top-level area, added to `src/app/(frontend)/command/nav.tsx`.
+
+**Docs**
+- [ ] This doc updated (surface map + cron→tool→UI map).
+- [ ] `npm run build` passes.

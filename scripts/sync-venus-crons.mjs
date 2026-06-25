@@ -1,0 +1,122 @@
+#!/usr/bin/env node
+// ---------------------------------------------------------------------------
+// sync-venus-crons — reconcile the local OpenClaw cron store to match the
+// manifest at src/lib/venus-crons.mjs (the source of truth).
+//
+//   npm run venus:sync           # apply changes
+//   npm run venus:sync -- --dry  # show what would change, touch nothing
+//
+// Matches OpenClaw crons by NAME. For each manifest cron it will:
+//   • ADD it if no cron with that name exists
+//   • EDIT it if the schedule or prompt drifted from the manifest
+//   • leave it untouched if already in sync
+// Crons in OpenClaw whose name starts with "TBJ " but are absent from the
+// manifest are flagged as ORPHANS (not deleted — you decide).
+//
+// Requires the `openclaw` CLI on PATH (runs on the Mac where Venus lives).
+// ---------------------------------------------------------------------------
+
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const { VENUS_CRONS } = await import(path.join(here, "../src/lib/venus-crons.mjs"));
+
+const DRY = process.argv.includes("--dry") || process.argv.includes("--dry-run");
+
+function oc(args) {
+  const res = spawnSync("openclaw", args, { encoding: "utf8" });
+  if (res.error) {
+    console.error(`✗ failed to run \`openclaw ${args.join(" ")}\`: ${res.error.message}`);
+    console.error("  Is the openclaw CLI installed and on PATH? (npm i -g openclaw)");
+    process.exit(1);
+  }
+  return res;
+}
+
+function staggerArgs(stagger) {
+  if (!stagger || stagger === "exact") return ["--exact"];
+  return ["--stagger", stagger];
+}
+
+// --- Load current OpenClaw state -------------------------------------------
+const listRes = oc(["cron", "list", "--all", "--json"]);
+let current = [];
+try {
+  const parsed = JSON.parse(listRes.stdout);
+  current = Array.isArray(parsed) ? parsed : parsed.jobs || parsed.crons || [];
+} catch (e) {
+  console.error("✗ could not parse `openclaw cron list --json`:", e.message);
+  console.error(listRes.stdout?.slice(0, 300));
+  process.exit(1);
+}
+const byName = new Map(current.map((c) => [c.name, c]));
+
+// --- Reconcile --------------------------------------------------------------
+let added = 0, updated = 0, ok = 0;
+
+for (const cron of VENUS_CRONS) {
+  const existing = byName.get(cron.name);
+
+  if (!existing) {
+    console.log(`${DRY ? "[dry] would ADD" : "＋ ADD"}  ${cron.name}  (${cron.schedule})`);
+    if (!DRY) {
+      const res = oc([
+        "cron", "add",
+        "--name", cron.name,
+        "--cron", cron.schedule,
+        ...staggerArgs(cron.stagger),
+        "--system-event", cron.prompt,
+      ]);
+      if (res.status !== 0) {
+        console.error(`  ✗ add failed: ${res.stderr || res.stdout}`);
+      } else {
+        // surface the new id so it can be pasted back into the manifest
+        const m = (res.stdout || "").match(/"id":\s*"([0-9a-f-]+)"/i);
+        if (m) console.log(`     new id: ${m[1]}  → paste into venus-crons.mjs`);
+      }
+    }
+    added++;
+    continue;
+  }
+
+  const liveExpr = existing.schedule?.expr ?? "";
+  const liveText = existing.payload?.text ?? "";
+  const scheduleDrift = liveExpr !== cron.schedule;
+  const promptDrift = liveText !== cron.prompt;
+
+  if (!scheduleDrift && !promptDrift) {
+    console.log(`✓ ok   ${cron.name}`);
+    ok++;
+    continue;
+  }
+
+  const what = [scheduleDrift && "schedule", promptDrift && "prompt"].filter(Boolean).join(" + ");
+  console.log(`${DRY ? "[dry] would EDIT" : "✎ EDIT"} ${cron.name}  (${what})`);
+  if (scheduleDrift) console.log(`     schedule: ${liveExpr || "—"}  →  ${cron.schedule}`);
+  if (!DRY) {
+    const args = ["cron", "edit", existing.id];
+    if (scheduleDrift) args.push("--cron", cron.schedule, ...staggerArgs(cron.stagger));
+    if (promptDrift) args.push("--system-event", cron.prompt);
+    const res = oc(args);
+    if (res.status !== 0) console.error(`  ✗ edit failed: ${res.stderr || res.stdout}`);
+  }
+  updated++;
+}
+
+// --- Orphan check -----------------------------------------------------------
+const manifestNames = new Set(VENUS_CRONS.map((c) => c.name));
+const orphans = current.filter((c) => c.name?.startsWith("TBJ ") && !manifestNames.has(c.name));
+for (const o of orphans) {
+  console.log(`⚠ ORPHAN ${o.name}  — in OpenClaw but not in the manifest (id: ${o.id})`);
+  console.log(`     remove with: openclaw cron rm ${o.id}   (or add it to venus-crons.mjs)`);
+}
+
+// --- Summary ----------------------------------------------------------------
+console.log("");
+console.log(
+  `${DRY ? "[dry] " : ""}Sync complete — ${ok} in sync, ${updated} ${DRY ? "to update" : "updated"}, ` +
+  `${added} ${DRY ? "to add" : "added"}, ${orphans.length} orphan(s).`,
+);
+if (DRY) console.log("Re-run without --dry to apply.");
