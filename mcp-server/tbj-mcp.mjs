@@ -395,6 +395,59 @@ async function toolScheduleFollowup({ prospect_id, touch_number, days_from_now, 
   };
 }
 
+async function toolListConnectedWithoutFollowups() {
+  const res = await query(
+    `SELECT p.id, p.name, p.company, p.vertical, p.profile_url
+     FROM prospects p
+     WHERE p.status = 'connected'
+       AND p.paused = false
+       AND NOT EXISTS (
+         SELECT 1 FROM follow_ups f WHERE f.prospect_id = p.id
+       )
+     ORDER BY p.updated_at ASC
+     LIMIT 50`,
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: "✅ All connected prospects already have follow-ups scheduled." }] };
+  }
+  const lines = [`📋 **${res.rows.length} connected prospect(s) with no follow-ups scheduled:**`, ""];
+  for (const r of res.rows) {
+    lines.push(`**#${r.id} — ${r.name}** · ${r.company || ""}${r.vertical ? ` · ${r.vertical}` : ""}`);
+    if (r.profile_url) lines.push(`LinkedIn: ${r.profile_url}`);
+    lines.push("_(call schedule_followup with this prospect_id)_");
+    lines.push("");
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolListIncompleteFollowupSequences() {
+  const res = await query(
+    `SELECT p.id, p.name, p.company, p.vertical, p.profile_url,
+            array_agg(f.touch_number ORDER BY f.touch_number) AS scheduled_touches
+     FROM prospects p
+     JOIN follow_ups f ON f.prospect_id = p.id
+     WHERE p.status = 'connected' AND p.paused = false
+     GROUP BY p.id, p.name, p.company, p.vertical, p.profile_url
+     HAVING NOT (1 = ANY(array_agg(f.touch_number))
+              AND 2 = ANY(array_agg(f.touch_number))
+              AND 3 = ANY(array_agg(f.touch_number)))
+     ORDER BY p.updated_at ASC
+     LIMIT 50`,
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: "✅ All connected prospects have complete 3-touch sequences." }] };
+  }
+  const lines = [`📋 **${res.rows.length} prospect(s) with incomplete follow-up sequences:**`, ""];
+  for (const r of res.rows) {
+    const missing = [1, 2, 3].filter((t) => !r.scheduled_touches.includes(t));
+    lines.push(`**#${r.id} — ${r.name}** · ${r.company || ""}${r.vertical ? ` · ${r.vertical}` : ""}`);
+    lines.push(`Has touches: ${r.scheduled_touches.join(", ")} · Missing: ${missing.join(", ")}`);
+    if (r.profile_url) lines.push(`LinkedIn: ${r.profile_url}`);
+    lines.push("");
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
 async function toolListDueFollowups() {
   const res = await query(
     `SELECT f.id, f.touch_number, f.body, f.scheduled_for,
@@ -471,7 +524,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "1.7.0" },
+  { name: "tbj-mcp", version: "1.9.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -616,6 +669,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "list_incomplete_followup_sequences",
+      description: "List connected prospects who have SOME follow-up touches scheduled but are missing touches from the full 3-touch sequence (touch 1 at 1 day, touch 2 at 30 days, touch 3 at 75 days). Use this in the scheduler to backfill missing touches.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "list_connected_without_followups",
+      description: "List prospects who are in 'connected' status but have no follow-up touches scheduled at all. Use this in the inbox check and scheduler crons to find silent acceptances that need a follow-up queued.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
       name: "list_due_followups",
       description: "List follow-up touches that are due today or overdue. Returns up to 10, oldest first. Use this to drive the daily follow-up drip cron.",
       inputSchema: { type: "object", properties: {} },
@@ -666,6 +729,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "mark_sent": return toolMarkSent(args);
     case "log_activity": return toolLogActivity(args);
     case "schedule_followup": return toolScheduleFollowup(args);
+    case "list_incomplete_followup_sequences": return toolListIncompleteFollowupSequences();
+    case "list_connected_without_followups": return toolListConnectedWithoutFollowups();
     case "list_due_followups": return toolListDueFollowups();
     case "mark_followup_sent": return toolMarkFollowupSent(args);
     case "book_appointment": return toolBookAppointment(args);
