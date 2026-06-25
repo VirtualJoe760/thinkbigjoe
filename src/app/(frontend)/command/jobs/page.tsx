@@ -1,25 +1,34 @@
 import type { Metadata } from "next";
-import { desc } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 
-import { db, coworkJobs } from "@/db";
+import { db, activityLog } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
-import { verticalLabel } from "@/lib/cowork-commands";
-import { JobRow } from "./job-row";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  title: "Jobs",
+  title: "Activity",
   robots: { index: false, follow: false },
 };
 
-function describeJob(j: typeof coworkJobs.$inferSelect): string {
-  if (j.intent === "find_leads") {
-    return `Find ${j.targetCount || "more"} ${verticalLabel(j.vertical)}${j.location ? ` in ${j.location}` : ""}`;
-  }
-  if (j.intent === "start_prospecting") {
-    return `Start prospecting${j.vertical ? ` — ${verticalLabel(j.vertical)}` : ""}`;
-  }
-  return j.rawCommand;
+const ICONS: Record<string, string> = {
+  scout_complete: "🔍",
+  outreach_sent: "📤",
+  followup_sent: "💬",
+  booking_made: "📅",
+  inbox_checked: "📬",
+  enrichment_complete: "✨",
+};
+
+function relativeTime(iso: string | Date | null) {
+  if (!iso) return "";
+  const d = new Date(iso as string);
+  const mins = Math.round((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  return `${days}d ago`;
 }
 
 export default async function JobsPage() {
@@ -27,45 +36,41 @@ export default async function JobsPage() {
 
   const rows = await db
     .select()
-    .from(coworkJobs)
-    .orderBy(desc(coworkJobs.createdAt))
+    .from(activityLog)
+    .orderBy(sql`${activityLog.createdAt} DESC`)
     .limit(100);
-
-  const queued = rows.filter((r) => r.status === "queued");
 
   return (
     <div className="px-6 py-8">
       <div className="mx-auto w-full max-w-3xl">
-        <h1 className="text-2xl font-extrabold tracking-tight">Cowork jobs</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">Venus activity</h1>
         <p className="mt-1 text-sm text-ink-soft">
-          Commands you text the Telegram bot land here as jobs. They run when a
-          Cowork session works the queue — web-sourced finds run autonomously,
-          LinkedIn-sourced stay supervised.
+          Everything Venus has scouted, sent, followed up on, and booked — most recent first.
         </p>
-
-        <div className="mt-4 rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-ink-soft">
-          Text <a href="https://t.me/thinkbigjoe_alerts_bot" className="font-medium text-brand hover:underline">@thinkbigjoe_alerts_bot</a>:{" "}
-          <code className="rounded bg-background px-1.5 py-0.5">find 25 insurance leads in California</code>,{" "}
-          <code className="rounded bg-background px-1.5 py-0.5">find more wealth leads</code>,{" "}
-          <code className="rounded bg-background px-1.5 py-0.5">start prospecting</code>, or{" "}
-          <code className="rounded bg-background px-1.5 py-0.5">status</code>.
-        </div>
 
         {rows.length === 0 ? (
           <div className="mt-6 rounded-2xl border border-line bg-background p-10 text-center text-ink-soft">
-            No jobs yet. Text the bot a command and it&apos;ll appear here.
+            No activity logged yet.
           </div>
         ) : (
-          <>
-            <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-ink-soft">
-              {queued.length} queued · {rows.length} total
-            </p>
-            <div className="mt-2 space-y-3">
-              {rows.map((j) => (
-                <JobRow key={j.id} job={{ ...j, label: describeJob(j) }} />
-              ))}
-            </div>
-          </>
+          <div className="mt-6 divide-y divide-line rounded-2xl border border-line bg-background">
+            {rows.map((entry) => (
+              <div key={entry.id} className="flex items-start gap-3 px-5 py-4">
+                <span className="mt-0.5 shrink-0 text-lg leading-none">
+                  {ICONS[entry.eventType] ?? "✦"}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-ink">{entry.summary}</p>
+                  <p className="mt-0.5 text-xs text-ink-soft capitalize">
+                    {entry.eventType.replace(/_/g, " ")}
+                  </p>
+                </div>
+                <span className="shrink-0 text-xs text-ink-soft whitespace-nowrap">
+                  {relativeTime(entry.createdAt)}
+                </span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

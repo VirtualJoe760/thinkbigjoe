@@ -32,28 +32,28 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [jobsQueued, newLeads, newProspects, drafts, upcoming] = await Promise.all([
-    scalar(sql`SELECT count(*)::int AS n FROM cowork_jobs WHERE status = 'queued'`),
+  const [newLeads, newProspects, drafts, upcoming, sentToday] = await Promise.all([
     scalar(sql`SELECT count(*)::int AS n FROM leads WHERE created_at > now() - interval '24 hours'`),
     scalar(sql`SELECT count(*)::int AS n FROM prospects WHERE created_at > now() - interval '24 hours'`),
     scalar(sql`SELECT count(*)::int AS n FROM outreach WHERE status = 'draft'`),
     scalar(
       sql`SELECT count(*)::int AS n FROM leads WHERE status = 'booked' AND booked_slot > now()::text`,
     ),
+    scalar(sql`SELECT count(*)::int AS n FROM outreach WHERE status = 'sent' AND sent_at > now() - interval '24 hours'`),
   ]);
 
   const lines = [
     `☀️ <b>ThinkBigJoe — daily digest</b>`,
     ``,
+    `📤 Connections sent (24h): <b>${sentToday}</b>`,
     `🆕 New leads (24h): <b>${newLeads}</b>`,
-    `🔎 New prospects (24h): <b>${newProspects}</b>`,
+    `🔎 New prospects scouted (24h): <b>${newProspects}</b>`,
     `📝 Drafts awaiting your review: <b>${drafts}</b>`,
-    `⏳ Cowork jobs queued: <b>${jobsQueued}</b>`,
     `📅 Upcoming booked calls: <b>${upcoming}</b>`,
     ``,
     drafts > 0
       ? `Review at thinkbigjoe.com/command`
-      : `All clear — text me a command anytime to queue more.`,
+      : `All clear — Venus is on it.`,
   ];
 
   await notifyTelegram(lines.join("\n"));

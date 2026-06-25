@@ -40,7 +40,7 @@ const ADMIN_PAGES = [
   {
     href: "/command/jobs",
     label: "Jobs",
-    description: "Cowork job queue — tasks Venus ran or is running.",
+    description: "Venus activity log — what she scouted, sent, and followed up on.",
   },
   {
     href: "/command/analytics",
