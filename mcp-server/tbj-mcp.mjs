@@ -310,6 +310,63 @@ async function toolUpdateProspect({
   return { content: [{ type: "text", text: `✅ Updated prospect #${prospect_id} — enriched: ${changes.join(", ") || "no changes"}.` }] };
 }
 
+async function toolCheckOutreachWindow() {
+  const res = await query(
+    `SELECT enabled, timezone, work_days, work_start_hour, work_end_hour,
+            daily_goal, ramp_enabled, ramp_start, ramp_weekly_step, ramp_started_on
+     FROM automation_settings WHERE id = 1 LIMIT 1`,
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: `{"allowed":false,"reason":"No automation_settings row found — skipping."}` }] };
+  }
+  const cfg = res.rows[0];
+  if (!cfg.enabled) {
+    return { content: [{ type: "text", text: JSON.stringify({ allowed: false, reason: "Automation is disabled in settings." }) }] };
+  }
+
+  const tz = cfg.timezone || "America/Los_Angeles";
+  const now = new Date();
+  const fmt = (unit) => Number(new Intl.DateTimeFormat("en-US", { timeZone: tz, [unit]: unit === "hour" ? "2-digit" : "short", hourCycle: "h23" }).format(now));
+  const hour = fmt("hour");
+  const dayStr = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(now);
+  const workDays = (cfg.work_days || "Mon,Tue,Wed,Thu,Fri").split(",").map((d) => d.trim());
+
+  if (!workDays.includes(dayStr)) {
+    return { content: [{ type: "text", text: JSON.stringify({ allowed: false, reason: `Today is ${dayStr} — not a working day (${workDays.join(", ")}).` }) }] };
+  }
+  if (hour < cfg.work_start_hour || hour >= cfg.work_end_hour) {
+    return { content: [{ type: "text", text: JSON.stringify({ allowed: false, reason: `Current hour is ${hour}:xx ${tz} — outside working window (${cfg.work_start_hour}:00–${cfg.work_end_hour}:00).` }) }] };
+  }
+
+  // Compute daily target (ramp-aware)
+  let target = cfg.daily_goal;
+  if (cfg.ramp_enabled && cfg.ramp_started_on) {
+    const start = new Date(cfg.ramp_started_on + "T00:00:00Z").getTime();
+    const weeks = Math.max(0, Math.floor((Date.now() - start) / (7 * 24 * 3600 * 1000)));
+    target = Math.min(cfg.daily_goal, cfg.ramp_start + weeks * cfg.ramp_weekly_step);
+  }
+
+  // Check how many sent today in this timezone
+  const todayRes = await query(
+    `SELECT count(*)::int AS n FROM outreach WHERE status = 'sent'
+     AND sent_at >= date_trunc('day', now() AT TIME ZONE $1) AT TIME ZONE $1`,
+    [tz],
+  );
+  const sentToday = Number(todayRes.rows[0]?.n ?? 0);
+
+  if (sentToday >= target) {
+    return { content: [{ type: "text", text: JSON.stringify({ allowed: false, reason: `Daily goal met — sent ${sentToday}/${target} today. Done for the day.` }) }] };
+  }
+
+  const remaining = target - sentToday;
+  return {
+    content: [{
+      type: "text",
+      text: JSON.stringify({ allowed: true, sentToday, target, remaining, reason: `In window (${dayStr} ${hour}:xx ${tz}). ${remaining} left to send today.` }),
+    }],
+  };
+}
+
 async function toolListApprovedForOutreach() {
   const res = await query(
     `SELECT p.id, p.name, p.title, p.company, p.vertical, p.location, p.profile_url,
@@ -352,7 +409,7 @@ async function toolMarkSent({ outreach_id, notes }) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "1.2.0" },
+  { name: "tbj-mcp", version: "1.3.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -428,6 +485,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "check_outreach_window",
+      description: "Check whether the outreach automation is currently allowed to send. Reads automation_settings: enabled flag, working days, working hours, daily goal, and sends today. Returns {allowed, reason, sentToday, target, remaining}. Call this FIRST before every outreach session — if allowed is false, stop immediately.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
       name: "update_prospect",
       description: "Enrich an existing prospect with photo, email, phone, or website recon. Use this when you find additional data about someone already in the DB.",
       inputSchema: {
@@ -473,6 +535,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "get_status": return toolGetStatus();
     case "list_pending_replies": return toolListPendingReplies();
     case "handle_reply": return toolHandleReply(args);
+    case "check_outreach_window": return toolCheckOutreachWindow();
     case "add_prospect": return toolAddProspect(args);
     case "update_prospect": return toolUpdateProspect(args);
     case "list_approved_for_outreach": return toolListApprovedForOutreach();
