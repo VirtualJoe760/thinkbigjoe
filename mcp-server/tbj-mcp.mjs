@@ -232,7 +232,8 @@ async function toolHandleReply({ draft_id, action }) {
 async function toolAddProspect({
   name, title, company, vertical, location, profile_url,
   fit_score, fit_reason, hook, source = "venus_scout",
-  website_url, photo_url, website_status, website_rating, website_notes,
+  website_url, photo_url, email, phone,
+  website_status, website_rating, website_notes,
   sales_opportunities = [],
 }) {
   const existing = profile_url
@@ -252,6 +253,8 @@ async function toolAddProspect({
   const recon = {
     websiteUrl: String(website_url || "").trim(),
     photoUrl: String(photo_url || "").trim(),
+    email: String(email || "").trim(),
+    phone: String(phone || "").trim(),
     websiteStatus: String(website_status || "").trim(),
     websiteRating: Number.isFinite(rating) ? Math.max(1, Math.min(10, Math.round(rating))) : null,
     websiteNotes: String(website_notes || "").trim(),
@@ -270,6 +273,41 @@ async function toolAddProspect({
     [prospect_id, hook],
   );
   return { content: [{ type: "text", text: `✅ Added ${name} from ${company} to the review queue.` }] };
+}
+
+async function toolUpdateProspect({
+  prospect_id, photo_url, email, phone, website_url,
+  website_status, website_rating, website_notes, sales_opportunities,
+}) {
+  const existing = await query(`SELECT id, recon FROM prospects WHERE id = $1 LIMIT 1`, [prospect_id]);
+  if (!existing.rows.length) {
+    return { content: [{ type: "text", text: `Prospect #${prospect_id} not found.` }] };
+  }
+  const current = existing.rows[0].recon || {};
+  const opportunities = sales_opportunities !== undefined
+    ? (Array.isArray(sales_opportunities)
+        ? sales_opportunities.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 5)
+        : String(sales_opportunities || "").trim() ? [String(sales_opportunities).trim()] : [])
+    : current.salesOpportunities;
+
+  const rating = Number(website_rating);
+  const updated = {
+    ...current,
+    ...(photo_url !== undefined && { photoUrl: String(photo_url).trim() }),
+    ...(email !== undefined && { email: String(email).trim() }),
+    ...(phone !== undefined && { phone: String(phone).trim() }),
+    ...(website_url !== undefined && { websiteUrl: String(website_url).trim() }),
+    ...(website_status !== undefined && { websiteStatus: String(website_status).trim() }),
+    ...(website_rating !== undefined && { websiteRating: Number.isFinite(rating) ? Math.max(1, Math.min(10, Math.round(rating))) : null }),
+    ...(website_notes !== undefined && { websiteNotes: String(website_notes).trim() }),
+    ...(sales_opportunities !== undefined && { salesOpportunities: opportunities }),
+  };
+  await query(
+    `UPDATE prospects SET recon = $1::jsonb, updated_at = now() WHERE id = $2`,
+    [JSON.stringify(updated), prospect_id],
+  );
+  const changes = Object.keys(updated).filter((k) => updated[k] !== current[k]);
+  return { content: [{ type: "text", text: `✅ Updated prospect #${prospect_id} — enriched: ${changes.join(", ") || "no changes"}.` }] };
 }
 
 async function toolListApprovedForOutreach() {
@@ -314,7 +352,7 @@ async function toolMarkSent({ outreach_id, notes }) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "1.1.0" },
+  { name: "tbj-mcp", version: "1.2.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -370,7 +408,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           location: { type: "string", description: "City, state or region." },
           profile_url: { type: "string", description: "LinkedIn profile URL (used as unique key)." },
           website_url: { type: "string", description: "Company website URL found during research." },
-          photo_url: { type: "string", description: "LinkedIn profile photo URL, when visible." },
+          photo_url: { type: "string", description: "LinkedIn or Google profile photo URL." },
+          email: { type: "string", description: "Email address found on website, LinkedIn, or Google." },
+          phone: { type: "string", description: "Phone number found on website or Google Business." },
           fit_score: { type: "number", description: "Fit score 1–10." },
           fit_reason: { type: "string", description: "Why this prospect is a good fit." },
           website_status: { type: "string", description: "Short status summary of the company website." },
@@ -385,6 +425,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           source: { type: "string", description: "How the prospect was found. Defaults to 'venus_scout'." },
         },
         required: ["name", "title", "company", "vertical", "location", "profile_url", "fit_score", "fit_reason", "hook"],
+      },
+    },
+    {
+      name: "update_prospect",
+      description: "Enrich an existing prospect with photo, email, phone, or website recon. Use this when you find additional data about someone already in the DB.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          prospect_id: { type: "number", description: "The prospect's DB id." },
+          photo_url: { type: "string", description: "LinkedIn or Google profile photo URL." },
+          email: { type: "string", description: "Email address found during research." },
+          phone: { type: "string", description: "Phone number found on website or Google Business." },
+          website_url: { type: "string", description: "Company website URL." },
+          website_status: { type: "string", description: "Short summary of the website." },
+          website_rating: { type: "number", description: "Website quality 1–10." },
+          website_notes: { type: "string", description: "Notes from reviewing the site." },
+          sales_opportunities: { type: "array", items: { type: "string" }, description: "Discovered sales angles." },
+        },
+        required: ["prospect_id"],
       },
     },
     {
@@ -415,6 +474,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "list_pending_replies": return toolListPendingReplies();
     case "handle_reply": return toolHandleReply(args);
     case "add_prospect": return toolAddProspect(args);
+    case "update_prospect": return toolUpdateProspect(args);
     case "list_approved_for_outreach": return toolListApprovedForOutreach();
     case "mark_sent": return toolMarkSent(args);
     default:

@@ -1,6 +1,8 @@
 export type ProspectRecon = {
   websiteUrl: string;
   photoUrl: string;
+  email: string;
+  phone: string;
   websiteStatus: string;
   websiteRating: number | null;
   websiteNotes: string;
@@ -48,6 +50,13 @@ export function parseProspectRecon(value: unknown): ProspectRecon {
       asString(recon.photo_url) ||
       asString(linkedin.photoUrl) ||
       asString(linkedin.photo_url),
+    email:
+      asString(recon.email) ||
+      asString(linkedin.email),
+    phone:
+      asString(recon.phone) ||
+      asString(recon.phoneNumber) ||
+      asString(recon.phone_number),
     websiteStatus:
       asString(recon.websiteStatus) ||
       asString(recon.website_status) ||

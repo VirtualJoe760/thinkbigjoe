@@ -169,6 +169,22 @@ export default async function ProspectPage({
                   LinkedIn
                 </a>
               )}
+              {recon.email && (
+                <a
+                  href={`mailto:${recon.email}`}
+                  className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface"
+                >
+                  {recon.email}
+                </a>
+              )}
+              {recon.phone && (
+                <a
+                  href={`tel:${recon.phone}`}
+                  className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface"
+                >
+                  {recon.phone}
+                </a>
+              )}
             </div>
           </div>
         </div>
