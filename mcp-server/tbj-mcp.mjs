@@ -310,6 +310,37 @@ async function toolUpdateProspect({
   return { content: [{ type: "text", text: `✅ Updated prospect #${prospect_id} — enriched: ${changes.join(", ") || "no changes"}.` }] };
 }
 
+async function toolListNeedsEnrichment({ limit = 20 } = {}) {
+  const res = await query(
+    `SELECT id, name, title, company, vertical, profile_url,
+            recon->>'photoUrl' AS photo_url,
+            recon->>'email' AS email,
+            recon->>'phone' AS phone,
+            recon->>'websiteUrl' AS website_url
+     FROM prospects
+     WHERE paused = false
+       AND (recon IS NULL
+         OR recon->>'photoUrl' IS NULL OR recon->>'photoUrl' = ''
+         OR recon->>'email' IS NULL OR recon->>'email' = '')
+     ORDER BY created_at ASC
+     LIMIT $1`,
+    [Math.min(Number(limit) || 20, 50)],
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: "All prospects already have photos and email — nothing to enrich." }] };
+  }
+  const lines = [`🔍 **${res.rows.length} prospects need enrichment (photo and/or email missing):**`, ""];
+  for (const r of res.rows) {
+    const missing = [!r.photo_url && "photo", !r.email && "email", !r.phone && "phone"].filter(Boolean).join(", ");
+    lines.push(`**#${r.id} ${r.name}** · ${r.title || ""} at ${r.company || ""} · missing: ${missing}`);
+    if (r.profile_url) lines.push(`LinkedIn: ${r.profile_url}`);
+    if (r.website_url) lines.push(`Website: ${r.website_url}`);
+    lines.push("");
+  }
+  lines.push("For each: visit their LinkedIn or website, find the missing data, call update_prospect with prospect_id and the fields found.");
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
 async function toolCheckOutreachWindow() {
   const res = await query(
     `SELECT enabled, timezone, work_days, work_start_hour, work_end_hour,
@@ -409,7 +440,7 @@ async function toolMarkSent({ outreach_id, notes }) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "1.3.0" },
+  { name: "tbj-mcp", version: "1.4.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -485,6 +516,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "list_needs_enrichment",
+      description: "List existing prospects that are missing a profile photo, email, or phone number. Returns up to 50, oldest first. Use this to drive the weekly enrichment pass — then call update_prospect for each one after finding the data.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          limit: { type: "number", description: "Max prospects to return (1–50, default 20)." },
+        },
+      },
+    },
+    {
       name: "check_outreach_window",
       description: "Check whether the outreach automation is currently allowed to send. Reads automation_settings: enabled flag, working days, working hours, daily goal, and sends today. Returns {allowed, reason, sentToday, target, remaining}. Call this FIRST before every outreach session — if allowed is false, stop immediately.",
       inputSchema: { type: "object", properties: {} },
@@ -535,6 +576,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "get_status": return toolGetStatus();
     case "list_pending_replies": return toolListPendingReplies();
     case "handle_reply": return toolHandleReply(args);
+    case "list_needs_enrichment": return toolListNeedsEnrichment(args);
     case "check_outreach_window": return toolCheckOutreachWindow();
     case "add_prospect": return toolAddProspect(args);
     case "update_prospect": return toolUpdateProspect(args);
