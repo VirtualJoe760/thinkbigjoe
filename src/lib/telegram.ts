@@ -9,10 +9,6 @@
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID;
 
-export function isTelegramConfigured(): boolean {
-  return Boolean(token && chatId);
-}
-
 /** The chat id Joe controls — only this chat may issue commands to the bot. */
 export function adminChatId(): string | undefined {
   return chatId;

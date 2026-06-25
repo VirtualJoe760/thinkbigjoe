@@ -151,13 +151,6 @@ export async function createEvent(
   );
 }
 
-export async function deleteEvent(eventId: string): Promise<void> {
-  await gcalFetch(
-    `${BASE_URL}/calendars/${encodeURIComponent(calendarId())}/events/${eventId}?sendUpdates=all`,
-    "DELETE",
-  );
-}
-
 async function getFreeBusy(timeMin: string, timeMax: string): Promise<FreeBusySlot[]> {
   const id = calendarId();
   const result = await gcalFetch(`${BASE_URL}/freeBusy`, "POST", {

@@ -3,7 +3,6 @@ import Stripe from "stripe";
 const key = process.env.STRIPE_SECRET_KEY;
 
 export const stripe = key ? new Stripe(key) : null;
-export const isStripeConfigured = Boolean(key);
 
 /**
  * Find the Stripe customer for an email, or create one. Avoids storing a

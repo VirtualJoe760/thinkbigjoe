@@ -21,10 +21,6 @@ export type ConversationMessage = {
   body: string;
 };
 
-export function isDraftingConfigured(): boolean {
-  return Boolean(KEY);
-}
-
 export async function draftReply(opts: {
   prospect: string;
   theirMessage: string;
