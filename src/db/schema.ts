@@ -268,22 +268,6 @@ export const outreach = pgTable("outreach", {
 		}).onDelete("set null"),
 ]);
 
-export const coworkJobs = pgTable("cowork_jobs", {
-	id: serial().primaryKey().notNull(),
-	source: varchar().default('telegram').notNull(),
-	rawCommand: varchar("raw_command").notNull(),
-	intent: varchar().default('unknown').notNull(),
-	vertical: varchar(),
-	location: varchar(),
-	targetCount: integer("target_count"),
-	status: varchar().default('queued').notNull(),
-	resultSummary: varchar("result_summary"),
-	createdAt: timestamp("created_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	index("cowork_jobs_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
-	index("cowork_jobs_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
-]);
 
 export const prospects = pgTable("prospects", {
 	id: serial().primaryKey().notNull(),
