@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Logo } from "@/components/logo";
 import { SignOutButton } from "@/components/portal/sign-out-button";
 
-export function PortalHeader({ email }: { email: string }) {
+export function PortalHeader({ email, isAdmin }: { email: string; isAdmin?: boolean }) {
   return (
     <header className="border-b border-line">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
@@ -22,6 +22,14 @@ export function PortalHeader({ email }: { email: string }) {
             >
               Account
             </Link>
+            {isAdmin && (
+              <Link
+                href="/command"
+                className="text-sm font-medium text-ink-soft transition-colors hover:text-ink"
+              >
+                Command
+              </Link>
+            )}
           </nav>
         </div>
         <div className="flex items-center gap-4">

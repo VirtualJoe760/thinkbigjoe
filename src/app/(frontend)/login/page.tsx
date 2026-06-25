@@ -7,7 +7,7 @@ import { AuthCard } from "@/components/portal/auth-card";
 import { auth, socialProviderStatus } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "Client Login",
+  title: "Login",
 };
 
 export default async function LoginPage() {

@@ -73,7 +73,7 @@ export function AuthCard({
   return (
     <div className="w-full max-w-sm">
       <h1 className="text-3xl font-extrabold tracking-tight">
-        {mode === "signup" ? "Create your account" : "Client login"}
+        {mode === "signup" ? "Create your account" : "Login"}
       </h1>
       <p className="mt-2 text-sm text-ink-soft">
         {mode === "signup"

@@ -33,7 +33,7 @@ export function SiteNav() {
             href="/login"
             className="hidden text-sm font-medium text-ink-soft transition-colors hover:text-ink sm:block"
           >
-            Client Login
+            Login
           </Link>
           <Link
             href="/book-appointment"

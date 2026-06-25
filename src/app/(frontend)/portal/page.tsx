@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { PortalHeader } from "@/components/portal/portal-header";
 import { auth } from "@/lib/auth";
+import { isAdminEmail } from "@/lib/admin";
 
 export const metadata: Metadata = {
   title: "Client Portal",
@@ -16,10 +17,11 @@ export default async function PortalPage() {
 
   const { user } = session;
   const firstName = user.name?.split(" ")[0] || "there";
+  const isAdmin = isAdminEmail(user.email);
 
   return (
     <div className="flex flex-1 flex-col">
-      <PortalHeader email={user.email} />
+      <PortalHeader email={user.email} isAdmin={isAdmin} />
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-12">
         <p className="text-sm font-semibold tracking-wide text-brand uppercase">

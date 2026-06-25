@@ -21,7 +21,7 @@ export function SiteFooter() {
             Services
           </Link>
           <Link href="/login" className="hover:text-ink">
-            Client Login
+            Login
           </Link>
           <Link href="/#contact" className="hover:text-ink">
             Contact
