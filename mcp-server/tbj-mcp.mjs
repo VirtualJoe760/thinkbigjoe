@@ -10,7 +10,6 @@
  *   add_prospect             — add a researched prospect to the review queue
  *   list_approved_for_outreach — find approved connection requests to send
  *   mark_sent                — record that a LinkedIn connection request was sent
- *   run_scout                — search Google Maps + Yelp for local business leads
  *
  * Reads DATABASE_URL from env (passed via OpenClaw mcp.servers config).
  * No Vercel deploy needed — runs locally on the Mac Mini.
@@ -405,34 +404,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["outreach_id"],
       },
     },
-    {
-      name: "run_scout",
-      description: "Search Google Maps and/or Yelp for local businesses matching a vertical and location, and add them to the prospect review queue. Use this to fill the pipeline with local leads.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          vertical: {
-            type: "string",
-            enum: ["insurance", "mortgage", "wealth", "msp", "law", "other"],
-            description: "Industry vertical to search for.",
-          },
-          location: {
-            type: "string",
-            description: "City and state to search in, e.g. 'Phoenix, AZ' or 'Chicago, IL'.",
-          },
-          sources: {
-            type: "array",
-            items: { type: "string", enum: ["google_maps", "yelp"] },
-            description: "Which sources to search. Defaults to both.",
-          },
-          limit: {
-            type: "number",
-            description: "Max prospects to add per run (default 20, max 50).",
-          },
-        },
-        required: ["vertical", "location"],
-      },
-    },
   ],
 }));
 
@@ -446,45 +417,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "add_prospect": return toolAddProspect(args);
     case "list_approved_for_outreach": return toolListApprovedForOutreach();
     case "mark_sent": return toolMarkSent(args);
-    case "run_scout": return toolRunScout(args);
     default:
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }
 });
-
-// ---------------------------------------------------------------------------
-// toolRunScout
-// ---------------------------------------------------------------------------
-async function toolRunScout(args) {
-  const { vertical = "insurance", location, sources = ["google_maps", "yelp"], limit = 20 } = args;
-  const runnerToken = process.env.COWORK_RUNNER_TOKEN;
-  const baseUrl = process.env.TBJ_API_BASE || "https://thinkbigjoe.com";
-
-  if (!runnerToken) {
-    return { content: [{ type: "text", text: "❌ COWORK_RUNNER_TOKEN not set — can't call /api/scout." }], isError: true };
-  }
-
-  try {
-    const res = await fetch(`${baseUrl}/api/scout`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${runnerToken}`,
-      },
-      body: JSON.stringify({ vertical, location, sources, limit }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    return {
-      content: [{
-        type: "text",
-        text: `✅ Scout complete for ${vertical} in ${location}.\nAdded: ${data.inserted} new prospects | Skipped: ${data.skipped} duplicates\nSources: ${sources.join(", ")}`,
-      }],
-    };
-  } catch (err) {
-    return { content: [{ type: "text", text: `❌ Scout failed: ${err.message}` }], isError: true };
-  }
-}
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

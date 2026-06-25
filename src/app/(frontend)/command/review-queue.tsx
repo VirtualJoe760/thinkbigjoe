@@ -25,6 +25,12 @@ export type QueueItem = {
   hook: string;
   fitScore: number;
   profileUrl: string;
+  websiteUrl: string;
+  photoUrl: string;
+  websiteStatus: string;
+  websiteRating: number | null;
+  websiteNotes: string;
+  salesOpportunities: string[];
   updatedAt: string;
   approvedAt: string;
   sentAt: string;
@@ -104,7 +110,7 @@ export function ReviewQueue({ items }: { items: QueueItem[] }) {
 
   if (items.length === 0) {
     return (
-      <div className="rounded-2xl border border-line bg-background p-10 text-center">
+      <div className="rounded-xl border border-line bg-background p-8 text-center">
         <p className="text-ink-soft">Nothing here yet.</p>
       </div>
     );
@@ -125,7 +131,7 @@ export function ReviewQueue({ items }: { items: QueueItem[] }) {
   return (
     <div className="space-y-3">
       {pendingIds.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl bg-surface px-4 py-2.5">
+        <div className="flex flex-col gap-3 rounded-xl bg-surface px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center">
           <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
             <input
               type="checkbox"
@@ -136,7 +142,7 @@ export function ReviewQueue({ items }: { items: QueueItem[] }) {
             {selectedPending.length > 0 ? `${selectedPending.length} selected` : "Select all"}
           </label>
           {selectedPending.length > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 disabled={pending}
                 onClick={() => start(async () => { await approveMany(selectedPending); setSel(new Set()); })}
@@ -208,61 +214,104 @@ function Card({
   const diagnostic = DIAGNOSTIC[item.vertical] || DIAGNOSTIC.other;
 
   return (
-    <div className={`rounded-2xl border bg-background p-5 md:p-6 ${approved ? "border-brand" : "border-line"} ${checked ? "ring-2 ring-brand/30" : ""}`}>
-      <div className="flex items-start gap-3">
+    <div className={`rounded-xl border bg-background p-4 sm:p-5 ${approved ? "border-brand" : "border-line"} ${checked ? "ring-2 ring-brand/30" : ""}`}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
         {selectable && (
           <input
             type="checkbox"
             checked={checked}
             onChange={onToggle}
-            className="mt-1 h-4 w-4 flex-shrink-0 accent-brand"
+            className="h-4 w-4 flex-shrink-0 accent-brand sm:mt-1"
             aria-label={`Select ${item.name}`}
           />
         )}
-        <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-full bg-brand-tint text-sm font-semibold text-brand">
-          {initials(item.name)}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <a
-              href={`/command/${item.prospectId}`}
-              className="font-semibold hover:text-brand hover:underline"
-            >
-              {item.name}
-            </a>
-            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${fitColor(item.fitScore)}`}>
-              fit {item.fitScore}/6
-            </span>
-            {item.vertical && (
-              <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-ink-soft">
-                {VERTICAL_LABEL[item.vertical] || item.vertical}
-              </span>
-            )}
-            {item.degree && (
-              <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-ink-soft">
-                {item.degree}
-              </span>
-            )}
-            <span className={`text-xs font-medium ${sline.tone}`}>· {sline.text}</span>
-          </div>
-          <p className="text-sm text-ink-soft">
-            {[item.title, item.company].filter(Boolean).join(", ")}
-            {item.location ? ` · ${item.location}` : ""}
-          </p>
-        </div>
-        {item.profileUrl && (
-          <a
-            href={item.profileUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex-shrink-0 rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface"
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div
+            className="grid h-12 w-12 flex-shrink-0 place-items-center overflow-hidden rounded-full bg-brand-tint bg-cover bg-center text-sm font-semibold text-brand"
+            style={item.photoUrl ? { backgroundImage: `url("${item.photoUrl}")` } : undefined}
+            aria-hidden="true"
           >
-            Open profile ↗
-          </a>
-        )}
+            {!item.photoUrl && initials(item.name)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={`/command/${item.prospectId}`}
+                className="min-w-0 max-w-full truncate font-semibold hover:text-brand hover:underline"
+              >
+                {item.name}
+              </a>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${fitColor(item.fitScore)}`}>
+                fit {item.fitScore}/6
+              </span>
+              {item.websiteRating && (
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                  site {item.websiteRating}/10
+                </span>
+              )}
+              {item.vertical && (
+                <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-ink-soft">
+                  {VERTICAL_LABEL[item.vertical] || item.vertical}
+                </span>
+              )}
+              {item.degree && (
+                <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-ink-soft">
+                  {item.degree}
+                </span>
+              )}
+              <span className={`text-xs font-medium ${sline.tone}`}>· {sline.text}</span>
+            </div>
+            <p className="mt-0.5 text-sm text-ink-soft">
+              {[item.title, item.company].filter(Boolean).join(", ")}
+              {item.location ? ` · ${item.location}` : ""}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 sm:justify-end">
+          {item.websiteUrl && (
+            <a
+              href={item.websiteUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface"
+            >
+              Website
+            </a>
+          )}
+          {item.profileUrl && (
+            <a
+              href={item.profileUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface"
+            >
+              LinkedIn
+            </a>
+          )}
+        </div>
       </div>
 
       {item.hook && <p className="mt-3 text-xs text-ink-soft">💡 {item.hook}</p>}
+
+      {(item.websiteStatus || item.websiteNotes || item.salesOpportunities.length > 0) && (
+        <div className="mt-3 grid gap-2 rounded-xl border border-line bg-surface p-3 text-xs leading-relaxed text-ink-soft md:grid-cols-[0.9fr_1.1fr]">
+          <div>
+            <span className="block font-semibold text-ink">Website read</span>
+            {item.websiteStatus && <span>{item.websiteStatus}</span>}
+            {item.websiteNotes && <p className="mt-1">{item.websiteNotes}</p>}
+          </div>
+          {item.salesOpportunities.length > 0 && (
+            <div>
+              <span className="block font-semibold text-ink">Sales opportunities</span>
+              <ul className="mt-1 space-y-1">
+                {item.salesOpportunities.slice(0, 3).map((opportunity) => (
+                  <li key={opportunity}>• {opportunity}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {editing ? (
         <textarea
@@ -289,7 +338,7 @@ function Card({
         </details>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         {editing ? (
           <>
             <button
@@ -313,7 +362,7 @@ function Card({
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="Why? (optional — improves future drafts)"
-              className="flex-1 rounded-full border border-line bg-surface px-4 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
+              className="min-w-0 flex-1 rounded-full border border-line bg-surface px-4 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
             />
             <button
               disabled={pending}
@@ -368,7 +417,7 @@ function Card({
         {!denying && (
           <button
             onClick={() => navigator.clipboard?.writeText(body)}
-            className="ml-auto rounded-full border border-line px-4 py-2 text-sm font-semibold transition-colors hover:bg-surface"
+            className="rounded-full border border-line px-4 py-2 text-sm font-semibold transition-colors hover:bg-surface sm:ml-auto"
           >
             Copy note
           </button>

@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 
 import { db, outreach, prospects } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
+import { parseProspectRecon } from "@/lib/prospect-recon";
 import { StepCard, type Step } from "./step-card";
 
 export const dynamic = "force-dynamic";
@@ -64,6 +66,7 @@ export default async function ProspectPage({
 
   const vertical = p.vertical ? String(p.vertical) : "other";
   const company = p.company || "";
+  const recon = parseProspectRecon(p.recon);
 
   // ensure the full sequence exists (idempotent): diagnostic + invite drafts
   const existing = await db
@@ -100,18 +103,22 @@ export default async function ProspectPage({
     .toUpperCase();
 
   return (
-    <div className="px-6 py-8">
-      <div className="mx-auto w-full max-w-3xl">
+    <div className="px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mx-auto w-full max-w-4xl">
         <div className="mb-6">
-          <a href="/command/prospects" className="text-sm font-medium text-ink-soft hover:text-ink">
+          <Link href="/command/prospects" className="text-sm font-medium text-ink-soft hover:text-ink">
             ‹ Back to queue
-          </a>
+          </Link>
         </div>
 
-        <div className="rounded-2xl border border-line bg-background p-6">
-          <div className="flex items-start gap-4">
-            <div className="grid h-12 w-12 flex-shrink-0 place-items-center rounded-full bg-brand-tint text-base font-semibold text-brand">
-              {initials}
+        <div className="rounded-xl border border-line bg-background p-4 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            <div
+              className="grid h-16 w-16 flex-shrink-0 place-items-center overflow-hidden rounded-full bg-brand-tint bg-cover bg-center text-base font-semibold text-brand"
+              style={recon.photoUrl ? { backgroundImage: `url("${recon.photoUrl}")` } : undefined}
+              aria-hidden="true"
+            >
+              {!recon.photoUrl && initials}
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
@@ -119,6 +126,11 @@ export default async function ProspectPage({
                 <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700">
                   fit {Number(p.fitScore || 0)}/6
                 </span>
+                {recon.websiteRating && (
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                    site {recon.websiteRating}/10
+                  </span>
+                )}
                 {p.degree && (
                   <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-ink-soft">
                     {p.degree}
@@ -136,18 +148,50 @@ export default async function ProspectPage({
                 </p>
               )}
             </div>
-            {p.profileUrl && (
-              <a
-                href={p.profileUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-shrink-0 rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface"
-              >
-                Open profile ↗
-              </a>
-            )}
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              {recon.websiteUrl && (
+                <a
+                  href={recon.websiteUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface"
+                >
+                  Website
+                </a>
+              )}
+              {p.profileUrl && (
+                <a
+                  href={p.profileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface"
+                >
+                  LinkedIn
+                </a>
+              )}
+            </div>
           </div>
         </div>
+
+        {(recon.websiteStatus || recon.websiteNotes || recon.salesOpportunities.length > 0) && (
+          <div className="mt-4 grid gap-3 rounded-xl border border-line bg-background p-4 text-sm leading-relaxed md:grid-cols-[0.9fr_1.1fr]">
+            <div>
+              <h2 className="font-bold tracking-tight">Website research</h2>
+              {recon.websiteStatus && <p className="mt-1 text-ink-soft">{recon.websiteStatus}</p>}
+              {recon.websiteNotes && <p className="mt-2 text-ink-soft">{recon.websiteNotes}</p>}
+            </div>
+            {recon.salesOpportunities.length > 0 && (
+              <div>
+                <h2 className="font-bold tracking-tight">Sales opportunities</h2>
+                <ul className="mt-2 space-y-1.5 text-ink-soft">
+                  {recon.salesOpportunities.map((opportunity) => (
+                    <li key={opportunity}>• {opportunity}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
 
         <h2 className="mt-8 mb-3 text-lg font-bold tracking-tight">Outreach sequence</h2>
         <div className="space-y-3">
@@ -155,14 +199,14 @@ export default async function ProspectPage({
             <StepCard key={s.id} step={s} prospectId={id} canApprove={s.step === "connection"} />
           ))}
 
-          <div className="rounded-2xl border border-line bg-surface p-5">
+          <div className="rounded-xl border border-line bg-surface p-5">
             <span className="text-sm font-bold tracking-tight">3 · Reflect (after they reply)</span>
             <p className="mt-2 text-sm leading-relaxed text-ink-soft">{REFLECT_GUIDANCE}</p>
           </div>
         </div>
 
         <h2 className="mt-8 mb-3 text-lg font-bold tracking-tight">Pre-call solution sketch</h2>
-        <div className="rounded-2xl border border-line bg-background p-6 text-sm leading-relaxed text-ink-soft">
+        <div className="rounded-xl border border-line bg-background p-5 text-sm leading-relaxed text-ink-soft sm:p-6">
           <p className="font-medium text-ink">Fill before the call:</p>
           <ul className="mt-2 space-y-1.5">
             <li>• Stated pain: ______________________</li>

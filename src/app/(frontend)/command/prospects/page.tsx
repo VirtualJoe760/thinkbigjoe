@@ -5,7 +5,6 @@ import { db, outreach, prospects } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { parseProspectRecon } from "@/lib/prospect-recon";
 import { ReviewQueue, type QueueItem } from "../review-queue";
-import { ScoutForm } from "./scout-form";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -152,11 +151,7 @@ export default async function ProspectsPage({
       <div className="mx-auto w-full max-w-5xl">
         <h1 className="text-2xl font-extrabold tracking-tight">Prospecting</h1>
 
-        <div className="mt-6">
-          <ScoutForm />
-        </div>
-
-        <div className="mt-8 flex flex-wrap gap-2 border-b border-line">
+        <div className="mt-6 flex flex-wrap gap-2 border-b border-line">
           {tabs.map((t) => {
             const active = t.key === view;
             return (
