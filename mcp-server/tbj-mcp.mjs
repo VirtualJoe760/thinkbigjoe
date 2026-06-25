@@ -6,6 +6,8 @@
  *   get_status               — pipeline counts (prospects, drafts, approved, sent, follow-ups)
  *   list_pending_replies     — reply_drafts awaiting Joe's approval
  *   handle_reply             — approve / pause / edit a pending reply draft
+ *   save_inbound_reply       — record an inbound LinkedIn message + set prospect status='replied'
+ *   save_reply_draft         — store Venus's drafted response for Joe's review in the leads page
  *   add_prospect             — add a researched prospect to the review queue
  *   list_needs_enrichment    — prospects missing photo/email/GMB (paginated)
  *   check_outreach_window    — verify working hours / daily limit before sending
@@ -136,6 +138,94 @@ async function toolHandleReply({ draft_id, action }) {
     content: [{
       type: "text",
       text: `✅ Approved reply for ${row.prospect_name}:\n_${finalText?.slice(0, 300)}_\n\nThe Windows sender will post it shortly.`,
+    }],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// save_inbound_reply — record an inbound LinkedIn message, move prospect to 'replied',
+//   return full conversation thread so Venus can draft a contextual response.
+// ---------------------------------------------------------------------------
+async function toolSaveInboundReply({ prospect_id, prospect_name, message, platform = "linkedin" }) {
+  if (!prospect_name || !message) {
+    return { content: [{ type: "text", text: "prospect_name and message are required." }] };
+  }
+
+  let pid = prospect_id ? Number(prospect_id) : null;
+
+  // Resolve prospect by ID or name lookup
+  if (!pid && prospect_name) {
+    const found = await query(
+      `SELECT id FROM prospects WHERE lower(name) = lower($1) LIMIT 1`,
+      [prospect_name.trim()],
+    );
+    if (found.rows.length) pid = found.rows[0].id;
+  }
+
+  if (!pid) {
+    return { content: [{ type: "text", text: `Could not find prospect "${prospect_name}" in the DB. Add them with add_prospect first.` }] };
+  }
+
+  // Save inbound message
+  await query(
+    `INSERT INTO conversations (prospect_id, direction, body, platform) VALUES ($1, 'inbound', $2, $3)`,
+    [pid, message.trim(), platform],
+  );
+
+  // Move to 'replied' unless already further along
+  await query(
+    `UPDATE prospects SET status = 'replied', updated_at = now()
+     WHERE id = $1 AND status NOT IN ('invited','prepped','meeting','won','lost','disqualified')`,
+    [pid],
+  );
+
+  // Return last 10 messages for context
+  const thread = await query(
+    `SELECT direction, body, created_at FROM conversations
+     WHERE prospect_id = $1 ORDER BY created_at ASC LIMIT 10`,
+    [pid],
+  );
+
+  const history = thread.rows.map((r) => `[${r.direction}] ${r.body}`).join("\n");
+  return {
+    content: [{
+      type: "text",
+      text: [
+        `✅ Saved inbound reply for prospect #${pid} (${prospect_name}). Status → replied.`,
+        ``,
+        `Conversation history (${thread.rows.length} messages):`,
+        history,
+        ``,
+        `Draft your response and call save_reply_draft with prospect_id=${pid}, prospect_name, their original message, and your draft text.`,
+      ].join("\n"),
+    }],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// save_reply_draft — store Venus's drafted LinkedIn response for Joe to review
+//   in the Leads page before it's sent. Joe approves or edits in the UI.
+// ---------------------------------------------------------------------------
+async function toolSaveReplyDraft({ prospect_id, prospect_name, their_message, draft }) {
+  if (!prospect_name || !their_message || !draft) {
+    return { content: [{ type: "text", text: "prospect_name, their_message, and draft are required." }] };
+  }
+  const pid = prospect_id ? Number(prospect_id) : null;
+  const res = await query(
+    `INSERT INTO reply_drafts (prospect_id, prospect_name, their_message, draft, status)
+     VALUES ($1, $2, $3, $4, 'awaiting')
+     RETURNING id`,
+    [pid, prospect_name.trim(), their_message.trim(), draft.trim()],
+  );
+  const id = res.rows[0]?.id;
+  return {
+    content: [{
+      type: "text",
+      text: [
+        `✅ Reply draft #${id} saved for ${prospect_name} — status: awaiting Joe's review.`,
+        `Joe will see it in the Leads page at thinkbigjoe.com/command/leads and can approve or edit before it's sent.`,
+        `Do NOT send this on LinkedIn yourself — wait for Joe's approval.`,
+      ].join("\n"),
     }],
   };
 }
@@ -524,7 +614,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "1.9.0" },
+  { name: "tbj-mcp", version: "2.0.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -550,6 +640,34 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           action: { type: "string", description: "'send', 'pause', or your own reply text." },
         },
         required: ["draft_id", "action"],
+      },
+    },
+    {
+      name: "save_inbound_reply",
+      description: "Record an inbound LinkedIn message from a prospect. Saves it to the conversation thread, sets the prospect's status to 'replied', and returns the full conversation history so you can draft a contextual response. Call this FIRST when you detect a reply in the LinkedIn inbox, BEFORE drafting anything.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          prospect_id: { type: "number", description: "Prospect DB id if known." },
+          prospect_name: { type: "string", description: "Full name of the person who replied." },
+          message: { type: "string", description: "Exact text of their message." },
+          platform: { type: "string", description: "Platform (default: linkedin)." },
+        },
+        required: ["prospect_name", "message"],
+      },
+    },
+    {
+      name: "save_reply_draft",
+      description: "Store your drafted response to a LinkedIn reply for Joe to review in the Leads page (thinkbigjoe.com/command/leads) before it's sent. Do NOT send the message yourself — Joe approves it in the UI first. Call this after save_inbound_reply and after you have written a draft reply.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          prospect_id: { type: "number", description: "Prospect DB id." },
+          prospect_name: { type: "string", description: "Full name of the prospect." },
+          their_message: { type: "string", description: "Their original message text." },
+          draft: { type: "string", description: "Your drafted response." },
+        },
+        required: ["prospect_name", "their_message", "draft"],
       },
     },
     {
@@ -721,6 +839,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "get_status": return toolGetStatus();
     case "list_pending_replies": return toolListPendingReplies();
     case "handle_reply": return toolHandleReply(args);
+    case "save_inbound_reply": return toolSaveInboundReply(args);
+    case "save_reply_draft": return toolSaveReplyDraft(args);
     case "list_needs_enrichment": return toolListNeedsEnrichment(args);
     case "check_outreach_window": return toolCheckOutreachWindow();
     case "add_prospect": return toolAddProspect(args);
