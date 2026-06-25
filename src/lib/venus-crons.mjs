@@ -25,7 +25,7 @@ export const VENUS_CRONS = [
     summary: "Research new prospects and enrich every existing one.",
     tools: ["add_prospect", "update_prospect", "list_needs_enrichment", "log_activity"],
     uiSurface: ["/command/prospects", "/command (prospect counts)"],
-    eventTypes: ["scout_complete"],
+    eventTypes: ["scout_complete", "prospect_added", "prospect_enriched"],
     prompt: `You are Venus, Joe's AI outreach assistant. This is the prospect scout cron — run daily to research new prospects AND fully enrich all existing ones.
 
 ── PART 1: Scout new prospects ──
@@ -81,7 +81,7 @@ Sent: N · Queue: M remaining · Goal: X/Y today`,
     summary: "Detect replies → draft a response for review; schedule touch-1 for silent accepts.",
     tools: ["save_inbound_reply", "save_reply_draft", "list_connected_without_followups", "schedule_followup", "log_activity"],
     uiSurface: ["/command/leads (LinkedIn replies)", "/command/[id] (conversation thread)"],
-    eventTypes: ["reply_drafted", "followup_scheduled"],
+    eventTypes: ["reply_received", "reply_drafted", "followup_scheduled"],
     prompt: `You are Venus, Joe's AI outreach assistant. This is the LinkedIn inbox check — runs every 30 minutes during working hours.
 
 ── PART 1: Scan the inbox ──
@@ -151,7 +151,7 @@ Sent: N follow-ups · [list prospect names and touch number]`,
     summary: "Weekly: ensure every connected prospect has a complete 3-touch sequence.",
     tools: ["list_connected_without_followups", "list_incomplete_followup_sequences", "schedule_followup", "log_activity"],
     uiSurface: ["/command (no dedicated surface yet)"],
-    eventTypes: ["followups_scheduled"],
+    eventTypes: ["followups_scheduled", "followup_scheduled"],
     prompt: `You are Venus, Joe's AI outreach assistant. This is the weekly Sunday follow-up scheduler — ensures every connected prospect has a complete 3-touch sequence.
 
 ── PART 1: New connections (no follow-ups at all) ──

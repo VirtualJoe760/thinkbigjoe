@@ -36,6 +36,20 @@ never used · cron with no UI → work happens with no way to review it.
 exact prompt, tools, and the UI surface it feeds). Edit there → `npm run venus:sync` (use
 `-- --dry` to preview). The `/command/crons` tab renders the manifest + last-run from `activity_log`.
 
+## Auditability — every action self-logs
+
+Venus must be verifiable. So **any MCP tool that changes state calls `audit(...)` as a side effect
+of its real DB write** (see `mcp-server/tbj-mcp.mjs`) — the log reflects what actually happened, not
+what Venus reports. These rows are tagged `metadata.auto = true` ("verified") to distinguish them
+from Venus's manual `log_activity` rollups ("reported"). Reviewed at `/command/jobs` (the audit log),
+filterable by action and attributed to the cron that ran it.
+
+Rules when you add a Venus capability:
+- A new state-changing tool **must** call `audit(action, summary, { prospectId, target, detail })`.
+- Anything Venus does on a schedule must be a **declared cron** in the manifest — no ad-hoc,
+  untracked agents. If Venus controls a sub-agent, that sub-agent runs on a declared cron too.
+- Don't rely on the agent choosing to log — bake logging into the tool so it can't be skipped.
+
 ## Working rules
 - **Run `pnpm run build` before every push** — it runs `tsc`; a clean build is the merge gate.
 - **Never commit secrets or PII**: no `.env*` files, no prospecting CSVs (gitignored under `/prospecting/`).

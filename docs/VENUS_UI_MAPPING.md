@@ -130,11 +130,24 @@ aren't being sent.
 
 ---
 
-### `/command/jobs` — Activity log
+### `/command/jobs` — Audit log
 
 | Content | DB source | Venus action | Cron |
 |---|---|---|---|
-| All Venus activity | `activity_log` table | `log_activity` | Every cron calls this at the end |
+| Verified actions | `activity_log` (`metadata.auto = true`) | `audit()` — auto-called by every state-changing MCP tool | all crons (as a side effect of their tools) |
+| Reported summaries | `activity_log` (no `auto` flag) | `log_activity` | every cron calls this at the end |
+
+**Verified vs reported.** Every state-changing MCP tool (`mark_sent`, `save_inbound_reply`,
+`save_reply_draft`, `handle_reply`, `add_prospect`, `update_prospect`, `schedule_followup`,
+`mark_followup_sent`, `book_appointment`) calls `audit()` as a side effect of its real DB write.
+Those rows are **verified** — they reflect what actually changed in the database, independent of
+whatever Venus says in her end-of-cron `log_activity` summary (**reported**). When the two
+disagree, that's the signal to investigate. The audit log attributes each action to the cron that
+owns its `event_type` (from the manifest's `eventTypes`).
+
+**Adding a state-changing tool?** It MUST call `audit(action, summary, { prospectId, target, detail })`,
+and the action's `event_type` should be listed in the owning cron's `eventTypes` in
+`src/lib/venus-crons.mjs` so it's attributed to the right agent.
 
 ---
 
@@ -158,6 +171,7 @@ Every Venus feature ships all three layers in the same PR. Before merging:
 - [ ] Tool added to `mcp-server/tbj-mcp.mjs` that reads/writes the correct DB table/column.
 - [ ] Tool registered in BOTH the `ListToolsRequestSchema` handler AND the `CallToolRequestSchema` switch.
 - [ ] Tool output column names/types match what the UI query expects.
+- [ ] If it changes state, it calls `audit(action, summary, { prospectId, target, detail })`.
 - [ ] MCP server `version` bumped.
 
 **Schedule (cron manifest)**

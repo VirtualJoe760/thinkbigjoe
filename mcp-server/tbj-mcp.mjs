@@ -22,6 +22,11 @@
  *
  * Reads DATABASE_URL from env (passed via OpenClaw mcp.servers config).
  * No Vercel deploy needed — runs locally on the Mac Mini.
+ *
+ * AUDIT TRAIL: every action tool calls audit() as a side effect of its real DB
+ * write, so activity_log mirrors what ACTUALLY happened (metadata.auto = true),
+ * independent of Venus's self-reported log_activity summaries. Reviewed at
+ * /command/jobs (the audit log). See docs/VENUS_UI_MAPPING.md.
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -49,6 +54,26 @@ async function query(sql, params = []) {
     return await client.query(sql, params);
   } finally {
     client.release();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// audit() — tamper-evident action log. Called BY the action tools themselves,
+// as a side effect of the real DB write, so the trail reflects what ACTUALLY
+// happened — not whatever Venus reports in her end-of-cron summary. Rows are
+// tagged metadata.auto = true to distinguish verified DB facts from Venus's
+// manual log_activity rollups. Never throws: a logging failure must not break
+// the underlying action.
+// ---------------------------------------------------------------------------
+async function audit(action, summary, { prospectId = null, target = null, detail = null } = {}) {
+  try {
+    await query(
+      `INSERT INTO activity_log (actor, event_type, summary, metadata)
+       VALUES ('venus', $1, $2, $3::jsonb)`,
+      [action, summary, JSON.stringify({ auto: true, prospectId, target, detail })],
+    );
+  } catch (err) {
+    console.error(`[audit] failed to log ${action}:`, err?.message || err);
   }
 }
 
@@ -127,6 +152,10 @@ async function toolHandleReply({ draft_id, action }) {
   if (/^(pause|skip|stop|hold|mute|ignore|no)\b/.test(lower)) {
     await query(`UPDATE reply_drafts SET status = 'paused', updated_at = now() WHERE id = $1`, [draft_id]);
     await query(`UPDATE prospects SET paused = true, updated_at = now() WHERE id = (SELECT prospect_id FROM reply_drafts WHERE id = $1)`, [draft_id]);
+    await audit("reply_paused", `Paused reply thread for ${row.prospect_name}`, {
+      target: row.prospect_name,
+      detail: { draftId: draft_id },
+    });
     return { content: [{ type: "text", text: `⏸ Paused draft #${draft_id} for ${row.prospect_name} — nothing sent, that thread is muted.` }] };
   }
   const finalText = /^(send|yes|go|approve|ok|sure|send it)\b/.test(lower) ? row.draft : action;
@@ -134,6 +163,10 @@ async function toolHandleReply({ draft_id, action }) {
     `UPDATE reply_drafts SET status = 'approved', final_text = $1, updated_at = now() WHERE id = $2`,
     [finalText, draft_id],
   );
+  await audit("reply_approved", `Approved reply to ${row.prospect_name}`, {
+    target: row.prospect_name,
+    detail: { draftId: draft_id, finalText },
+  });
   return {
     content: [{
       type: "text",
@@ -179,6 +212,12 @@ async function toolSaveInboundReply({ prospect_id, prospect_name, message, platf
     [pid],
   );
 
+  await audit("reply_received", `Inbound reply from ${prospect_name}`, {
+    prospectId: pid,
+    target: prospect_name,
+    detail: { message: message.trim(), platform },
+  });
+
   // Return last 10 messages for context
   const thread = await query(
     `SELECT direction, body, created_at FROM conversations
@@ -218,6 +257,11 @@ async function toolSaveReplyDraft({ prospect_id, prospect_name, their_message, d
     [pid, prospect_name.trim(), their_message.trim(), draft.trim()],
   );
   const id = res.rows[0]?.id;
+  await audit("reply_drafted", `Drafted reply to ${prospect_name}`, {
+    prospectId: pid,
+    target: prospect_name,
+    detail: { theirMessage: their_message.trim(), draft: draft.trim() },
+  });
   return {
     content: [{
       type: "text",
@@ -273,6 +317,11 @@ async function toolAddProspect({
     `INSERT INTO outreach (prospect_id, step, status, body) VALUES ($1, 'connection', 'draft', $2)`,
     [prospect_id, hook],
   );
+  await audit("prospect_added", `Added ${name}${company ? ` · ${company}` : ""}`, {
+    prospectId: prospect_id,
+    target: name,
+    detail: { company, vertical, source, fitScore: fit_score },
+  });
   return { content: [{ type: "text", text: `✅ Added ${name} from ${company} to the review queue.` }] };
 }
 
@@ -313,6 +362,12 @@ async function toolUpdateProspect({
     source !== undefined ? [JSON.stringify(updated), prospect_id, String(source).trim()] : [JSON.stringify(updated), prospect_id],
   );
   const changes = Object.keys(updated).filter((k) => updated[k] !== current[k]);
+  if (changes.length) {
+    await audit("prospect_enriched", `Enriched prospect #${prospect_id}: ${changes.join(", ")}`, {
+      prospectId: prospect_id,
+      detail: { fields: changes },
+    });
+  }
   return { content: [{ type: "text", text: `✅ Updated prospect #${prospect_id} — enriched: ${changes.join(", ") || "no changes"}.` }] };
 }
 
@@ -432,14 +487,24 @@ async function toolListApprovedForOutreach() {
 }
 
 async function toolMarkSent({ outreach_id, notes }) {
-  await query(
-    `UPDATE outreach SET status = 'sent', sent_at = now() WHERE id = $1`,
+  const upd = await query(
+    `UPDATE outreach SET status = 'sent', sent_at = now() WHERE id = $1 RETURNING prospect_id, body`,
     [outreach_id],
   );
-  await query(
-    `UPDATE prospects SET status = 'connected' WHERE id = (SELECT prospect_id FROM outreach WHERE id = $1)`,
-    [outreach_id],
+  const o = upd.rows[0];
+  if (!o) {
+    return { content: [{ type: "text", text: `Outreach #${outreach_id} not found.` }] };
+  }
+  const p = await query(
+    `UPDATE prospects SET status = 'connected' WHERE id = $1 RETURNING name`,
+    [o.prospect_id],
   );
+  const name = p.rows[0]?.name ?? null;
+  await audit("outreach_sent", `Sent connection request to ${name || `prospect #${o.prospect_id}`}`, {
+    prospectId: o.prospect_id,
+    target: name,
+    detail: { note: o.body, notes: notes || null },
+  });
   const extra = notes ? `\nNotes: ${notes}` : "";
   return { content: [{ type: "text", text: `✅ Marked as sent. Prospect moved to 'connected' status.${extra}` }] };
 }
@@ -477,6 +542,13 @@ async function toolScheduleFollowup({ prospect_id, touch_number, days_from_now, 
   );
   const row = res.rows[0];
   const date = new Date(row.scheduled_for).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const pn = await query(`SELECT name FROM prospects WHERE id = $1`, [prospect_id]);
+  const name = pn.rows[0]?.name ?? null;
+  await audit("followup_scheduled", `Scheduled touch ${touch_number} for ${name || `prospect #${prospect_id}`} (due ${date})`, {
+    prospectId: prospect_id,
+    target: name,
+    detail: { touch: touch_number, scheduledFor: row.scheduled_for, body },
+  });
   return {
     content: [{
       type: "text",
@@ -565,13 +637,20 @@ async function toolListDueFollowups() {
 
 async function toolMarkFollowupSent({ followup_id, notes }) {
   const res = await query(
-    `UPDATE follow_ups SET status = 'sent', sent_at = now(), updated_at = now() WHERE id = $1 RETURNING id, prospect_id, touch_number`,
+    `UPDATE follow_ups SET status = 'sent', sent_at = now(), updated_at = now() WHERE id = $1 RETURNING id, prospect_id, touch_number, body`,
     [followup_id],
   );
   if (!res.rows.length) {
     return { content: [{ type: "text", text: `Follow-up #${followup_id} not found.` }] };
   }
   const row = res.rows[0];
+  const pn = await query(`SELECT name FROM prospects WHERE id = $1`, [row.prospect_id]);
+  const fname = pn.rows[0]?.name ?? null;
+  await audit("followup_sent", `Sent follow-up touch ${row.touch_number} to ${fname || `prospect #${row.prospect_id}`}`, {
+    prospectId: row.prospect_id,
+    target: fname,
+    detail: { touch: row.touch_number, body: row.body, notes: notes || null },
+  });
   const extra = notes ? `\nNotes: ${notes}` : "";
   return {
     content: [{
@@ -599,6 +678,10 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
     if (!resp.ok) {
       return { content: [{ type: "text", text: `❌ Booking failed (${resp.status}): ${data?.error || "unknown error"}` }] };
     }
+    await audit("booking_made", `Booked strategy call for ${name}`, {
+      target: name,
+      detail: { email, startTime: start_time, company: company || null },
+    });
     return {
       content: [{
         type: "text",
@@ -614,7 +697,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.0.0" },
+  { name: "tbj-mcp", version: "2.1.0" },
   { capabilities: { tools: {} } },
 );
 
