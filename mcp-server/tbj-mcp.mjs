@@ -2,11 +2,14 @@
 /**
  * tbj-mcp — ThinkBigJoe MCP server for Venus (OpenClaw)
  *
- * Exposes four tools Venus can call:
- *   queue_job         — natural-language command → cowork_jobs row
- *   get_status        — queue + pipeline counts + recent jobs
- *   list_pending_replies — reply_drafts awaiting Joe's approval
- *   handle_reply      — approve / pause / edit a pending reply draft
+ * Exposes seven tools Venus can call:
+ *   queue_job                — natural-language command → cowork_jobs row
+ *   get_status               — queue + pipeline counts + recent jobs
+ *   list_pending_replies     — reply_drafts awaiting Joe's approval
+ *   handle_reply             — approve / pause / edit a pending reply draft
+ *   add_prospect             — add a researched prospect to the review queue
+ *   list_approved_for_outreach — find approved connection requests to send
+ *   mark_sent                — record that a LinkedIn connection request was sent
  *
  * Reads DATABASE_URL from env (passed via OpenClaw mcp.servers config).
  * No Vercel deploy needed — runs locally on the Mac Mini.
@@ -141,10 +144,12 @@ async function toolQueueJob({ command }) {
 }
 
 async function toolGetStatus() {
-  const [queued, prospects, drafts, recent] = await Promise.all([
+  const [queued, prospects, drafts, pendingReview, approvedWaiting, recent] = await Promise.all([
     query(`SELECT count(*)::int AS n FROM cowork_jobs WHERE status = 'queued'`),
     query(`SELECT count(*)::int AS n FROM prospects`),
     query(`SELECT count(*)::int AS n FROM outreach WHERE status = 'draft'`),
+    query(`SELECT count(*)::int AS n FROM prospects WHERE status = 'new'`),
+    query(`SELECT count(*)::int AS n FROM outreach WHERE step = 'connection' AND status = 'approved'`),
     query(`SELECT id, intent, vertical, location, target_count, status, result_summary, created_at FROM cowork_jobs ORDER BY created_at DESC LIMIT 5`),
   ]);
   const lines = [
@@ -152,6 +157,8 @@ async function toolGetStatus() {
     `• Jobs queued: **${queued.rows[0].n}**`,
     `• Prospects in DB: **${prospects.rows[0].n}**`,
     `• Outreach drafts pending: **${drafts.rows[0].n}**`,
+    `• Prospects pending review: **${pendingReview.rows[0].n}**`,
+    `• Approved connections waiting to send: **${approvedWaiting.rows[0].n}**`,
   ];
   if (recent.rows.length) {
     lines.push("", "**Recent jobs:**");
@@ -222,11 +229,71 @@ async function toolHandleReply({ draft_id, action }) {
   };
 }
 
+async function toolAddProspect({
+  name, title, company, vertical, location, profile_url,
+  fit_score, fit_reason, hook, source = "venus_scout",
+}) {
+  const res = await query(
+    `INSERT INTO prospects (name, title, company, vertical, location, profile_url, fit_score, fit_reason, hook, source, status, paused)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'new', false)
+     ON CONFLICT (profile_url) DO NOTHING
+     RETURNING id`,
+    [name, title, company, vertical, location, profile_url, fit_score, fit_reason, hook, source],
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: `⚠️ ${name} is already in the DB (duplicate URL).` }] };
+  }
+  const prospect_id = res.rows[0].id;
+  await query(
+    `INSERT INTO outreach (prospect_id, step, status, body) VALUES ($1, 'connection', 'draft', $2)`,
+    [prospect_id, hook],
+  );
+  return { content: [{ type: "text", text: `✅ Added ${name} from ${company} to the review queue.` }] };
+}
+
+async function toolListApprovedForOutreach() {
+  const res = await query(
+    `SELECT p.id, p.name, p.title, p.company, p.vertical, p.location, p.profile_url,
+            o.body, o.id AS outreach_id
+     FROM prospects p
+     JOIN outreach o ON o.prospect_id = p.id
+     WHERE o.step = 'connection' AND o.status = 'approved' AND p.paused = false
+     ORDER BY o.approved_at ASC
+     LIMIT 5`,
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: "No approved prospects waiting — queue is clear." }] };
+  }
+  const lines = [`🔗 **${res.rows.length} approved connection request(s) to send:**`, ""];
+  for (const r of res.rows) {
+    lines.push(`**#${r.id} ${r.name}** · ${r.title} at ${r.company} · ${r.location}`);
+    lines.push(`LinkedIn: ${r.profile_url}`);
+    lines.push(`Note to send: ${r.body}`);
+    lines.push(`_(outreach_id: ${r.outreach_id})_`);
+    lines.push("");
+  }
+  lines.push("Use mark_sent with the outreach_id after sending each connection request.");
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolMarkSent({ outreach_id, notes }) {
+  await query(
+    `UPDATE outreach SET status = 'sent', sent_at = now() WHERE id = $1`,
+    [outreach_id],
+  );
+  await query(
+    `UPDATE prospects SET status = 'connected' WHERE id = (SELECT prospect_id FROM outreach WHERE id = $1)`,
+    [outreach_id],
+  );
+  const extra = notes ? `\nNotes: ${notes}` : "";
+  return { content: [{ type: "text", text: `✅ Marked as sent. Prospect moved to 'connected' status.${extra}` }] };
+}
+
 // ---------------------------------------------------------------------------
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "1.0.0" },
+  { name: "tbj-mcp", version: "1.1.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -245,7 +312,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "get_status",
-      description: "Get current ThinkBigJoe pipeline status: queued jobs, prospect DB size, outreach drafts pending, and recent job history.",
+      description: "Get current ThinkBigJoe pipeline status: queued jobs, prospect DB size, outreach drafts pending, prospects pending review, approved connections waiting to send, and recent job history.",
       inputSchema: { type: "object", properties: {} },
     },
     {
@@ -265,6 +332,47 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["draft_id", "action"],
       },
     },
+    {
+      name: "add_prospect",
+      description: "Add a researched prospect to the review queue. Call this after researching someone online. Creates a prospect record and a draft connection note ready for Joe's approval.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Full name of the prospect." },
+          title: { type: "string", description: "Job title." },
+          company: { type: "string", description: "Company name." },
+          vertical: {
+            type: "string",
+            enum: ["insurance", "mortgage", "wealth", "msp", "law", "other"],
+            description: "Industry vertical.",
+          },
+          location: { type: "string", description: "City, state or region." },
+          profile_url: { type: "string", description: "LinkedIn profile URL (used as unique key)." },
+          fit_score: { type: "number", description: "Fit score 1–10." },
+          fit_reason: { type: "string", description: "Why this prospect is a good fit." },
+          hook: { type: "string", description: "The personalized LinkedIn connection note Venus will send." },
+          source: { type: "string", description: "How the prospect was found. Defaults to 'venus_scout'." },
+        },
+        required: ["name", "title", "company", "vertical", "location", "profile_url", "fit_score", "fit_reason", "hook"],
+      },
+    },
+    {
+      name: "list_approved_for_outreach",
+      description: "List prospects whose connection requests have been approved by Joe and are ready to send on LinkedIn. Returns up to 5, oldest-approved first.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "mark_sent",
+      description: "Record that a LinkedIn connection request was successfully sent. Updates the outreach status to 'sent' and moves the prospect to 'connected'.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          outreach_id: { type: "number", description: "The outreach_id from list_approved_for_outreach." },
+          notes: { type: "string", description: "Optional notes about the send." },
+        },
+        required: ["outreach_id"],
+      },
+    },
   ],
 }));
 
@@ -275,6 +383,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "get_status": return toolGetStatus();
     case "list_pending_replies": return toolListPendingReplies();
     case "handle_reply": return toolHandleReply(args);
+    case "add_prospect": return toolAddProspect(args);
+    case "list_approved_for_outreach": return toolListApprovedForOutreach();
+    case "mark_sent": return toolMarkSent(args);
     default:
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }
