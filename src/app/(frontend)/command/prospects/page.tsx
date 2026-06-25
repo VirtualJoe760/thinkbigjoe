@@ -63,6 +63,7 @@ export default async function ProspectsPage({
       hook: prospects.hook,
       fitScore: prospects.fitScore,
       profileUrl: prospects.profileUrl,
+      source: prospects.source,
       recon: prospects.recon,
     })
     .from(outreach)
@@ -82,6 +83,7 @@ export default async function ProspectsPage({
     degree: r.degree || "",
     hook: r.hook || "",
     fitScore: Number(r.fitScore || 0),
+    source: r.source || "",
     profileUrl: r.profileUrl || "",
     ...parseProspectRecon(r.recon),
     updatedAt: r.updatedAt || "",

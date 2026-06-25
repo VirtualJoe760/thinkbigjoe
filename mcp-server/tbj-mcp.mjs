@@ -276,10 +276,10 @@ async function toolAddProspect({
 }
 
 async function toolUpdateProspect({
-  prospect_id, photo_url, email, phone, website_url,
+  prospect_id, photo_url, email, phone, website_url, google_my_business_url, source,
   website_status, website_rating, website_notes, sales_opportunities,
 }) {
-  const existing = await query(`SELECT id, recon FROM prospects WHERE id = $1 LIMIT 1`, [prospect_id]);
+  const existing = await query(`SELECT id, recon, source AS current_source FROM prospects WHERE id = $1 LIMIT 1`, [prospect_id]);
   if (!existing.rows.length) {
     return { content: [{ type: "text", text: `Prospect #${prospect_id} not found.` }] };
   }
@@ -297,47 +297,54 @@ async function toolUpdateProspect({
     ...(email !== undefined && { email: String(email).trim() }),
     ...(phone !== undefined && { phone: String(phone).trim() }),
     ...(website_url !== undefined && { websiteUrl: String(website_url).trim() }),
+    ...(google_my_business_url !== undefined && { googleMyBusinessUrl: String(google_my_business_url).trim() }),
     ...(website_status !== undefined && { websiteStatus: String(website_status).trim() }),
     ...(website_rating !== undefined && { websiteRating: Number.isFinite(rating) ? Math.max(1, Math.min(10, Math.round(rating))) : null }),
     ...(website_notes !== undefined && { websiteNotes: String(website_notes).trim() }),
     ...(sales_opportunities !== undefined && { salesOpportunities: opportunities }),
   };
+
+  const setClauses = source !== undefined
+    ? `recon = $1::jsonb, source = $3, updated_at = now()`
+    : `recon = $1::jsonb, updated_at = now()`;
   await query(
-    `UPDATE prospects SET recon = $1::jsonb, updated_at = now() WHERE id = $2`,
-    [JSON.stringify(updated), prospect_id],
+    `UPDATE prospects SET ${setClauses} WHERE id = $2`,
+    source !== undefined ? [JSON.stringify(updated), prospect_id, String(source).trim()] : [JSON.stringify(updated), prospect_id],
   );
   const changes = Object.keys(updated).filter((k) => updated[k] !== current[k]);
   return { content: [{ type: "text", text: `✅ Updated prospect #${prospect_id} — enriched: ${changes.join(", ") || "no changes"}.` }] };
 }
 
-async function toolListNeedsEnrichment({ limit = 20 } = {}) {
+async function toolListNeedsEnrichment({ offset = 0 } = {}) {
   const res = await query(
-    `SELECT id, name, title, company, vertical, profile_url,
+    `SELECT id, name, title, company, vertical, source, profile_url,
             recon->>'photoUrl' AS photo_url,
             recon->>'email' AS email,
             recon->>'phone' AS phone,
-            recon->>'websiteUrl' AS website_url
+            recon->>'websiteUrl' AS website_url,
+            recon->>'googleMyBusinessUrl' AS gmb_url
      FROM prospects
      WHERE paused = false
        AND (recon IS NULL
          OR recon->>'photoUrl' IS NULL OR recon->>'photoUrl' = ''
          OR recon->>'email' IS NULL OR recon->>'email' = '')
      ORDER BY created_at ASC
-     LIMIT $1`,
-    [Math.min(Number(limit) || 20, 50)],
+     LIMIT 50 OFFSET $1`,
+    [Math.max(0, Number(offset) || 0)],
   );
   if (!res.rows.length) {
-    return { content: [{ type: "text", text: "All prospects already have photos and email — nothing to enrich." }] };
+    return { content: [{ type: "text", text: "All prospects in this batch already have photos and email — try a higher offset or enrichment is complete." }] };
   }
-  const lines = [`🔍 **${res.rows.length} prospects need enrichment (photo and/or email missing):**`, ""];
+  const lines = [`🔍 **${res.rows.length} prospects need enrichment (offset ${offset}):**`, ""];
   for (const r of res.rows) {
     const missing = [!r.photo_url && "photo", !r.email && "email", !r.phone && "phone"].filter(Boolean).join(", ");
-    lines.push(`**#${r.id} ${r.name}** · ${r.title || ""} at ${r.company || ""} · missing: ${missing}`);
+    lines.push(`**#${r.id} ${r.name}** · ${r.title || ""} at ${r.company || ""} · source: ${r.source || "unknown"} · missing: ${missing}`);
     if (r.profile_url) lines.push(`LinkedIn: ${r.profile_url}`);
     if (r.website_url) lines.push(`Website: ${r.website_url}`);
+    if (r.gmb_url) lines.push(`Google Business: ${r.gmb_url}`);
     lines.push("");
   }
-  lines.push("For each: visit their LinkedIn or website, find the missing data, call update_prospect with prospect_id and the fields found.");
+  lines.push("For each: visit LinkedIn or website, find photo/email/phone/GMB URL, call update_prospect. Use offset+50 to get the next batch.");
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
@@ -553,7 +560,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "1.5.0" },
+  { name: "tbj-mcp", version: "1.6.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -630,11 +637,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "list_needs_enrichment",
-      description: "List existing prospects that are missing a profile photo, email, or phone number. Returns up to 50, oldest first. Use this to drive the weekly enrichment pass — then call update_prospect for each one after finding the data.",
+      description: "List prospects missing photo, email, or Google My Business URL. Returns 50 at a time — use offset to page through ALL prospects. Keep calling with offset+50 until you get the 'enrichment complete' message.",
       inputSchema: {
         type: "object",
         properties: {
-          limit: { type: "number", description: "Max prospects to return (1–50, default 20)." },
+          offset: { type: "number", description: "Pagination offset (0, 50, 100...). Default 0." },
         },
       },
     },
@@ -654,6 +661,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           email: { type: "string", description: "Email address found during research." },
           phone: { type: "string", description: "Phone number found on website or Google Business." },
           website_url: { type: "string", description: "Company website URL." },
+          google_my_business_url: { type: "string", description: "Google My Business listing URL (maps.google.com/... or g.page/...)." },
+          source: { type: "string", description: "Where this prospect was found: 'linkedin', 'google', 'google_maps', 'referral', etc." },
           website_status: { type: "string", description: "Short summary of the website." },
           website_rating: { type: "number", description: "Website quality 1–10." },
           website_notes: { type: "string", description: "Notes from reviewing the site." },

@@ -149,15 +149,16 @@ export default async function ProspectPage({
               )}
             </div>
             <div className="flex flex-wrap gap-2 sm:justify-end">
-              {recon.websiteUrl && (
-                <a
-                  href={recon.websiteUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface"
+              {p.source && (
+                <span
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                    p.source === "linkedin"
+                      ? "bg-blue-50 text-blue-700"
+                      : "bg-green-50 text-green-700"
+                  }`}
                 >
-                  Website
-                </a>
+                  {p.source === "linkedin" ? "LinkedIn" : "Google"}
+                </span>
               )}
               {p.profileUrl && (
                 <a
@@ -167,6 +168,26 @@ export default async function ProspectPage({
                   className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface"
                 >
                   LinkedIn
+                </a>
+              )}
+              {recon.googleMyBusinessUrl && (
+                <a
+                  href={recon.googleMyBusinessUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface"
+                >
+                  Google
+                </a>
+              )}
+              {recon.websiteUrl && (
+                <a
+                  href={recon.websiteUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface"
+                >
+                  Website
                 </a>
               )}
               {recon.email && (

@@ -24,8 +24,10 @@ export type QueueItem = {
   degree: string;
   hook: string;
   fitScore: number;
+  source: string;
   profileUrl: string;
   websiteUrl: string;
+  googleMyBusinessUrl: string;
   photoUrl: string;
   email: string;
   phone: string;
@@ -270,24 +272,31 @@ function Card({
           </div>
         </div>
         <div className="flex flex-wrap gap-2 sm:justify-end">
-          {item.websiteUrl && (
-            <a
-              href={item.websiteUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface"
-            >
-              Website
-            </a>
+          {item.source && (
+            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+              item.source === "linkedin" ? "bg-blue-50 text-blue-700" :
+              item.source === "google" || item.source === "google_maps" ? "bg-green-50 text-green-700" :
+              "bg-surface text-ink-soft"
+            }`}>
+              {item.source === "google_maps" ? "Google Maps" : item.source.charAt(0).toUpperCase() + item.source.slice(1)}
+            </span>
           )}
           {item.profileUrl && (
-            <a
-              href={item.profileUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface"
-            >
+            <a href={item.profileUrl} target="_blank" rel="noreferrer"
+              className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface">
               LinkedIn
+            </a>
+          )}
+          {item.googleMyBusinessUrl && (
+            <a href={item.googleMyBusinessUrl} target="_blank" rel="noreferrer"
+              className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface">
+              Google
+            </a>
+          )}
+          {item.websiteUrl && (
+            <a href={item.websiteUrl} target="_blank" rel="noreferrer"
+              className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-surface">
+              Website
             </a>
           )}
         </div>
