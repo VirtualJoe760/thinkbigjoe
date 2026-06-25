@@ -1,4 +1,4 @@
-import { pgTable, index, serial, varchar, timestamp, uniqueIndex, jsonb, numeric, foreignKey, integer, pgEnum, boolean, date } from "drizzle-orm/pg-core"
+import { pgTable, index, serial, varchar, timestamp, uniqueIndex, jsonb, numeric, foreignKey, integer, boolean, date, text, pgEnum } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 export const enumLeadsEmailType = pgEnum("enum_leads_email_type", ['business', 'free'])
@@ -206,6 +206,21 @@ export const payloadPreferencesRels = pgTable("payload_preferences_rels", {
 		}).onDelete("cascade"),
 ]);
 
+export const automationSettings = pgTable("automation_settings", {
+	id: serial().primaryKey().notNull(),
+	enabled: boolean().default(false).notNull(),
+	timezone: varchar().default('America/Los_Angeles').notNull(),
+	workDays: varchar("work_days").default('Mon,Tue,Wed,Thu,Fri').notNull(),
+	workStartHour: integer("work_start_hour").default(9).notNull(),
+	workEndHour: integer("work_end_hour").default(17).notNull(),
+	dailyGoal: integer("daily_goal").default(30).notNull(),
+	rampEnabled: boolean("ramp_enabled").default(true).notNull(),
+	rampStart: integer("ramp_start").default(10).notNull(),
+	rampWeeklyStep: integer("ramp_weekly_step").default(5).notNull(),
+	rampStartedOn: date("ramp_started_on"),
+	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+});
+
 export const leads = pgTable("leads", {
 	id: serial().primaryKey().notNull(),
 	name: varchar().notNull(),
@@ -231,78 +246,6 @@ export const leads = pgTable("leads", {
 	index("leads_updated_at_idx").using("btree", table.updatedAt.asc().nullsLast().op("timestamptz_ops")),
 ]);
 
-export const prospects = pgTable("prospects", {
-	id: serial().primaryKey().notNull(),
-	name: varchar().notNull(),
-	title: varchar(),
-	company: varchar(),
-	vertical: enumProspectsVertical(),
-	location: varchar(),
-	degree: varchar(),
-	mutuals: varchar(),
-	niche: varchar(),
-	hook: varchar(),
-	profileUrl: varchar("profile_url"),
-	fitScore: numeric("fit_score"),
-	fitReason: varchar("fit_reason"),
-	status: enumProspectsStatus().default('qualified'),
-	source: varchar(),
-	recon: jsonb(),
-	paused: boolean().default(false),
-	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	createdAt: timestamp("created_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	index("prospects_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
-	index("prospects_updated_at_idx").using("btree", table.updatedAt.asc().nullsLast().op("timestamptz_ops")),
-]);
-
-export const coworkJobs = pgTable("cowork_jobs", {
-	id: serial().primaryKey().notNull(),
-	source: varchar().default('telegram').notNull(),
-	rawCommand: varchar("raw_command").notNull(),
-	intent: varchar().default('unknown').notNull(),
-	vertical: varchar(),
-	location: varchar(),
-	targetCount: integer("target_count"),
-	status: varchar().default('queued').notNull(),
-	resultSummary: varchar("result_summary"),
-	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	createdAt: timestamp("created_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	index("cowork_jobs_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
-	index("cowork_jobs_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
-]);
-
-export const automationSettings = pgTable("automation_settings", {
-	id: serial().primaryKey().notNull(),
-	enabled: boolean().default(false).notNull(),
-	timezone: varchar().default('America/Los_Angeles').notNull(),
-	workDays: varchar("work_days").default('Mon,Tue,Wed,Thu,Fri').notNull(),
-	workStartHour: integer("work_start_hour").default(9).notNull(),
-	workEndHour: integer("work_end_hour").default(17).notNull(),
-	dailyGoal: integer("daily_goal").default(30).notNull(),
-	rampEnabled: boolean("ramp_enabled").default(true).notNull(),
-	rampStart: integer("ramp_start").default(10).notNull(),
-	rampWeeklyStep: integer("ramp_weekly_step").default(5).notNull(),
-	rampStartedOn: date("ramp_started_on"),
-	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-});
-
-export const replyDrafts = pgTable("reply_drafts", {
-	id: serial().primaryKey().notNull(),
-	prospectId: integer("prospect_id"),
-	prospectName: varchar("prospect_name"),
-	theirMessage: varchar("their_message"),
-	draft: varchar(),
-	finalText: varchar("final_text"),
-	status: varchar().default('awaiting').notNull(),
-	source: varchar().default('sentinel').notNull(),
-	createdAt: timestamp("created_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	index("reply_drafts_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
-]);
-
 export const outreach = pgTable("outreach", {
 	id: serial().primaryKey().notNull(),
 	prospectId: integer("prospect_id").notNull(),
@@ -323,4 +266,92 @@ export const outreach = pgTable("outreach", {
 			foreignColumns: [prospects.id],
 			name: "outreach_prospect_id_prospects_id_fk"
 		}).onDelete("set null"),
+]);
+
+export const coworkJobs = pgTable("cowork_jobs", {
+	id: serial().primaryKey().notNull(),
+	source: varchar().default('telegram').notNull(),
+	rawCommand: varchar("raw_command").notNull(),
+	intent: varchar().default('unknown').notNull(),
+	vertical: varchar(),
+	location: varchar(),
+	targetCount: integer("target_count"),
+	status: varchar().default('queued').notNull(),
+	resultSummary: varchar("result_summary"),
+	createdAt: timestamp("created_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("cowork_jobs_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	index("cowork_jobs_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+]);
+
+export const prospects = pgTable("prospects", {
+	id: serial().primaryKey().notNull(),
+	name: varchar().notNull(),
+	title: varchar(),
+	company: varchar(),
+	vertical: enumProspectsVertical(),
+	location: varchar(),
+	degree: varchar(),
+	mutuals: varchar(),
+	niche: varchar(),
+	hook: varchar(),
+	profileUrl: varchar("profile_url"),
+	fitScore: numeric("fit_score"),
+	fitReason: varchar("fit_reason"),
+	status: enumProspectsStatus().default('qualified'),
+	source: varchar(),
+	recon: jsonb(),
+	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	createdAt: timestamp("created_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	paused: boolean().default(false),
+}, (table) => [
+	index("prospects_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	index("prospects_updated_at_idx").using("btree", table.updatedAt.asc().nullsLast().op("timestamptz_ops")),
+]);
+
+export const replyDrafts = pgTable("reply_drafts", {
+	id: serial().primaryKey().notNull(),
+	prospectId: integer("prospect_id"),
+	prospectName: varchar("prospect_name"),
+	theirMessage: varchar("their_message"),
+	draft: varchar(),
+	finalText: varchar("final_text"),
+	status: varchar().default('awaiting').notNull(),
+	source: varchar().default('sentinel').notNull(),
+	createdAt: timestamp("created_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("reply_drafts_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+]);
+
+export const activityLog = pgTable("activity_log", {
+	id: serial().primaryKey().notNull(),
+	actor: varchar().default('venus').notNull(),
+	eventType: varchar("event_type").notNull(),
+	summary: text().notNull(),
+	metadata: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("activity_log_created_at_idx").using("btree", table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
+]);
+
+export const followUps = pgTable("follow_ups", {
+	id: serial().primaryKey().notNull(),
+	prospectId: integer("prospect_id").notNull(),
+	touchNumber: integer("touch_number").default(1).notNull(),
+	scheduledFor: timestamp("scheduled_for", { withTimezone: true, mode: 'string' }).notNull(),
+	status: varchar().default('pending').notNull(),
+	body: text(),
+	sentAt: timestamp("sent_at", { withTimezone: true, mode: 'string' }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("follow_ups_prospect_id_idx").using("btree", table.prospectId.asc().nullsLast().op("int4_ops")),
+	index("follow_ups_scheduled_for_idx").using("btree", table.scheduledFor.asc().nullsLast().op("timestamptz_ops")),
+	foreignKey({
+			columns: [table.prospectId],
+			foreignColumns: [prospects.id],
+			name: "follow_ups_prospect_id_fkey"
+		}),
 ]);

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
-import { db, outreach, prospects, leads } from "@/db";
+import { db, outreach, prospects, leads, activityLog } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ const PIPELINE: Array<{ key: string; label: string }> = [
 export default async function OverviewPage() {
   await requireAdmin();
 
-  const [rows, leadRows] = await Promise.all([
+  const [rows, leadRows, upcomingAppointments, recentActivity] = await Promise.all([
     db
       .select({
         outreachStatus: outreach.status,
@@ -38,6 +38,30 @@ export default async function OverviewPage() {
       .innerJoin(prospects, eq(outreach.prospectId, prospects.id))
       .where(eq(outreach.step, "connection")),
     db.select().from(leads),
+    db
+      .select({
+        id: leads.id,
+        name: leads.name,
+        company: leads.company,
+        bookedSlot: leads.bookedSlot,
+      })
+      .from(leads)
+      .where(
+        sql`${leads.bookedSlot} IS NOT NULL AND ${leads.bookedSlot} >= now()::text`,
+      )
+      .orderBy(leads.bookedSlot)
+      .limit(5),
+    db
+      .select({
+        id: activityLog.id,
+        actor: activityLog.actor,
+        eventType: activityLog.eventType,
+        summary: activityLog.summary,
+        createdAt: activityLog.createdAt,
+      })
+      .from(activityLog)
+      .orderBy(sql`${activityLog.createdAt} DESC`)
+      .limit(8),
   ]);
 
   const pending = rows.filter(
@@ -74,6 +98,30 @@ export default async function OverviewPage() {
     { label: "Inbound leads", value: leadRows.length, accent: "" },
     { label: "Booked calls", value: booked, accent: "text-brand" },
   ];
+
+  function relativeTime(iso: string) {
+    const d = new Date(iso);
+    const mins = Math.round((Date.now() - d.getTime()) / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.round(hrs / 24);
+    return `${days}d ago`;
+  }
+
+  function activityIcon(eventType: string) {
+    switch (eventType) {
+      case "scout_complete": return "🔍";
+      case "outreach_sent": return "📤";
+      case "followup_sent": return "💬";
+      case "booking_made": return "📅";
+      case "inbox_checked": return "📬";
+      default: return "✦";
+    }
+  }
+
+  const BOOKING_TZ = "America/Los_Angeles";
 
   return (
     <div className="px-6 py-8">
@@ -157,6 +205,56 @@ export default async function OverviewPage() {
             )}
           </div>
         </div>
+          <div className="mt-8 rounded-2xl border border-line bg-background p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-bold tracking-tight">Upcoming appointments</h2>
+              <Link href="/command/appointments" className="text-xs font-semibold text-brand hover:underline">
+                View all
+              </Link>
+            </div>
+            {upcomingAppointments.length === 0 ? (
+              <p className="text-sm text-ink-soft">No upcoming calls.</p>
+            ) : (
+              <ul className="space-y-2">
+                {upcomingAppointments.map((appt) => {
+                  const slotDate = appt.bookedSlot
+                    ? new Date(appt.bookedSlot).toLocaleString("en-US", {
+                        timeZone: BOOKING_TZ,
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                        hour12: true,
+                      })
+                    : "";
+                  return (
+                    <li key={appt.id} className="rounded-lg px-2 py-1.5 text-sm">
+                      <span className="font-medium">{appt.name}</span>
+                      {appt.company ? <span className="text-ink-soft"> · {appt.company}</span> : null}
+                      {slotDate ? <span className="ml-2 text-xs text-ink-soft">{slotDate} PT</span> : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-line bg-background p-5">
+            <h2 className="mb-3 text-sm font-bold tracking-tight">Venus activity</h2>
+            {recentActivity.length === 0 ? (
+              <p className="text-sm text-ink-soft">Nothing logged yet.</p>
+            ) : (
+              <ul className="space-y-3">
+                {recentActivity.map((entry) => (
+                  <li key={entry.id} className="flex items-start gap-2 text-sm">
+                    <span className="mt-0.5 shrink-0 text-base leading-none">{activityIcon(entry.eventType)}</span>
+                    <span className="min-w-0 flex-1 text-ink">{entry.summary}</span>
+                    <span className="shrink-0 text-xs text-ink-soft">{relativeTime(entry.createdAt)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
       </div>
     </div>
   );

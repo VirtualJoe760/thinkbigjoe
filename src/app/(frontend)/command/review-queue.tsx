@@ -293,22 +293,25 @@ function Card({
         </div>
       </div>
 
-      {(item.email || item.phone) && (
-        <div className="mt-3 flex flex-wrap gap-3 text-xs text-ink-soft">
-          {item.email && (
-            <a href={`mailto:${item.email}`} className="flex items-center gap-1 hover:text-ink">
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16v16H4zM4 8l8 5 8-5" /></svg>
-              {item.email}
-            </a>
-          )}
-          {item.phone && (
-            <a href={`tel:${item.phone}`} className="flex items-center gap-1 hover:text-ink">
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M6.6 3A2 2 0 014.9 4.2l-1.4 2.8A18 18 0 0017 19.5l2.8-1.4a2 2 0 011.2-1.7l-4-1.7a2 2 0 00-2.1.5l-.8.8A12.1 12.1 0 018 9.3l.8-.8a2 2 0 00.5-2.1z" /></svg>
-              {item.phone}
-            </a>
-          )}
-        </div>
-      )}
+      <div className="mt-3 flex flex-wrap gap-3 text-xs text-ink-soft">
+        {item.email ? (
+          <a href={`mailto:${item.email}`} className="flex items-center gap-1 hover:text-ink">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16v16H4zM4 8l8 5 8-5" /></svg>
+            {item.email}
+          </a>
+        ) : (
+          <span className="flex items-center gap-1 opacity-40">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16v16H4zM4 8l8 5 8-5" /></svg>
+            Email not found
+          </span>
+        )}
+        {item.phone && (
+          <a href={`tel:${item.phone}`} className="flex items-center gap-1 hover:text-ink">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M6.6 3A2 2 0 014.9 4.2l-1.4 2.8A18 18 0 0017 19.5l2.8-1.4a2 2 0 011.2-1.7l-4-1.7a2 2 0 00-2.1.5l-.8.8A12.1 12.1 0 018 9.3l.8-.8a2 2 0 00.5-2.1z" /></svg>
+            {item.phone}
+          </a>
+        )}
+      </div>
 
       {item.hook && <p className="mt-3 text-xs text-ink-soft">💡 {item.hook}</p>}
 

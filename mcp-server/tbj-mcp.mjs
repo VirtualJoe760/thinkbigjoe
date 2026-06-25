@@ -437,10 +437,123 @@ async function toolMarkSent({ outreach_id, notes }) {
 }
 
 // ---------------------------------------------------------------------------
+// New tool handlers
+// ---------------------------------------------------------------------------
+async function toolLogActivity({ event_type, summary, metadata }) {
+  const res = await query(
+    `INSERT INTO activity_log (actor, event_type, summary, metadata) VALUES ('venus', $1, $2, $3::jsonb) RETURNING id`,
+    [event_type, summary, metadata ? JSON.stringify(metadata) : null],
+  );
+  const id = res.rows[0].id;
+  return { content: [{ type: "text", text: `✅ Activity logged (#${id}).` }] };
+}
+
+async function toolScheduleFollowup({ prospect_id, touch_number, days_from_now, body }) {
+  const existing = await query(
+    `SELECT id FROM follow_ups WHERE prospect_id = $1 AND touch_number = $2 LIMIT 1`,
+    [prospect_id, touch_number],
+  );
+  if (existing.rows.length) {
+    return {
+      content: [{
+        type: "text",
+        text: `⚠️ Follow-up touch ${touch_number} for prospect #${prospect_id} already scheduled (id: ${existing.rows[0].id}). Nothing added.`,
+      }],
+    };
+  }
+  const res = await query(
+    `INSERT INTO follow_ups (prospect_id, touch_number, scheduled_for, body, status)
+     VALUES ($1, $2, NOW() + ($3 || ' days')::interval, $4, 'pending')
+     RETURNING id, scheduled_for`,
+    [prospect_id, touch_number, String(days_from_now), body],
+  );
+  const row = res.rows[0];
+  const date = new Date(row.scheduled_for).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return {
+    content: [{
+      type: "text",
+      text: `✅ Follow-up touch #${touch_number} scheduled for prospect #${prospect_id} on ${date} (follow_up id: ${row.id}).`,
+    }],
+  };
+}
+
+async function toolListDueFollowups() {
+  const res = await query(
+    `SELECT f.id, f.touch_number, f.body, f.scheduled_for,
+            p.id AS prospect_id, p.name, p.profile_url, p.vertical
+     FROM follow_ups f
+     JOIN prospects p ON p.id = f.prospect_id
+     WHERE f.status = 'pending' AND f.scheduled_for <= NOW() AND p.paused = false
+     ORDER BY f.scheduled_for ASC
+     LIMIT 10`,
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: "No follow-ups due — queue is clear." }] };
+  }
+  const lines = [`💬 **${res.rows.length} follow-up(s) due:**`, ""];
+  for (const r of res.rows) {
+    const due = new Date(r.scheduled_for).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    lines.push(`**#${r.id} — ${r.name}** (prospect #${r.prospect_id}) · Touch ${r.touch_number} · Due: ${due}`);
+    if (r.profile_url) lines.push(`LinkedIn: ${r.profile_url}`);
+    if (r.body) lines.push(`Message to send: ${r.body}`);
+    lines.push("_(call mark_followup_sent with followup_id after sending)_");
+    lines.push("");
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolMarkFollowupSent({ followup_id, notes }) {
+  const res = await query(
+    `UPDATE follow_ups SET status = 'sent', sent_at = now(), updated_at = now() WHERE id = $1 RETURNING id, prospect_id, touch_number`,
+    [followup_id],
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: `Follow-up #${followup_id} not found.` }] };
+  }
+  const row = res.rows[0];
+  const extra = notes ? `\nNotes: ${notes}` : "";
+  return {
+    content: [{
+      type: "text",
+      text: `✅ Follow-up #${followup_id} marked sent (prospect #${row.prospect_id}, touch ${row.touch_number}).${extra}`,
+    }],
+  };
+}
+
+async function toolBookAppointment({ name, email, start_time, end_time, phone, company, notes }) {
+  const apiKey = process.env.VENUS_API_KEY;
+  if (!apiKey) {
+    return { content: [{ type: "text", text: "❌ VENUS_API_KEY is not set in environment." }] };
+  }
+  try {
+    const resp = await fetch("https://thinkbigjoe.com/api/appointments/venus-book", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ name, email, startTime: start_time, endTime: end_time, phone, company, notes }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      return { content: [{ type: "text", text: `❌ Booking failed (${resp.status}): ${data?.error || "unknown error"}` }] };
+    }
+    return {
+      content: [{
+        type: "text",
+        text: `✅ Strategy call booked for ${name} (${email})!\nMeeting link: ${data.htmlLink || "(link not returned)"}`,
+      }],
+    };
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Booking request failed: ${err?.message || String(err)}` }] };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "1.4.0" },
+  { name: "tbj-mcp", version: "1.5.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -566,6 +679,67 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["outreach_id"],
       },
     },
+    {
+      name: "log_activity",
+      description: "Log a Venus cron activity to the activity_log table. Call this when a cron job finishes to record what happened.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          event_type: { type: "string", description: "Event type slug, e.g. 'outreach_sent', 'scout_complete', 'followup_sent', 'booking_made', 'enrichment_complete', 'inbox_checked'." },
+          summary: { type: "string", description: "Human-readable summary of what happened." },
+          metadata: { type: "object", description: "Optional structured data about the event (counts, names, etc.)." },
+        },
+        required: ["event_type", "summary"],
+      },
+    },
+    {
+      name: "schedule_followup",
+      description: "Schedule a follow-up touch for a prospect who has connected on LinkedIn. Use touch_number 1 (7 days), 2 (30 days), or 3 (75 days).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          prospect_id: { type: "number", description: "The prospect's DB id." },
+          touch_number: { type: "number", enum: [1, 2, 3], description: "Which touch in the sequence (1, 2, or 3)." },
+          days_from_now: { type: "number", description: "How many days from now to schedule this follow-up." },
+          body: { type: "string", description: "The message body to send on this touch." },
+        },
+        required: ["prospect_id", "touch_number", "days_from_now", "body"],
+      },
+    },
+    {
+      name: "list_due_followups",
+      description: "List follow-up touches that are due today or overdue. Returns up to 10, oldest first. Use this to drive the daily follow-up drip cron.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "mark_followup_sent",
+      description: "Mark a follow-up touch as sent after you've sent the message on LinkedIn.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          followup_id: { type: "number", description: "The follow-up id from list_due_followups." },
+          notes: { type: "string", description: "Optional notes about the interaction." },
+        },
+        required: ["followup_id"],
+      },
+    },
+    {
+      name: "book_appointment",
+      description: "Book a strategy call for a prospect who has agreed to meet. Posts to the venus-book API endpoint to create the Google Calendar event and upsert the lead.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Prospect's full name." },
+          email: { type: "string", description: "Prospect's email address." },
+          start_time: { type: "string", description: "ISO 8601 start time for the call." },
+          end_time: { type: "string", description: "ISO 8601 end time for the call." },
+          phone: { type: "string", description: "Optional phone number." },
+          company: { type: "string", description: "Optional company name." },
+          notes: { type: "string", description: "Optional notes about the prospect or call context." },
+        },
+        required: ["name", "email", "start_time", "end_time"],
+      },
+    },
   ],
 }));
 
@@ -582,6 +756,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "update_prospect": return toolUpdateProspect(args);
     case "list_approved_for_outreach": return toolListApprovedForOutreach();
     case "mark_sent": return toolMarkSent(args);
+    case "log_activity": return toolLogActivity(args);
+    case "schedule_followup": return toolScheduleFollowup(args);
+    case "list_due_followups": return toolListDueFollowups();
+    case "mark_followup_sent": return toolMarkFollowupSent(args);
+    case "book_appointment": return toolBookAppointment(args);
     default:
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }
