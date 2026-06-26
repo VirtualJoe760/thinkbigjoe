@@ -1,8 +1,42 @@
 # ThinkBigJoe — Multi-Agent Client Acquisition System
 
-> **Status**: Gameplan (Phase 1 in development)
+> **Status**: Venus/OpenClaw is LIVE (the as-built architecture below). Scout scoring, email
+> outreach, Meta Ads, and job-application auto-fill remain gameplan/aspirational.
 > **Owner**: Joseph Sardella
-> **Last updated**: 2026-06-24 (answers incorporated)
+> **Last updated**: 2026-06-25 (architecture corrected to OpenClaw; cowork/VPS retired)
+
+---
+
+## Current architecture (as built) — OpenClaw, not cowork
+
+This is what actually runs today. The Telegram-queued **cowork** job system and the **VPS
+sentinel** described later in this doc are **SUPERSEDED** — they have been retired (see "Runners
+and infrastructure" below and the deprecation banners in `macmini-runner/`, `vps-sentinel/`, and
+`prospecting/cowork-loop.md`).
+
+- **Venus** is Joe's self-hosted AI assistant running on **OpenClaw** on the always-on **Mac Mini**
+  (residential IP), via the launchd service `ai.openclaw.gateway`.
+- Venus acts through the **tbj-mcp MCP server** (`mcp-server/tbj-mcp.mjs`, v2.1.0) — MCP tools for
+  prospects, outreach, replies, follow-ups, booking, and an audit trail. It connects directly to
+  Neon Postgres.
+- Venus's scheduled work is **declared in code** at `src/lib/venus-crons.mjs` — 5 crons:
+  **TBJ Prospect Scout** (daily research + enrichment), **TBJ LinkedIn Outreach** (hourly, sends
+  approved connection requests), **TBJ LinkedIn Inbox Check** (every 30 min — detects replies →
+  drafts responses + schedules follow-ups; this is what replaced the VPS sentinel), **TBJ Follow-up
+  Drip** (weekday sends), **TBJ Follow-up Scheduler** (weekly sequence backfill). They're pushed to
+  OpenClaw with `npm run venus:sync`, and the `/command/crons` tab renders them.
+- **Auditability**: every state-changing MCP tool calls an internal `audit()` helper that writes to
+  the `activity_log` table as a side effect of the real DB write (tagged `metadata.auto = true`,
+  "verified"). Reviewed at the `/command/jobs` "Audit log" tab.
+- Venus drives an **isolated OpenClaw Chrome (CDP)** on the Mac Mini for LinkedIn actions.
+- **8 live database tables**: `prospects`, `outreach`, `leads`, `conversations`, `reply_drafts`,
+  `follow_ups`, `activity_log`, `automation_settings`. (The `cowork_jobs` table and the `/api/cowork/*`
+  routes have been deleted.)
+
+The cron ↔ MCP tool ↔ UI mapping is the source of truth for how Venus's surfaces connect — see
+[`docs/VENUS_UI_MAPPING.md`](./VENUS_UI_MAPPING.md). The sections further down (Scout scoring rubric,
+email outreach, Meta Ads, Zoho setup, job-application auto-fill) describe **future/aspirational**
+work and are kept as the gameplan; only the cowork/sentinel/runner **architecture** has changed.
 
 ---
 
@@ -64,13 +98,17 @@ Venus (Telegram/Discord)
        ▼             └─────────────────────────┘
 ┌──────────────┐
 │ REPLY LOOP   │
-│ Sentinel     │
-│ watches      │
-│ Gmail IMAP   │
-│ → Telegram   │
-│   approval   │
+│ Inbox Check  │
+│ cron (30m)   │
+│ save_inbound │
+│ _reply →     │
+│ drafts reply │
 └──────────────┘
 ```
+
+> **Note:** the reply loop above is the **as-built** OpenClaw flow — the **TBJ LinkedIn Inbox Check**
+> cron + `save_inbound_reply` MCP tool, not the retired Gmail-IMAP "Sentinel." The email channel
+> below (Agent 3) is still aspirational.
 
 ---
 
@@ -163,6 +201,12 @@ top 5 by score when you text `"show prospects"`. Reply with the ID to approve or
 
 ### Agent 3 — Sender
 
+> **(Aspirational / partially built.)** The LinkedIn connection channel is live today as the **TBJ
+> LinkedIn Outreach** cron (Venus on OpenClaw). The email and job-application channels below are
+> future work. Where this section says "Cowork runner," "Windows sender," or "Sentinel," read it as
+> the OpenClaw equivalent: outreach sends via the LinkedIn Outreach cron, reply detection via the
+> LinkedIn Inbox Check cron.
+
 **Role**: Works the approved queue at human pace. Three channels in priority order.
 
 #### Channel 1 — Email (primary, lowest risk)
@@ -172,7 +216,8 @@ top 5 by score when you text `"show prospects"`. Reply with the ID to approve or
 - Rate: 30–50/day max while domain warms; scale to 200+/day after 30 days
 - Follow-up: auto day-4 and day-8 if no reply (short, humble nudge)
 - Tracking: Resend webhook → logs opens, clicks, bounces to `outreach_log`
-- Replies: Gmail inbox → Sentinel → Telegram approval loop (already built)
+- Replies (email): aspirational. (LinkedIn replies are already handled by the **TBJ LinkedIn Inbox
+  Check** cron + `save_inbound_reply`, not a Gmail Sentinel.)
 
 **Required before first send**:
 - [ ] SPF, DKIM, DMARC records on thinkbigjoe.com (non-negotiable for deliverability)
@@ -181,12 +226,13 @@ top 5 by score when you text `"show prospects"`. Reply with the ID to approve or
 
 #### Channel 2 — LinkedIn connection request (secondary, rate-limited)
 
-- Already implemented in the existing Cowork runner
-- **Hard cap: 10 connections/day** (existing runner enforces 20; Scout-sourced requests
-  share this budget)
+- Live today as the **TBJ LinkedIn Outreach** cron (Venus on OpenClaw, hourly), which sends
+  approved connection requests. (Historically this was the "Cowork runner"; that poller is retired.)
+- **Hard cap: 10 connections/day** — Scout-sourced requests share this budget
 - Only sent when email is unavailable or bounces
 - No automated follow-up DMs — connection only; humans reply to any responses
-- Uses the existing Windows sender (Playwright, logged-in Chrome)
+- Runs through the isolated OpenClaw Chrome (CDP) on the Mac Mini. (The old `windows-sender/` is
+  obsolete; this no longer uses a Windows/Playwright sender.)
 
 #### Channel 3 — Job application (tertiary, company career pages only)
 
@@ -201,6 +247,9 @@ top 5 by score when you text `"show prospects"`. Reply with the ID to approve or
 ---
 
 ## Meta Ads retargeting funnel
+
+> **(Aspirational / not yet built.)** No Meta audience sync, custom audiences, or ad creative exist
+> yet — this is the gameplan for a later phase.
 
 This is the force multiplier. Every approved prospect — whether they reply or not — feeds a
 Meta custom audience that runs retargeting ads. Prospects who ignored the email see the ad.
@@ -366,23 +415,30 @@ CREATE TABLE outreach_log (
 
 ## Runners and infrastructure
 
-### Mac Mini (always-on, residential IP)
+### Mac Mini (always-on, residential IP) — runs Venus on OpenClaw
 
-The Mac Mini is the execution environment for all agents. Its residential IP is a core
-advantage — it makes email sending and LinkedIn behavior look human, unlike datacenter IPs.
+The Mac Mini is the execution environment for Venus. Its residential IP is a core advantage — it
+makes LinkedIn behavior look human, unlike datacenter IPs.
 
-| Runner | File | Schedule | What it does |
-|---|---|---|---|
-| Scout runner | `macmini-runner/run-scout.mjs` | Every 5 min (polls for queued scout jobs) | Runs the Scout agent |
-| Cowork runner | `macmini-runner/run-cowork.mjs` | Every 2 min | Runs LinkedIn prospecting (existing) |
+Venus runs on **OpenClaw** via the launchd service `ai.openclaw.gateway`. She acts through the
+**tbj-mcp MCP server** (`mcp-server/tbj-mcp.mjs`, v2.1.0 — direct Neon connection) and her scheduled
+work is **declared in code** at `src/lib/venus-crons.mjs`, pushed to OpenClaw with
+`npm run venus:sync`. The five crons (Prospect Scout, LinkedIn Outreach, LinkedIn Inbox Check,
+Follow-up Drip, Follow-up Scheduler) are documented with their tools and UI surfaces in
+[`docs/VENUS_UI_MAPPING.md`](./VENUS_UI_MAPPING.md). LinkedIn actions run through an isolated
+OpenClaw Chrome (CDP) on this machine.
 
-Both runners use the same claim/complete pattern: poll an endpoint, claim a job, run
-`claude -p`, mark complete.
+> **RETIRED — the cowork runner.** The old `macmini-runner/run-cowork.mjs` poller (claim/complete
+> against `/api/cowork/*`, driven by Telegram-queued `cowork_jobs` rows) is gone. The `cowork_jobs`
+> table and both API routes are deleted; the Mac Mini now runs OpenClaw/Venus instead of the poller.
+> See the deprecation banners in `macmini-runner/`. The Scout runner (`run-scout.mjs`) was never
+> built — Scout is now the **TBJ Prospect Scout** cron.
 
-### VPS Sentinel (DigitalOcean, $4–6/mo)
-
-Watches Gmail IMAP for LinkedIn notification emails and email replies. Already running.
-No changes needed for Phase 1.
+> **RETIRED — the VPS sentinel.** There is **no VPS** anymore. Reply detection no longer runs on a
+> DigitalOcean droplet watching Gmail IMAP — it now happens on the Mac Mini via the **TBJ LinkedIn
+> Inbox Check** cron (every 30 min) calling the `save_inbound_reply` MCP tool, which writes the
+> `conversations` row, flips `prospects.status = 'replied'`, and triggers a drafted reply. See the
+> deprecation banner in `vps-sentinel/`.
 
 ### Vercel (thinkbigjoe.com)
 
@@ -491,12 +547,13 @@ Joe approves
     → Resend webhook → outreach_log (email, opened / clicked / bounced)
     → nightly cron → included in Meta custom audience upload → outreach_log (meta_sync, synced)
 
-Prospect replies to email
-    → Gmail → Sentinel → outreach_log (email, replied)
-    → Telegram ping to Joe with reply draft
+Prospect replies to email   (aspirational — email channel not yet built)
+    → outreach_log (email, replied)
 
-Prospect replies on LinkedIn
-    → LinkedIn email → Sentinel → Telegram ping to Joe
+Prospect replies on LinkedIn   (LIVE)
+    → TBJ LinkedIn Inbox Check cron (every 30m) → save_inbound_reply MCP tool
+    → conversations row + prospects.status = 'replied' → Venus drafts a reply (reply_drafts)
+    → surfaces in /command/leads for Joe to approve
 
 Prospect converts (Joe marks won in dashboard)
     → scout_prospects.status = won
@@ -533,6 +590,9 @@ Prospect converts (Joe marks won in dashboard)
 ---
 
 ## Email setup — Zoho Mail + Apple Mail
+
+> **(Aspirational / not yet built.)** The email outreach channel is future work; this is the setup
+> plan for when it's wired up.
 
 **Goal**: `joe@thinkbigjoe.com` as a real IMAP/SMTP mailbox, free, working in Apple Mail.
 

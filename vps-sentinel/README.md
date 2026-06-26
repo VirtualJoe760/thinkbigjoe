@@ -1,3 +1,18 @@
+> ## ⚠️ RETIRED — there is no VPS anymore
+>
+> This DigitalOcean Gmail-IMAP sentinel has been decommissioned. Reply detection now runs on the
+> **Mac Mini** via the **TBJ LinkedIn Inbox Check** cron (every 30 min) calling the
+> `save_inbound_reply` MCP tool in `mcp-server/tbj-mcp.mjs` — which writes the `conversations` row,
+> flips `prospects.status = 'replied'`, and triggers a drafted reply. No droplet, no IMAP watcher.
+>
+> **For the current architecture, read [`docs/VENUS_UI_MAPPING.md`](../docs/VENUS_UI_MAPPING.md)**
+> (see the `/command/leads` reply flow) and the "Current architecture (as built)" section of
+> [`docs/ACQUISITION_SYSTEM.md`](../docs/ACQUISITION_SYSTEM.md).
+>
+> Everything below is kept for historical reference only.
+
+---
+
 # Reply Sentinel — DigitalOcean setup
 
 A tiny always-on service that watches your Gmail for the emails **LinkedIn already

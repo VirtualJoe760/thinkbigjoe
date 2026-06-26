@@ -1,3 +1,19 @@
+> ## ⚠️ RETIRED — this cowork-polling runner is no longer used
+>
+> The Mac Mini no longer runs this Telegram-queued cowork poller. It now runs **Venus on OpenClaw**
+> via the launchd service `ai.openclaw.gateway`. Venus acts through the **tbj-mcp MCP server**
+> (`mcp-server/tbj-mcp.mjs`), and her scheduled work is declared in code at `src/lib/venus-crons.mjs`
+> (pushed with `npm run venus:sync`). The `cowork_jobs` table and the `/api/cowork/*` routes have
+> been deleted.
+>
+> **For the current architecture, read [`docs/VENUS_UI_MAPPING.md`](../docs/VENUS_UI_MAPPING.md)**
+> (cron ↔ MCP tool ↔ UI mapping) and the "Current architecture (as built)" section of
+> [`docs/ACQUISITION_SYSTEM.md`](../docs/ACQUISITION_SYSTEM.md).
+>
+> Everything below is kept for historical reference only.
+
+---
+
 # Cowork runner — Mac Mini setup
 
 The Mac Mini is the always-on runner. You text **@thinkbigjoe_alerts_bot** → the

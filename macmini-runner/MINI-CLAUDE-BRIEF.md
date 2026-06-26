@@ -1,3 +1,19 @@
+> ## ⚠️ RETIRED — this cowork-runner brief is no longer in effect
+>
+> The Mac Mini no longer runs this cowork poller. It now runs **Venus on OpenClaw** via the launchd
+> service `ai.openclaw.gateway`. Venus acts through the **tbj-mcp MCP server**
+> (`mcp-server/tbj-mcp.mjs`), and her scheduled work is declared in code at `src/lib/venus-crons.mjs`
+> (pushed with `npm run venus:sync`). The `cowork_jobs` table and the `/api/cowork/*` routes have
+> been deleted.
+>
+> **For the current architecture, read [`docs/VENUS_UI_MAPPING.md`](../docs/VENUS_UI_MAPPING.md)**
+> and the "Current architecture (as built)" section of
+> [`docs/ACQUISITION_SYSTEM.md`](../docs/ACQUISITION_SYSTEM.md).
+>
+> Everything below is kept for historical reference only.
+
+---
+
 # Brief for Claude on the Mac Mini — Cowork Runner setup & operation
 
 You are Claude Code running on Joe's **always-on Mac Mini**. This machine is the
