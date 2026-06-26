@@ -322,26 +322,35 @@ function Card({
         )}
       </div>
 
-      {item.hook && <p className="mt-3 text-xs text-ink-soft">💡 {item.hook}</p>}
-
-      {(item.websiteStatus || item.websiteNotes || item.salesOpportunities.length > 0) && (
-        <div className="mt-3 grid gap-2 rounded-xl border border-line bg-surface p-3 text-xs leading-relaxed text-ink-soft md:grid-cols-[0.9fr_1.1fr]">
-          <div>
-            <span className="block font-semibold text-ink">Website read</span>
-            {item.websiteStatus && <span>{item.websiteStatus}</span>}
-            {item.websiteNotes && <p className="mt-1">{item.websiteNotes}</p>}
-          </div>
-          {item.salesOpportunities.length > 0 && (
-            <div>
-              <span className="block font-semibold text-ink">Sales opportunities</span>
-              <ul className="mt-1 space-y-1">
-                {item.salesOpportunities.slice(0, 3).map((opportunity) => (
-                  <li key={opportunity}>• {opportunity}</li>
-                ))}
-              </ul>
+      {(item.hook || item.websiteStatus || item.websiteNotes || item.salesOpportunities.length > 0) && (
+        <details className="group mt-3 [&_summary::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-semibold text-ink-soft hover:text-ink">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+            Research &amp; notes
+          </summary>
+          {item.hook && <p className="mt-2 text-xs text-ink-soft">💡 {item.hook}</p>}
+          {(item.websiteStatus || item.websiteNotes || item.salesOpportunities.length > 0) && (
+            <div className="mt-2 grid gap-2 rounded-xl border border-line bg-surface p-3 text-xs leading-relaxed text-ink-soft md:grid-cols-[0.9fr_1.1fr]">
+              <div>
+                <span className="block font-semibold text-ink">Website read</span>
+                {item.websiteStatus && <span>{item.websiteStatus}</span>}
+                {item.websiteNotes && <p className="mt-1">{item.websiteNotes}</p>}
+              </div>
+              {item.salesOpportunities.length > 0 && (
+                <div>
+                  <span className="block font-semibold text-ink">Sales opportunities</span>
+                  <ul className="mt-1 space-y-1">
+                    {item.salesOpportunities.slice(0, 3).map((opportunity) => (
+                      <li key={opportunity}>• {opportunity}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
-        </div>
+        </details>
       )}
 
       {editing ? (
