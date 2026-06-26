@@ -15,6 +15,32 @@ const baseURL =
     : undefined) ||
   "http://localhost:3000";
 
+/**
+ * Origins better-auth accepts requests + redirects from. By default it trusts
+ * ONLY `baseURL`, which breaks the moment the app is reached at any other
+ * origin — the custom domain vs the Vercel URL, www vs apex, or the dev server
+ * on a non-3000 port. Missing origins surface as "Invalid origin" on sign-in,
+ * password reset, etc. Wildcards (e.g. *.vercel.app) are supported.
+ */
+const trustedOrigins = Array.from(
+  new Set(
+    [
+      baseURL,
+      process.env.BETTER_AUTH_URL,
+      process.env.NEXT_PUBLIC_APP_URL,
+      process.env.NEXT_PUBLIC_SITE_URL,
+      process.env.VERCEL_PROJECT_PRODUCTION_URL &&
+        `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`,
+      process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`,
+      "https://thinkbigjoe.com",
+      "https://www.thinkbigjoe.com",
+      "https://*.vercel.app", // Vercel preview deployments
+      "http://localhost:3000",
+      "http://localhost:3003",
+    ].filter((v): v is string => Boolean(v)),
+  ),
+);
+
 const googleEnabled = Boolean(
   process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
 );
@@ -30,6 +56,7 @@ const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
  */
 export const auth = betterAuth({
   baseURL,
+  trustedOrigins,
   secret: process.env.BETTER_AUTH_SECRET,
   database: new Pool({
     // Use Neon's DIRECT (unpooled) endpoint so the search_path startup option
