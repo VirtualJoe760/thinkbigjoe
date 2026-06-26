@@ -3,7 +3,7 @@ import { nextCookies } from "better-auth/next-js";
 import { captcha } from "better-auth/plugins";
 import { Pool } from "pg";
 
-import { sendWelcomeEmail } from "./email";
+import { sendResetPasswordEmail, sendWelcomeEmail } from "./email";
 import { notifyTelegram } from "./telegram";
 
 const baseURL =
@@ -48,6 +48,16 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
+    // Password recovery: better-auth generates a one-time token + link; we
+    // email it. The link lands on /reset-password?token=… (see reset page).
+    resetPasswordTokenExpiresIn: 60 * 60, // 1 hour
+    sendResetPassword: async ({ user, url }) => {
+      try {
+        await sendResetPasswordEmail(user.email, url, user.name);
+      } catch (err) {
+        console.error("[auth] reset-password email failed:", err);
+      }
+    },
   },
   socialProviders: {
     ...(googleEnabled

@@ -102,6 +102,26 @@ export async function sendWelcomeEmail(to: string, name?: string | null) {
   });
 }
 
+/** Password-reset email with a one-time reset link (expires in 1 hour). */
+export async function sendResetPasswordEmail(to: string, url: string, name?: string | null) {
+  const firstName = name?.split(" ")[0];
+  return sendEmail({
+    to,
+    subject: "Reset your ThinkBigJoe password",
+    html: layout(`
+      <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;">Reset your password</h1>
+      <p style="margin:0;font-size:15px;line-height:1.6;color:#5b616e;">
+        Hi${firstName ? ` ${firstName}` : ""}, we got a request to reset the password on your
+        ThinkBigJoe account. Choose a new one with the button below — this link expires in 1 hour.
+      </p>
+      ${button(url, "Reset password")}
+      <p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#9aa0ad;">
+        If you didn't request this, you can safely ignore this email — your password won't change.
+      </p>
+    `),
+  });
+}
+
 /**
  * Generic notification email for product events (e.g. a new design or store
  * was created). Call this from those features as they're built.

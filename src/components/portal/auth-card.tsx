@@ -4,11 +4,11 @@ import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { signIn, signUp } from "@/lib/auth-client";
+import { requestPasswordReset, signIn, signUp } from "@/lib/auth-client";
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
-type Mode = "signin" | "signup";
+type Mode = "signin" | "signup" | "forgot";
 
 export function AuthCard({
   google,
@@ -24,15 +24,53 @@ export function AuthCard({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const turnstileRef = useRef<TurnstileInstance>(null);
 
   const anySocial = google || facebook;
   const needsCaptcha = Boolean(TURNSTILE_SITE_KEY);
 
+  function switchMode(next: Mode) {
+    setMode(next);
+    setError(null);
+    setResetSent(false);
+    turnstileRef.current?.reset();
+    setCaptchaToken(null);
+  }
+
   async function handleSocial(provider: "google" | "facebook") {
     setError(null);
     await signIn.social({ provider, callbackURL: "/portal" });
+  }
+
+  async function handleForgot(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const fetchOptions = captchaToken
+        ? { headers: { "x-captcha-response": captchaToken } }
+        : undefined;
+      const res = await requestPasswordReset(
+        { email, redirectTo: "/reset-password" },
+        fetchOptions,
+      );
+      if (res.error) {
+        setError(res.error.message ?? "Could not send the reset link. Please try again.");
+        turnstileRef.current?.reset();
+        setCaptchaToken(null);
+        return;
+      }
+      // Always show success — don't reveal whether the email has an account.
+      setResetSent(true);
+    } catch {
+      setError("Something went wrong. Please try again.");
+      turnstileRef.current?.reset();
+      setCaptchaToken(null);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleEmail(e: React.FormEvent) {
@@ -68,6 +106,74 @@ export function AuthCard({
     } finally {
       setLoading(false);
     }
+  }
+
+  if (mode === "forgot") {
+    return (
+      <div className="w-full max-w-sm">
+        <h1 className="text-3xl font-extrabold tracking-tight">Reset your password</h1>
+        {resetSent ? (
+          <>
+            <p className="mt-2 text-sm text-ink-soft">
+              If an account exists for{" "}
+              <span className="font-medium text-ink">{email}</span>, we&apos;ve sent a password
+              reset link. Check your inbox (and your spam folder) — the link expires in 1 hour.
+            </p>
+            <button
+              onClick={() => switchMode("signin")}
+              className="mt-8 w-full rounded-full bg-brand px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
+            >
+              Back to login
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="mt-2 text-sm text-ink-soft">
+              Enter your email and we&apos;ll send you a link to set a new password.
+            </p>
+            <form onSubmit={handleForgot} className="mt-8 space-y-4">
+              <Field
+                label="Email"
+                type="email"
+                value={email}
+                onChange={setEmail}
+                placeholder="jane@company.com"
+                autoComplete="email"
+                required
+              />
+              {needsCaptcha && (
+                <Turnstile
+                  ref={turnstileRef}
+                  siteKey={TURNSTILE_SITE_KEY as string}
+                  onSuccess={setCaptchaToken}
+                  onError={() => setCaptchaToken(null)}
+                  onExpire={() => setCaptchaToken(null)}
+                  options={{ theme: "light" }}
+                />
+              )}
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <button
+                type="submit"
+                disabled={loading || (needsCaptcha && !captchaToken)}
+                className="w-full rounded-full bg-brand px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-60"
+              >
+                {loading ? "Sending…" : "Send reset link"}
+              </button>
+            </form>
+            <p className="mt-6 text-center text-sm text-ink-soft">
+              Remembered it?{" "}
+              <button
+                type="button"
+                onClick={() => switchMode("signin")}
+                className="font-semibold text-brand hover:underline"
+              >
+                Back to login
+              </button>
+            </p>
+          </>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -144,6 +250,18 @@ export function AuthCard({
           required
         />
 
+        {mode === "signin" && (
+          <div className="-mt-2 text-right">
+            <button
+              type="button"
+              onClick={() => switchMode("forgot")}
+              className="text-sm font-medium text-ink-soft hover:text-ink"
+            >
+              Forgot password?
+            </button>
+          </div>
+        )}
+
         {needsCaptcha && (
           <Turnstile
             ref={turnstileRef}
@@ -174,10 +292,7 @@ export function AuthCard({
         {mode === "signup" ? "Already have an account?" : "New here?"}{" "}
         <button
           type="button"
-          onClick={() => {
-            setMode(mode === "signup" ? "signin" : "signup");
-            setError(null);
-          }}
+          onClick={() => switchMode(mode === "signup" ? "signin" : "signup")}
           className="font-semibold text-brand hover:underline"
         >
           {mode === "signup" ? "Sign in" : "Create an account"}
