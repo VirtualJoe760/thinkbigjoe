@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 import { Logo } from "@/components/logo";
+import { ButtonLink } from "@/components/ui/button";
+import { SiteNavMobile } from "@/components/site-nav-mobile";
 
 const links = [
   { href: "/solutions", label: "Solutions" },
@@ -35,12 +37,10 @@ export function SiteNav() {
           >
             Login
           </Link>
-          <Link
-            href="/book-appointment"
-            className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
-          >
+          <ButtonLink href="/book-appointment" size="sm">
             Book a call
-          </Link>
+          </ButtonLink>
+          <SiteNavMobile links={links} />
         </div>
       </nav>
     </header>
