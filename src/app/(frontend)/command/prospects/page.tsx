@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
-import { db, outreach, prospects } from "@/db";
+import { db, outreach, prospects, forgeSites } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { parseProspectRecon } from "@/lib/prospect-recon";
 import { ReviewQueue, type QueueItem } from "../review-queue";
+import { SitesQueue, type ForgeSiteItem } from "../sites/sites-queue";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -25,7 +26,7 @@ const PAGE_SIZE = 10;
 const PRIORITY_MIN_FIT = 5;
 const BASE = "/command/prospects";
 
-type View = "priority" | "queue" | "ready" | "sent";
+type View = "priority" | "queue" | "ready" | "sent" | "sites";
 
 export default async function ProspectsPage({
   searchParams,
@@ -35,7 +36,7 @@ export default async function ProspectsPage({
   await requireAdmin();
 
   const sp = await searchParams;
-  const view: View = (["priority", "queue", "ready", "sent"] as const).includes(
+  const view: View = (["priority", "queue", "ready", "sent", "sites"] as const).includes(
     sp.view as View,
   )
     ? (sp.view as View)
@@ -105,7 +106,7 @@ export default async function ProspectsPage({
   });
 
   const statusRank: Record<string, number> = { draft: 0, edited: 1 };
-  const byView: Record<View, QueueItem[]> = {
+  const byView: Record<Exclude<View, "sites">, QueueItem[]> = {
     priority: scoped
       .filter((i) => isPending(i) && i.fitScore >= PRIORITY_MIN_FIT)
       .sort((a, b) => b.fitScore - a.fitScore || a.name.localeCompare(b.name)),
@@ -125,14 +126,47 @@ export default async function ProspectsPage({
       .sort((a, b) => (b.sentAt || "").localeCompare(a.sentAt || "")),
   };
 
+  // Potential sites — the forge queue (businesses the prospector found that need a website).
+  const forgeRows = await db
+    .select()
+    .from(forgeSites)
+    .orderBy(desc(forgeSites.createdAt));
+  const forgeItems: ForgeSiteItem[] = forgeRows.map((r) => ({
+    id: String(r.id),
+    slug: r.slug,
+    businessName: r.businessName,
+    niche: r.niche || "",
+    city: r.city || "",
+    serviceArea: r.serviceArea || "",
+    phone: r.phone || "",
+    email: r.email || "",
+    existingWebsiteUrl: r.existingWebsiteUrl || "",
+    brandColor: r.brandColor || "",
+    theme: r.theme || "",
+    status: r.status,
+    fitReason: r.fitReason || "",
+    source: r.source || "",
+    notes: r.notes || "",
+    liveUrl: r.liveUrl || "",
+    screenshotUrl: r.screenshotUrl || "",
+    buildStatus: r.buildStatus || "",
+    deniedReason: r.deniedReason || "",
+    createdAt: r.createdAt,
+  }));
+  const forgeNeedsReview = forgeItems.filter((i) => i.status === "discovered");
+  const forgeQueued = forgeItems.filter((i) => i.status === "approved" || i.status === "building");
+  const forgeBuilt = forgeItems.filter((i) => i.status === "built");
+  const forgeOther = forgeItems.filter((i) => i.status === "denied" || i.status === "build_failed");
+
   const tabs: Array<{ key: View; label: string; count: number }> = [
     { key: "priority", label: "Priority", count: byView.priority.length },
     { key: "queue", label: "All pending", count: byView.queue.length },
     { key: "ready", label: "Ready to send", count: byView.ready.length },
     { key: "sent", label: "Sent", count: byView.sent.length },
+    { key: "sites", label: "Potential sites", count: forgeNeedsReview.length },
   ];
 
-  const items = byView[view];
+  const items = view === "sites" ? [] : byView[view];
   const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
   const clampedPage = Math.min(page, totalPages);
   const pageItems = items.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE);
@@ -171,53 +205,102 @@ export default async function ProspectsPage({
           })}
         </div>
 
-        <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <a
-              href={qs({ v: "" })}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                !vertical ? "bg-brand text-white" : "bg-surface text-ink-soft hover:text-ink"
-              }`}
-            >
-              All
-            </a>
-            {VERTICALS.map((vt) => {
-              const active = vertical === vt.key;
-              const c = verticalCounts[vt.key] || 0;
-              return (
+        {view === "sites" ? (
+          <div className="mt-6 space-y-8">
+            <p className="text-sm text-ink-soft">
+              Local businesses the prospector found that need a website. Approve the ones worth
+              building — the forge builds, deploys, and reports back here.
+            </p>
+            <section>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-soft">
+                Needs your review <span className="ml-1 text-ink">{forgeNeedsReview.length}</span>
+              </h2>
+              <div className="mt-3">
+                <SitesQueue items={forgeNeedsReview} />
+              </div>
+            </section>
+            {forgeQueued.length > 0 && (
+              <section>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-soft">
+                  Queued to build <span className="ml-1 text-ink">{forgeQueued.length}</span>
+                </h2>
+                <div className="mt-3">
+                  <SitesQueue items={forgeQueued} />
+                </div>
+              </section>
+            )}
+            {forgeBuilt.length > 0 && (
+              <section>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-soft">
+                  Built — ready for outreach <span className="ml-1 text-ink">{forgeBuilt.length}</span>
+                </h2>
+                <div className="mt-3">
+                  <SitesQueue items={forgeBuilt} />
+                </div>
+              </section>
+            )}
+            {forgeOther.length > 0 && (
+              <section>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-soft">
+                  Denied / failed <span className="ml-1 text-ink">{forgeOther.length}</span>
+                </h2>
+                <div className="mt-3">
+                  <SitesQueue items={forgeOther} />
+                </div>
+              </section>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <a
-                  key={vt.key}
-                  href={qs({ v: active ? "" : vt.key })}
+                  href={qs({ v: "" })}
                   className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                    active ? "bg-brand text-white" : "bg-surface text-ink-soft hover:text-ink"
+                    !vertical ? "bg-brand text-white" : "bg-surface text-ink-soft hover:text-ink"
                   }`}
                 >
-                  {vt.label}
-                  {c ? <span className="ml-1 opacity-70">{c}</span> : null}
+                  All
                 </a>
-              );
-            })}
-          </div>
-          <form action={BASE} method="get" className="flex w-full items-center gap-2 lg:w-auto">
-            <input type="hidden" name="view" value={view} />
-            {vertical && <input type="hidden" name="v" value={vertical} />}
-            <input
-              name="q"
-              defaultValue={q}
-              placeholder="Search name, company, or site"
-              className="min-w-0 flex-1 rounded-full border border-line bg-background px-4 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 lg:w-64"
-            />
-            {q && (
-              <a href={qs({ q: "" })} className="text-xs font-semibold text-ink-soft hover:text-ink">
-                clear
-              </a>
-            )}
-          </form>
-        </div>
+                {VERTICALS.map((vt) => {
+                  const active = vertical === vt.key;
+                  const c = verticalCounts[vt.key] || 0;
+                  return (
+                    <a
+                      key={vt.key}
+                      href={qs({ v: active ? "" : vt.key })}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                        active ? "bg-brand text-white" : "bg-surface text-ink-soft hover:text-ink"
+                      }`}
+                    >
+                      {vt.label}
+                      {c ? <span className="ml-1 opacity-70">{c}</span> : null}
+                    </a>
+                  );
+                })}
+              </div>
+              <form action={BASE} method="get" className="flex w-full items-center gap-2 lg:w-auto">
+                <input type="hidden" name="view" value={view} />
+                {vertical && <input type="hidden" name="v" value={vertical} />}
+                <input
+                  name="q"
+                  defaultValue={q}
+                  placeholder="Search name, company, or site"
+                  className="min-w-0 flex-1 rounded-full border border-line bg-background px-4 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 lg:w-64"
+                />
+                {q && (
+                  <a href={qs({ q: "" })} className="text-xs font-semibold text-ink-soft hover:text-ink">
+                    clear
+                  </a>
+                )}
+              </form>
+            </div>
 
-        <div className="mt-5">
-          <ReviewQueue items={pageItems} />
-        </div>
+            <div className="mt-5">
+              <ReviewQueue items={pageItems} />
+            </div>
+          </>
+        )}
 
         {totalPages > 1 && (
           <div className="mt-6 flex items-center justify-center gap-2 text-sm">

@@ -121,6 +121,40 @@ updated the cron to call them.
 
 ---
 
+### `/command/sites` — Forge sites (Phase 1: find → approve → build)
+
+The bridge between Venus's prospecting and the site-building forge (`~/code/webdev-templates`, a
+separate local pipeline that runs Claude Code — see its own `factory/README.md`). Phase 1 only:
+finding + qualifying + building. Outreach (drafting/sending an email once a site is built) is a
+later phase — built sites just land in a visible "ready for outreach next" state.
+
+| Section | DB source | Who writes it |
+|---|---|---|
+| Needs your review | `forge_sites.status = 'discovered'` | `add_forge_prospect` (Venus) |
+| Queued to build | `forge_sites.status IN ('approved','building')` | Joe clicks Approve → `approveForgeSite()` server action; then `factory/forge-poll.mjs` (NOT Venus — a plain poller on Joe's Mac) flips it to `building` when it claims the row |
+| Built | `forge_sites.status = 'built'` | `POST /api/forge/register` (called by `forge-poll.mjs` after `forge-build.sh` finishes) |
+| Denied / failed | `forge_sites.status IN ('denied','build_failed')` | Joe clicks Deny → `denyForgeSite()`; or a build error via `/api/forge/register` |
+
+**How it works end-to-end:**
+1. Daily, "TBJ Forge Prospect Scout" has Venus research local service businesses with no/bad
+   website and call `add_forge_prospect` for each — lands as `status='discovered'`.
+2. Joe reviews `/command/sites` and clicks Approve or Deny per business.
+3. `factory/forge-poll.mjs` (a plain script, cron/launchd on Joe's Mac — deliberately NOT an
+   OpenClaw/Venus cron, since running an 8-10 minute `claude -p` build isn't a cognitive task)
+   polls for `status='approved'` rows, claims one, writes a `business.json`, and runs the existing
+   `factory/forge-build.sh` pipeline (build → screenshot → push to GitHub → deploy to Vercel).
+4. On completion it `POST`s to `thinkbigjoe.com/api/forge/register` (Bearer `CRON_SECRET`, same
+   auth pattern as `/api/cron/daily-digest`), which flips the row to `built` (or `build_failed`)
+   and logs to `activity_log` (`actor: 'forge'` — not `'venus'`, since this event is deterministic
+   infra reporting a result, not an LLM decision).
+
+**Why the build itself isn't a Venus cron:** Joe's call — site builds spend real Claude Max-plan
+minutes and should require his explicit approval before that happens; a babysitting LLM turn for a
+10-minute subprocess is also the wrong shape for a cron. Venus's crons are all bounded, fast,
+tool-calling turns — the forge poller is boring, reliable, unattended infrastructure instead.
+
+---
+
 ### `/command/automation` — Automation settings
 
 Controls `automation_settings` table row. `check_outreach_window` reads this on every
@@ -138,8 +172,11 @@ aren't being sent.
 | Reported summaries | `activity_log` (no `auto` flag) | `log_activity` | every cron calls this at the end |
 
 **Verified vs reported.** Every state-changing MCP tool (`mark_sent`, `save_inbound_reply`,
-`save_reply_draft`, `handle_reply`, `add_prospect`, `update_prospect`, `schedule_followup`,
-`mark_followup_sent`, `book_appointment`) calls `audit()` as a side effect of its real DB write.
+`save_reply_draft`, `handle_reply`, `add_prospect`, `add_forge_prospect`, `update_prospect`,
+`schedule_followup`, `mark_followup_sent`, `book_appointment`) calls `audit()` as a side effect of
+its real DB write. `actor` is normally `'venus'`; `/api/forge/register` is the one exception — it
+logs with `actor: 'forge'` because that event is reported by deterministic infra (the build
+poller), not an LLM decision.
 Those rows are **verified** — they reflect what actually changed in the database, independent of
 whatever Venus says in her end-of-cron `log_activity` summary (**reported**). When the two
 disagree, that's the signal to investigate. The audit log attributes each action to the cron that
@@ -160,6 +197,8 @@ and the action's `event_type` should be listed in the owning cron's `eventTypes`
 | TBJ LinkedIn Inbox Check (every 30m) | `save_inbound_reply`, `save_reply_draft`, `list_connected_without_followups`, `schedule_followup`, `log_activity` | `/command/leads` LinkedIn replies, `/command/[id]` conversation thread |
 | TBJ Follow-up Drip (weekdays 10am) | `list_due_followups`, `mark_followup_sent`, `log_activity` | `/command` (no dedicated surface yet) |
 | TBJ Follow-up Scheduler (Sunday 3am) | `list_connected_without_followups`, `list_incomplete_followup_sequences`, `schedule_followup`, `log_activity` | `/command` (no dedicated surface yet) |
+| TBJ Forge Prospect Scout (4am daily) | `add_forge_prospect`, `list_forge_queue`, `log_activity` | `/command/sites` (Needs your review) |
+| *(not a Venus cron)* `factory/forge-poll.mjs` on Joe's Mac | n/a — plain poller, not an MCP tool | `/command/sites` (Queued to build → Built) |
 
 ---
 
