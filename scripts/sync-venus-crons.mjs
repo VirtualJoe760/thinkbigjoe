@@ -62,12 +62,17 @@ for (const cron of VENUS_CRONS) {
   if (!existing) {
     console.log(`${DRY ? "[dry] would ADD" : "＋ ADD"}  ${cron.name}  (${cron.schedule})`);
     if (!DRY) {
+      // Agent-targeted crons run AS that worker agent (--agent + --message);
+      // agentless crons fire as a system event on Venus's main session.
+      const payloadArgs = cron.agent
+        ? ["--agent", cron.agent, "--message", cron.prompt]
+        : ["--system-event", cron.prompt];
       const res = oc([
         "cron", "add",
         "--name", cron.name,
         "--cron", cron.schedule,
         ...staggerArgs(cron.stagger),
-        "--system-event", cron.prompt,
+        ...payloadArgs,
       ]);
       if (res.status !== 0) {
         console.error(`  ✗ add failed: ${res.stderr || res.stdout}`);
@@ -82,23 +87,29 @@ for (const cron of VENUS_CRONS) {
   }
 
   const liveExpr = existing.schedule?.expr ?? "";
-  const liveText = existing.payload?.text ?? "";
+  // system-event crons store the prompt in payload.text; agent-turn crons in payload.message.
+  const liveText = existing.payload?.message ?? existing.payload?.text ?? "";
+  const liveAgent = existing.agentId ?? null;
   const scheduleDrift = liveExpr !== cron.schedule;
   const promptDrift = liveText !== cron.prompt;
+  const agentDrift = (cron.agent ?? null) !== liveAgent;
 
-  if (!scheduleDrift && !promptDrift) {
+  if (!scheduleDrift && !promptDrift && !agentDrift) {
     console.log(`✓ ok   ${cron.name}`);
     ok++;
     continue;
   }
 
-  const what = [scheduleDrift && "schedule", promptDrift && "prompt"].filter(Boolean).join(" + ");
+  const what = [scheduleDrift && "schedule", promptDrift && "prompt", agentDrift && "agent"].filter(Boolean).join(" + ");
   console.log(`${DRY ? "[dry] would EDIT" : "✎ EDIT"} ${cron.name}  (${what})`);
   if (scheduleDrift) console.log(`     schedule: ${liveExpr || "—"}  →  ${cron.schedule}`);
   if (!DRY) {
     const args = ["cron", "edit", existing.id];
     if (scheduleDrift) args.push("--cron", cron.schedule, ...staggerArgs(cron.stagger));
-    if (promptDrift) args.push("--system-event", cron.prompt);
+    if (promptDrift || agentDrift) {
+      if (cron.agent) args.push("--agent", cron.agent, "--message", cron.prompt);
+      else args.push("--system-event", cron.prompt);
+    }
     const res = oc(args);
     if (res.status !== 0) console.error(`  ✗ edit failed: ${res.stderr || res.stdout}`);
   }
