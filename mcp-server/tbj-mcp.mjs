@@ -9,6 +9,8 @@
  *   save_inbound_reply       — record an inbound LinkedIn message + set prospect status='replied'
  *   save_reply_draft         — store Venus's drafted response for Joe's review in the leads page
  *   add_prospect             — add a researched prospect to the review queue
+ *   add_forge_prospect       — add a local service business to the site-building forge queue
+ *   list_forge_queue         — list forge queue businesses, optionally by status
  *   list_needs_enrichment    — prospects missing photo/email/GMB (paginated)
  *   check_outreach_window    — verify working hours / daily limit before sending
  *   update_prospect          — enrich an existing prospect with new recon data
@@ -323,6 +325,60 @@ async function toolAddProspect({
     detail: { company, vertical, source, fitScore: fit_score },
   });
   return { content: [{ type: "text", text: `✅ Added ${name} from ${company} to the review queue.` }] };
+}
+
+function slugifyBusinessName(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+async function toolAddForgeProspect({
+  business_name, niche, city, service_area, phone, email,
+  existing_website_url, brand_color, fit_reason, source = "venus_forge_scout", notes,
+}) {
+  const slug = slugifyBusinessName(business_name);
+  if (!slug) {
+    return { content: [{ type: "text", text: `❌ Could not derive a slug from business_name "${business_name}".` }] };
+  }
+  const existing = await query(`SELECT id FROM forge_sites WHERE slug = $1 LIMIT 1`, [slug]);
+  if (existing.rows.length) {
+    return { content: [{ type: "text", text: `⚠️ ${business_name} is already in the forge queue (slug: ${slug}).` }] };
+  }
+  const res = await query(
+    `INSERT INTO forge_sites (slug, business_name, niche, city, service_area, phone, email, existing_website_url, brand_color, fit_reason, source, notes, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'discovered')
+     RETURNING id`,
+    [slug, business_name, niche, city, service_area, phone, email, existing_website_url, brand_color, fit_reason, source, notes],
+  );
+  const site_id = res.rows[0].id;
+  await audit("forge_prospect_added", `Added ${business_name}${niche ? ` · ${niche}` : ""} to forge queue`, {
+    target: slug,
+    detail: { city, niche, source, fitReason: fit_reason },
+  });
+  return { content: [{ type: "text", text: `✅ Added ${business_name} (slug: ${slug}) to the forge queue — awaiting Joe's approval to build. [id ${site_id}]` }] };
+}
+
+async function toolListForgeQueue({ status } = {}) {
+  const res = status
+    ? await query(
+        `SELECT id, slug, business_name, niche, city, status, live_url, created_at
+         FROM forge_sites WHERE status = $1 ORDER BY created_at DESC LIMIT 100`,
+        [status],
+      )
+    : await query(
+        `SELECT id, slug, business_name, niche, city, status, live_url, created_at
+         FROM forge_sites ORDER BY created_at DESC LIMIT 100`,
+      );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: status ? `No forge_sites with status '${status}'.` : "Forge queue is empty." }] };
+  }
+  const lines = [`🏗️ **${res.rows.length} forge site(s)${status ? ` · status=${status}` : ""}:**`, ""];
+  for (const r of res.rows) {
+    lines.push(`**#${r.id} ${r.business_name}** (${r.slug}) · ${r.niche || "—"} · ${r.city || "—"} · status: ${r.status}${r.live_url ? ` · ${r.live_url}` : ""}`);
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
 async function toolUpdateProspect({
@@ -697,7 +753,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.1.0" },
+  { name: "tbj-mcp", version: "2.2.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -787,6 +843,41 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           source: { type: "string", description: "How the prospect was found. Defaults to 'venus_scout'." },
         },
         required: ["name", "title", "company", "vertical", "location", "profile_url", "fit_score", "fit_reason", "hook"],
+      },
+    },
+    {
+      name: "add_forge_prospect",
+      description: "Add a local service business with no/bad website to the site-building forge queue. Call this after researching a business online. Creates a forge_sites record with status='discovered', awaiting Joe's approval before any site gets built.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          business_name: { type: "string", description: "The business's name (used to derive a unique slug)." },
+          niche: { type: "string", description: "Trade/niche, e.g. 'HVAC — heating & cooling', 'Roofing', 'Electrical'." },
+          city: { type: "string", description: "City the business operates in." },
+          service_area: { type: "string", description: "Broader service area/region, if known." },
+          phone: { type: "string", description: "Phone number found during research." },
+          email: { type: "string", description: "Email address found during research, if any." },
+          existing_website_url: { type: "string", description: "Their current site URL, if they have one (even a bad one)." },
+          brand_color: { type: "string", description: "A guessed brand hex color from their signage/logo/branding, if visible." },
+          fit_reason: { type: "string", description: "One line on why this business is a good forge candidate (no site, dated site, etc.)." },
+          notes: { type: "string", description: "Any other useful research notes." },
+          source: { type: "string", description: "How this business was found. Defaults to 'venus_forge_scout'." },
+        },
+        required: ["business_name", "niche", "city", "fit_reason"],
+      },
+    },
+    {
+      name: "list_forge_queue",
+      description: "List businesses in the forge queue, optionally filtered by status (discovered, approved, denied, building, built, build_failed). Use with no status to see everything, or check before add_forge_prospect to avoid duplicates.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
+            enum: ["discovered", "approved", "denied", "building", "built", "build_failed"],
+            description: "Filter by status. Omit to list all.",
+          },
+        },
       },
     },
     {
@@ -927,6 +1018,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "list_needs_enrichment": return toolListNeedsEnrichment(args);
     case "check_outreach_window": return toolCheckOutreachWindow();
     case "add_prospect": return toolAddProspect(args);
+    case "add_forge_prospect": return toolAddForgeProspect(args);
+    case "list_forge_queue": return toolListForgeQueue(args);
     case "update_prospect": return toolUpdateProspect(args);
     case "list_approved_for_outreach": return toolListApprovedForOutreach();
     case "mark_sent": return toolMarkSent(args);

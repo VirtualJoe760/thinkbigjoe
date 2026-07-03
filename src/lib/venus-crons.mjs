@@ -122,6 +122,27 @@ If any follow-ups were scheduled, call log_activity with event_type=followup_sch
   },
 
   {
+    name: "TBJ Forge Prospect Scout",
+    id: "f35d15ce-4f67-489b-aef3-fe426b3aa007",
+    agent: "prospector",
+    schedule: "0 4 * * *",
+    stagger: "5m",
+    summary: "Find local service businesses with no/bad website for the site-building forge.",
+    tools: ["add_forge_prospect", "list_forge_queue", "log_activity"],
+    uiSurface: ["/command/sites"],
+    eventTypes: ["forge_scout_complete", "forge_prospect_added"],
+    prompt: `This is your daily scouting run. Follow your sourcing loop (AGENTS.md) to find local service businesses that need a website.
+
+1. DEDUP: call list_forge_queue (no filter) and skip any business already queued — check by name + city.
+
+2. SEARCH: research 8–12 owner-operated local service businesses in the Scottsdale / Phoenix metro (your default focus unless Joe or marketing-manager gave you a different area). Trades: HVAC, roofing, electrical, plumbing, landscaping, garage doors, pest control, painting, and similar. Use Google Maps + Google Search; open and rate each site per your rubric. Queue ONLY businesses with no website (0) or a weak/dated/broken one (rated ≤ 4).
+
+3. QUEUE: for each qualifying business, call add_forge_prospect with business_name, niche (one line), city, phone, email if findable, existing_website_url if any (blank if none), a guessed brand_color hex from their branding, and a one-line fit_reason (why the web presence is weak — the evidence outreach will use).
+
+4. LOG: finish with log_activity, event_type "forge_scout_complete", summary like "Queued N · Queue total: Z". marketing-manager reads this for the digest — you don't message Joe directly.`,
+  },
+
+  {
     name: "TBJ Follow-up Drip",
     id: "b0272b1d-31bf-4b9c-a097-980311c4935f",
     schedule: "0 10 * * 1-5",
