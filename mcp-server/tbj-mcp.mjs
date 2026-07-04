@@ -337,6 +337,7 @@ function slugifyBusinessName(name) {
 async function toolAddForgeProspect({
   business_name, niche, city, service_area, phone, email,
   existing_website_url, brand_color, fit_reason, source = "venus_forge_scout", notes,
+  google_rating, review_count, google_maps_url, linkedin_url,
 }) {
   const slug = slugifyBusinessName(business_name);
   if (!slug) {
@@ -347,10 +348,10 @@ async function toolAddForgeProspect({
     return { content: [{ type: "text", text: `⚠️ ${business_name} is already in the forge queue (slug: ${slug}).` }] };
   }
   const res = await query(
-    `INSERT INTO forge_sites (slug, business_name, niche, city, service_area, phone, email, existing_website_url, brand_color, fit_reason, source, notes, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'discovered')
+    `INSERT INTO forge_sites (slug, business_name, niche, city, service_area, phone, email, existing_website_url, brand_color, google_rating, review_count, google_maps_url, linkedin_url, fit_reason, source, notes, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'discovered')
      RETURNING id`,
-    [slug, business_name, niche, city, service_area, phone, email, existing_website_url, brand_color, fit_reason, source, notes],
+    [slug, business_name, niche, city, service_area, phone, email, existing_website_url, brand_color, google_rating, review_count, google_maps_url, linkedin_url, fit_reason, source, notes],
   );
   const site_id = res.rows[0].id;
   await audit("forge_prospect_added", `Added ${business_name}${niche ? ` · ${niche}` : ""} to forge queue`, {
@@ -753,7 +754,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.2.0" },
+  { name: "tbj-mcp", version: "2.3.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -859,6 +860,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           email: { type: "string", description: "Email address found during research, if any." },
           existing_website_url: { type: "string", description: "Their current site URL, if they have one (even a bad one)." },
           brand_color: { type: "string", description: "A guessed brand hex color from their signage/logo/branding, if visible." },
+          google_rating: { type: "string", description: "Their Google star rating, e.g. \"4.9\" (from the Google Maps listing). Omit if they have none." },
+          review_count: { type: "string", description: "Their Google review count, e.g. \"79\" or \"1,100+\"." },
+          google_maps_url: { type: "string", description: "Link to their Google Maps / Google Business listing (maps.google.com or g.page URL)." },
+          linkedin_url: { type: "string", description: "Link to their LinkedIn company page, if they have one (often none for local trades)." },
           fit_reason: { type: "string", description: "One line on why this business is a good forge candidate (no site, dated site, etc.)." },
           notes: { type: "string", description: "Any other useful research notes." },
           source: { type: "string", description: "How this business was found. Defaults to 'venus_forge_scout'." },

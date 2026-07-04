@@ -258,6 +258,10 @@ export const forgeSites = pgTable("forge_sites", {
 	builtAt: timestamp("built_at", { withTimezone: true, mode: 'string' }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	googleRating: text("google_rating"),
+	reviewCount: text("review_count"),
+	googleMapsUrl: text("google_maps_url"),
+	linkedinUrl: text("linkedin_url"),
 }, (table) => [
 	index("forge_sites_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
 	unique("forge_sites_slug_key").on(table.slug),

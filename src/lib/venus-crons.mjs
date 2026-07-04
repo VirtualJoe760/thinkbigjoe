@@ -137,7 +137,7 @@ If any follow-ups were scheduled, call log_activity with event_type=followup_sch
 
 2. SEARCH: research 8–12 owner-operated local service businesses in the Scottsdale / Phoenix metro (your default focus unless Joe or marketing-manager gave you a different area). Trades: HVAC, roofing, electrical, plumbing, landscaping, garage doors, pest control, painting, and similar. Use Google Maps + Google Search; open and rate each site per your rubric. Queue ONLY businesses with no website (0) or a weak/dated/broken one (rated ≤ 4).
 
-3. QUEUE: for each qualifying business, call add_forge_prospect with business_name, niche (one line), city, phone, email if findable, existing_website_url if any (blank if none), a guessed brand_color hex from their branding, and a one-line fit_reason (why the web presence is weak — the evidence outreach will use).
+3. QUEUE: for each qualifying business, call add_forge_prospect with business_name, niche (one line), city, phone, email if findable, existing_website_url if any (blank if none), a guessed brand_color hex from their branding, and a one-line fit_reason (why the web presence is weak — the evidence outreach will use). Also grab from the Google Maps listing: google_rating (e.g. "4.9"), review_count (e.g. "79"), google_maps_url (the listing link), and linkedin_url if they have a LinkedIn company page (often none). These let Joe vet + click through before approving.
 
 4. LOG: finish with log_activity, event_type "forge_scout_complete", summary like "Queued N · Queue total: Z". marketing-manager reads this for the digest — you don't message Joe directly.`,
   },
