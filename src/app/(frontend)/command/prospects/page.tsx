@@ -40,7 +40,7 @@ export default async function ProspectsPage({
     sp.view as View,
   )
     ? (sp.view as View)
-    : "priority";
+    : "sites";
   const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
   const vertical = VERTICALS.some((x) => x.key === sp.v) ? (sp.v as string) : "";
   const q = (sp.q || "").trim();
@@ -159,11 +159,11 @@ export default async function ProspectsPage({
   const forgeOther = forgeItems.filter((i) => i.status === "denied" || i.status === "build_failed");
 
   const tabs: Array<{ key: View; label: string; count: number }> = [
-    { key: "priority", label: "Priority", count: byView.priority.length },
-    { key: "queue", label: "All pending", count: byView.queue.length },
-    { key: "ready", label: "Ready to send", count: byView.ready.length },
-    { key: "sent", label: "Sent", count: byView.sent.length },
-    { key: "sites", label: "Potential sites", count: forgeNeedsReview.length },
+    { key: "sites", label: "Web-dev leads", count: forgeNeedsReview.length },
+    { key: "priority", label: "LinkedIn · Priority", count: byView.priority.length },
+    { key: "queue", label: "LinkedIn · Pending", count: byView.queue.length },
+    { key: "ready", label: "LinkedIn · Ready", count: byView.ready.length },
+    { key: "sent", label: "LinkedIn · Sent", count: byView.sent.length },
   ];
 
   const items = view === "sites" ? [] : byView[view];
