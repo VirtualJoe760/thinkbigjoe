@@ -62,12 +62,21 @@ function Rating({ item }: { item: ForgeSiteItem }) {
   );
 }
 
+function mapsQuery(item: ForgeSiteItem) {
+  return encodeURIComponent([item.businessName, item.city].filter(Boolean).join(", "));
+}
+// Deep-link to the business on Google Maps. Prefer the URL the prospector captured;
+// otherwise a Maps search on name + city (so every lead has a working link).
+function mapsSearchUrl(item: ForgeSiteItem) {
+  return item.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${mapsQuery(item)}`;
+}
+
 function ExternalLinks({ item }: { item: ForgeSiteItem }) {
-  const links: Array<{ label: string; href: string }> = [];
-  if (item.googleMapsUrl) links.push({ label: "Google", href: item.googleMapsUrl });
+  const links: Array<{ label: string; href: string }> = [
+    { label: "Google", href: mapsSearchUrl(item) },
+  ];
   if (item.linkedinUrl) links.push({ label: "LinkedIn", href: item.linkedinUrl });
   if (item.existingWebsiteUrl) links.push({ label: "Existing site", href: item.existingWebsiteUrl });
-  if (!links.length) return null;
   return (
     <>
       {links.map((l) => (
@@ -82,6 +91,52 @@ function ExternalLinks({ item }: { item: ForgeSiteItem }) {
         </a>
       ))}
     </>
+  );
+}
+
+// Google's free Maps Embed API (needs a key; Google blocks the old keyless embed).
+// Set NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY to show a live map; without it we render a
+// clean clickable placeholder that opens the listing — never a blank box.
+const MAPS_EMBED_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY;
+
+function BusinessMap({ item }: { item: ForgeSiteItem }) {
+  if (!item.city && !item.businessName) return null;
+  const href = mapsSearchUrl(item);
+
+  if (MAPS_EMBED_KEY) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        title={`Open ${item.businessName} in Google Maps`}
+        className="group relative block h-40 overflow-hidden rounded-xl border border-line sm:h-full sm:min-h-[9rem]"
+      >
+        <iframe
+          title={`Map of ${item.businessName}`}
+          src={`https://www.google.com/maps/embed/v1/place?key=${MAPS_EMBED_KEY}&q=${mapsQuery(item)}&zoom=13`}
+          className="pointer-events-none h-full w-full"
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+        />
+        <span className="pointer-events-none absolute bottom-1 right-1 rounded bg-background/90 px-1.5 py-0.5 text-[10px] font-medium text-ink-soft opacity-0 transition-opacity group-hover:opacity-100">
+          Open in Maps ↗
+        </span>
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="flex h-32 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-line bg-surface text-center text-sm text-ink-soft transition-colors hover:border-brand hover:text-brand sm:h-full sm:min-h-[9rem]"
+    >
+      <span className="text-2xl leading-none">📍</span>
+      <span className="font-medium">View on Google Maps ↗</span>
+      {item.city && <span className="text-xs">{item.city}</span>}
+    </a>
   );
 }
 
@@ -101,25 +156,27 @@ function DiscoveredRow({ item }: { item: ForgeSiteItem }) {
 
   return (
     <div className="rounded-2xl border border-line bg-background p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="font-semibold text-ink">{item.businessName}</span>
-            <Rating item={item} />
+      <div className="grid gap-4 sm:grid-cols-[1fr_15rem]">
+        <div className="order-2 min-w-0 sm:order-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="font-semibold text-ink">{item.businessName}</span>
+                <Rating item={item} />
+              </div>
+              <div className="text-sm text-ink-soft">{item.niche} · {item.city}</div>
+            </div>
+            <StatusPill status={item.status} />
           </div>
-          <div className="text-sm text-ink-soft">{item.niche} · {item.city}</div>
-        </div>
-        <StatusPill status={item.status} />
-      </div>
-      {item.fitReason && <p className="mt-2 text-sm text-ink-soft">{item.fitReason}</p>}
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-soft">
-        {item.phone && <span>{item.phone}</span>}
-        {item.email && <span>{item.email}</span>}
-        <ExternalLinks item={item} />
-        {item.source && <span>source: {item.source}</span>}
-      </div>
+          {item.fitReason && <p className="mt-2 text-sm text-ink-soft">{item.fitReason}</p>}
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-soft">
+            {item.phone && <span>{item.phone}</span>}
+            {item.email && <span>{item.email}</span>}
+            <ExternalLinks item={item} />
+            {item.source && <span>found via {item.source}</span>}
+          </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
         {denying ? (
           <>
             <input
@@ -161,6 +218,11 @@ function DiscoveredRow({ item }: { item: ForgeSiteItem }) {
             </button>
           </>
         )}
+          </div>
+        </div>
+        <div className="order-1 sm:order-2">
+          <BusinessMap item={item} />
+        </div>
       </div>
     </div>
   );
