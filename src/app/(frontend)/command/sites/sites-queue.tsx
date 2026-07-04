@@ -16,6 +16,10 @@ export type ForgeSiteItem = {
   existingWebsiteUrl: string;
   brandColor: string;
   theme: string;
+  googleRating: string;
+  reviewCount: string;
+  googleMapsUrl: string;
+  linkedinUrl: string;
   status: string;
   fitReason: string;
   source: string;
@@ -43,6 +47,44 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
+function Rating({ item }: { item: ForgeSiteItem }) {
+  if (!item.googleRating) return null;
+  const stars = Math.round(Number(item.googleRating) || 0);
+  return (
+    <span className="inline-flex items-center gap-1 text-sm font-medium text-ink">
+      <span className="text-amber-500">
+        {"★".repeat(Math.max(0, Math.min(5, stars)))}
+        {"☆".repeat(Math.max(0, 5 - Math.min(5, stars)))}
+      </span>
+      <span>{item.googleRating}</span>
+      {item.reviewCount && <span className="text-ink-soft">· {item.reviewCount} reviews</span>}
+    </span>
+  );
+}
+
+function ExternalLinks({ item }: { item: ForgeSiteItem }) {
+  const links: Array<{ label: string; href: string }> = [];
+  if (item.googleMapsUrl) links.push({ label: "Google", href: item.googleMapsUrl });
+  if (item.linkedinUrl) links.push({ label: "LinkedIn", href: item.linkedinUrl });
+  if (item.existingWebsiteUrl) links.push({ label: "Existing site", href: item.existingWebsiteUrl });
+  if (!links.length) return null;
+  return (
+    <>
+      {links.map((l) => (
+        <a
+          key={l.label}
+          href={l.href}
+          target="_blank"
+          rel="noreferrer"
+          className="font-medium text-brand underline underline-offset-2"
+        >
+          {l.label} ↗
+        </a>
+      ))}
+    </>
+  );
+}
+
 function DiscoveredRow({ item }: { item: ForgeSiteItem }) {
   const [pending, start] = useTransition();
   const [denying, setDenying] = useState(false);
@@ -61,20 +103,19 @@ function DiscoveredRow({ item }: { item: ForgeSiteItem }) {
     <div className="rounded-2xl border border-line bg-background p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <div className="font-semibold text-ink">{item.businessName}</div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="font-semibold text-ink">{item.businessName}</span>
+            <Rating item={item} />
+          </div>
           <div className="text-sm text-ink-soft">{item.niche} · {item.city}</div>
         </div>
         <StatusPill status={item.status} />
       </div>
       {item.fitReason && <p className="mt-2 text-sm text-ink-soft">{item.fitReason}</p>}
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-soft">
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-soft">
         {item.phone && <span>{item.phone}</span>}
         {item.email && <span>{item.email}</span>}
-        {item.existingWebsiteUrl && (
-          <a href={item.existingWebsiteUrl} target="_blank" rel="noreferrer" className="underline">
-            existing site
-          </a>
-        )}
+        <ExternalLinks item={item} />
         {item.source && <span>source: {item.source}</span>}
       </div>
 
@@ -129,10 +170,14 @@ function SimpleRow({ item }: { item: ForgeSiteItem }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-line bg-background p-4">
       <div>
-        <div className="font-semibold text-ink">{item.businessName}</div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="font-semibold text-ink">{item.businessName}</span>
+          <Rating item={item} />
+        </div>
         <div className="text-sm text-ink-soft">{item.niche} · {item.city}</div>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        <ExternalLinks item={item} />
         {item.liveUrl && (
           <a href={item.liveUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-brand underline">
             View live site
