@@ -198,14 +198,22 @@ export default async function PortalPage() {
                     )}
 
                     {site.liveUrl && (
-                      <a
-                        href={site.liveUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-4 inline-flex items-center justify-center rounded-full border border-line bg-background px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
-                      >
-                        View your site →
-                      </a>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Link
+                          href={`/portal/edit/${site.id}`}
+                          className="inline-flex items-center justify-center rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-ink/90"
+                        >
+                          ✏️ Request edits
+                        </Link>
+                        <a
+                          href={site.liveUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center rounded-full border border-line bg-background px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                        >
+                          View your site →
+                        </a>
+                      </div>
                     )}
                   </>
                 ) : (

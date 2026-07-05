@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { desc } from "drizzle-orm";
 
-import { db, forgeSites, rebuildRequests } from "@/db";
+import { db, forgeSites, rebuildRequests, editRequests } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { SitesQueue, type ForgeSiteItem } from "./sites-queue";
 
@@ -19,6 +19,11 @@ export default async function SitesPage() {
     .select()
     .from(rebuildRequests)
     .orderBy(desc(rebuildRequests.createdAt));
+  const edits = await db
+    .select()
+    .from(editRequests)
+    .orderBy(desc(editRequests.createdAt))
+    .limit(50);
 
   const all: ForgeSiteItem[] = rows.map((r) => ({
     id: String(r.id),
@@ -100,6 +105,34 @@ export default async function SitesPage() {
             </div>
           </section>
         )}
+
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-soft">
+            Edit requests <span className="ml-1 text-ink">{edits.length}</span>
+          </h2>
+          <p className="mt-1 text-xs text-ink-soft">
+            Click-to-edit changes clients requested on their live sites — apply via the forge.
+          </p>
+          <div className="mt-3 flex flex-col gap-3">
+            {edits.length === 0 ? (
+              <p className="text-sm text-ink-soft">No edit requests yet.</p>
+            ) : (
+              edits.map((r) => (
+                <details key={r.id} className="rounded-2xl border border-line bg-background p-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-ink">
+                    #{r.id} · site {r.siteId} ·{" "}
+                    <span className="font-normal text-ink-soft">
+                      {Array.isArray(r.edits) ? r.edits.length : "?"} change(s) · {r.status}
+                    </span>
+                  </summary>
+                  <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-lg bg-surface p-3 text-xs text-ink-soft">
+                    {r.markdown}
+                  </pre>
+                </details>
+              ))
+            )}
+          </div>
+        </section>
 
         <section className="mt-8">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-soft">
