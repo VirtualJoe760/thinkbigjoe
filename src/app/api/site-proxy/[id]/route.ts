@@ -51,15 +51,14 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
   // Since we stripped JS, scroll-reveal animations (which start at opacity:0 and
   // reveal via IntersectionObserver) would stay invisible. Force them visible.
+  // The forge templates hide scroll-reveal content with a `.reveal` class
+  // (opacity:0 + translateY, JS adds `.is-visible` on scroll). With JS stripped
+  // it never reveals — so force it, plus the generic opacity/translate fallbacks.
   const fixCss =
     "<style id=\"__tbj-fix\">" +
-    // Let CSS keyframe animations run (many templates fade content in on load —
-    // freezing them left sections invisible). Force their end state visible too.
-    "*{animation-play-state:running!important;animation-fill-mode:forwards!important;transition:none!important}" +
-    // Force-reveal anything hidden by scroll animations (opacity / translate /
-    // visibility), across inline styles, Tailwind utilities, AOS and framer-motion.
-    "[class*=opacity-0],[style*='opacity:0'],[style*='opacity: 0'],[style*='visibility:hidden'],[style*='visibility: hidden'],[data-aos],[data-animate],[data-framer-appear-id],[class*='animate-']{opacity:1!important;visibility:visible!important}" +
-    "[style*='opacity:0'],[style*='opacity: 0'],[style*='translate'],[class*='translate-y-'],[class*='translate-x-'],[data-aos],[data-framer-appear-id]{transform:none!important}" +
+    ".reveal,.reveal.is-visible{opacity:1!important;transform:none!important;visibility:visible!important}" +
+    "[data-aos],[data-animate],[data-framer-appear-id],[class*='animate-']{opacity:1!important;visibility:visible!important;transform:none!important}" +
+    "[style*='opacity:0'],[style*='opacity: 0'],[style*='visibility:hidden']{opacity:1!important;visibility:visible!important;transform:none!important}" +
     "img{opacity:1!important;visibility:visible!important}" +
     "</style>";
 
