@@ -3,7 +3,10 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { eq } from "drizzle-orm";
+
 import { PortalHeader } from "@/components/portal/portal-header";
+import { db, forgeSites } from "@/db";
 import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
 
@@ -62,6 +65,15 @@ export default async function PortalPage() {
   const firstName = user.name?.split(" ")[0] || "there";
   const isAdmin = isAdminEmail(user.email);
 
+  const mySites = await db
+    .select({
+      id: forgeSites.id,
+      businessName: forgeSites.businessName,
+      liveUrl: forgeSites.liveUrl,
+    })
+    .from(forgeSites)
+    .where(eq(forgeSites.claimedByUserId, user.id));
+
   return (
     <div className="flex flex-1 flex-col">
       <PortalHeader email={user.email} isAdmin={isAdmin} />
@@ -102,6 +114,42 @@ export default async function PortalPage() {
             </div>
           </section>
         )}
+
+        <section className="mt-12">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-ink-soft">
+            Your sites
+          </h2>
+          <div className="mt-4 grid gap-6 md:grid-cols-2">
+            {mySites.map((site) => (
+              <div key={site.id} className="rounded-2xl border border-line bg-surface p-8">
+                <h3 className="text-xl font-bold tracking-tight">{site.businessName}</h3>
+                <p className="mt-2 text-sm text-ink-soft">Claimed and linked to your account.</p>
+                {site.liveUrl && (
+                  <a
+                    href={site.liveUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-4 inline-flex items-center justify-center rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
+                  >
+                    View your site →
+                  </a>
+                )}
+              </div>
+            ))}
+            <Link
+              href="/portal/claim"
+              className="group flex flex-col justify-center rounded-2xl border border-dashed border-line bg-surface p-8 text-center transition-colors hover:border-brand hover:bg-brand-tint"
+            >
+              <span className="text-2xl">＋</span>
+              <span className="mt-1 font-semibold tracking-tight group-hover:text-brand">
+                {mySites.length ? "Claim another site" : "Claim your site"}
+              </span>
+              <span className="mt-1 text-sm text-ink-soft">
+                Have a claim code? Link your website to this account.
+              </span>
+            </Link>
+          </div>
+        </section>
 
         <section className="mt-12">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-ink-soft">

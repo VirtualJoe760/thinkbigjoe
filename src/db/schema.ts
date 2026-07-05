@@ -1,4 +1,4 @@
-import { pgTable, serial, boolean, varchar, integer, date, timestamp, index, foreignKey, text, jsonb, check, numeric, unique, pgEnum } from "drizzle-orm/pg-core"
+import { pgTable, serial, boolean, varchar, integer, date, timestamp, index, foreignKey, text, jsonb, check, numeric, uniqueIndex, unique, pgEnum } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 export const enumLeadsEmailType = pgEnum("enum_leads_email_type", ['business', 'free'])
@@ -262,7 +262,11 @@ export const forgeSites = pgTable("forge_sites", {
 	reviewCount: text("review_count"),
 	googleMapsUrl: text("google_maps_url"),
 	linkedinUrl: text("linkedin_url"),
+	claimCode: text("claim_code"),
+	claimedByUserId: text("claimed_by_user_id"),
+	claimedAt: timestamp("claimed_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
+	uniqueIndex("forge_sites_claim_code_key").using("btree", table.claimCode.asc().nullsLast().op("text_ops")),
 	index("forge_sites_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
 	unique("forge_sites_slug_key").on(table.slug),
 ]);

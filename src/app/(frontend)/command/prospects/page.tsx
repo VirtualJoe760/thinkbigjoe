@@ -155,6 +155,8 @@ export default async function ProspectsPage({
     screenshotUrl: r.screenshotUrl || "",
     buildStatus: r.buildStatus || "",
     deniedReason: r.deniedReason || "",
+    claimCode: r.claimCode || "",
+    claimed: Boolean(r.claimedByUserId),
     createdAt: r.createdAt,
   }));
   const forgeNeedsReview = forgeItems.filter((i) => i.status === "discovered");

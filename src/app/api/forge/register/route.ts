@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 
 import { db, forgeSites, activityLog } from "@/db";
+import { generateClaimCode } from "@/lib/claim-code";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,11 @@ export async function POST(req: Request) {
   const clean = body.buildStatus === "clean";
   const now = new Date().toISOString();
 
+  // Mint a claim code the first time a site builds cleanly (keep any existing
+  // one so re-runs don't invalidate a code already handed to the owner).
+  const claimCode =
+    clean && !existing.claimCode ? generateClaimCode() : existing.claimCode;
+
   await db
     .update(forgeSites)
     .set({
@@ -51,6 +57,7 @@ export async function POST(req: Request) {
       liveUrl: body.liveUrl || existing.liveUrl,
       screenshotUrl: body.screenshotUrl || existing.screenshotUrl,
       buildStatus: body.buildStatus || existing.buildStatus,
+      claimCode,
       builtAt: clean ? now : existing.builtAt,
       updatedAt: now,
     })
@@ -60,8 +67,8 @@ export async function POST(req: Request) {
     actor: "forge",
     eventType: clean ? "forge_site_built" : "forge_site_build_failed",
     summary: `${existing.businessName} (${slug}) — ${clean ? `built, live at ${body.liveUrl || "?"}` : `build failed`}`,
-    metadata: { auto: true, target: slug, detail: { buildStatus: body.buildStatus, liveUrl: body.liveUrl } },
+    metadata: { auto: true, target: slug, detail: { buildStatus: body.buildStatus, liveUrl: body.liveUrl, claimCode } },
   });
 
-  return NextResponse.json({ ok: true, status: clean ? "built" : "build_failed" });
+  return NextResponse.json({ ok: true, status: clean ? "built" : "build_failed", claimCode });
 }
