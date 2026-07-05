@@ -70,13 +70,27 @@
     "position:fixed;z-index:2147483000;pointer-events:none;border:2px solid #2f6bff;" +
     "background:rgba(47,107,255,.12);border-radius:4px;display:none;";
   document.documentElement.appendChild(hl);
-  document.addEventListener("pointerover", function (e) {
-    if (isOurs(e.target) || document.getElementById("__tbj-pop")) { hl.style.display = "none"; return; }
-    var r = e.target.getBoundingClientRect();
+  var hoveredEl = null;
+  function moveHl(el) {
+    var r = el.getBoundingClientRect();
     hl.style.display = "block";
     hl.style.left = r.left + "px"; hl.style.top = r.top + "px";
     hl.style.width = r.width + "px"; hl.style.height = r.height + "px";
+  }
+  document.addEventListener("pointerover", function (e) {
+    if (isOurs(e.target) || document.getElementById("__tbj-pop")) { hoveredEl = null; hl.style.display = "none"; return; }
+    hoveredEl = e.target;
+    moveHl(hoveredEl);
   }, true);
+  // The overlay is position:fixed, so on scroll it would stay put while the
+  // element moves — re-track it to the hovered element as the page scrolls.
+  window.addEventListener(
+    "scroll",
+    function () {
+      if (hoveredEl && !document.getElementById("__tbj-pop")) moveHl(hoveredEl);
+    },
+    true,
+  );
 
   // ---- click to select --------------------------------------------------
   document.addEventListener("click", function (e) {
