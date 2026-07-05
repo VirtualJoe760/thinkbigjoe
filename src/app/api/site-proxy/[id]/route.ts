@@ -54,8 +54,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const fixCss =
     "<style id=\"__tbj-fix\">" +
     "*{animation:none!important;transition:none!important}" +
-    "[class*=opacity-0],[style*='opacity:0'],[style*='opacity: 0']{opacity:1!important}" +
-    "[style*='opacity:0'],[style*='opacity: 0'],[data-aos],[data-animate]{transform:none!important}" +
+    // Force-reveal anything hidden by scroll animations (opacity / translate /
+    // visibility), across inline styles, Tailwind utilities, AOS and framer-motion.
+    "[class*=opacity-0],[style*='opacity:0'],[style*='opacity: 0'],[style*='visibility:hidden'],[style*='visibility: hidden'],[data-aos],[data-animate],[data-framer-appear-id],[class*='animate-']{opacity:1!important;visibility:visible!important}" +
+    "[style*='opacity:0'],[style*='opacity: 0'],[style*='translate'],[class*='translate-y-'],[class*='translate-x-'],[data-aos],[data-framer-appear-id]{transform:none!important}" +
     "img{opacity:1!important;visibility:visible!important}" +
     "</style>";
 
