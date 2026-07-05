@@ -45,10 +45,22 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     // Strip the site's own scripts so its Next.js runtime can't hydrate,
     // frame-bust, or navigate — we only want a static, styled, clickable page.
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<script\b[^>]*\/>/gi, "");
+    .replace(/<script\b[^>]*\/>/gi, "")
+    // Without the site's JS, lazy images never load — make them eager.
+    .replace(/loading=(["'])lazy\1/gi, 'loading="eager"');
+
+  // Since we stripped JS, scroll-reveal animations (which start at opacity:0 and
+  // reveal via IntersectionObserver) would stay invisible. Force them visible.
+  const fixCss =
+    "<style id=\"__tbj-fix\">" +
+    "*{animation:none!important;transition:none!important}" +
+    "[class*=opacity-0],[style*='opacity:0'],[style*='opacity: 0']{opacity:1!important}" +
+    "[style*='opacity:0'],[style*='opacity: 0'],[data-aos],[data-animate]{transform:none!important}" +
+    "img{opacity:1!important;visibility:visible!important}" +
+    "</style>";
 
   // <base> so the site's relative CSS/images still resolve against its real host.
-  const baseTag = `<base href="${base}">`;
+  const baseTag = `<base href="${base}">` + fixCss;
   if (/<head[^>]*>/i.test(html)) {
     html = html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
   } else {

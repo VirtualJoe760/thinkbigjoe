@@ -115,9 +115,15 @@
         origText.replace(/</g, "&lt;") + "</textarea>";
     }
 
+    var textHex = rgbToHex(cs.color);
+    var bgTransparent = cs.backgroundColor === "transparent" || /rgba?\([^)]*,\s*0\s*\)\s*$/.test(cs.backgroundColor);
+    var bgHex = bgTransparent ? "#ffffff" : rgbToHex(cs.backgroundColor);
+    var ci = "width:100%;height:30px;border:1px solid #e6e9ef;border-radius:6px;margin-top:4px;padding:0;";
     html += '<div style="display:flex;gap:12px;margin-top:10px;">' +
-      '<label style="flex:1;font-size:12px;font-weight:600;">Text color<br><input id="__tbj-color" type="color" value="' + rgbToHex(cs.color) + '" style="width:100%;height:30px;border:1px solid #e6e9ef;border-radius:6px;margin-top:4px;"></label>' +
-      '<label style="flex:1;font-size:12px;font-weight:600;">Background<br><input id="__tbj-bg" type="color" value="' + rgbToHex(cs.backgroundColor) + '" style="width:100%;height:30px;border:1px solid #e6e9ef;border-radius:6px;margin-top:4px;"></label>' +
+      '<label style="flex:1;font-size:12px;font-weight:600;">Text <span id="__tbj-colorhex" style="font-weight:400;color:#9aa0ad;">' + textHex + '</span>' +
+      '<input id="__tbj-color" type="color" value="' + textHex + '" style="' + ci + '"></label>' +
+      '<label style="flex:1;font-size:12px;font-weight:600;">Background <span id="__tbj-bghex" style="font-weight:400;color:#9aa0ad;">' + (bgTransparent ? "none" : bgHex) + '</span>' +
+      '<input id="__tbj-bg" type="color" value="' + bgHex + '" style="' + ci + '"></label>' +
       "</div>";
 
     if (isImg) {
@@ -147,11 +153,17 @@
     var ta = pop.querySelector("#__tbj-text");
     if (ta) ta.addEventListener("input", function () { el.textContent = ta.value; change.newText = ta.value; });
 
+    var colorHexEl = pop.querySelector("#__tbj-colorhex");
     pop.querySelector("#__tbj-color").addEventListener("input", function (e2) {
-      el.style.color = e2.target.value; change.color = e2.target.value;
+      el.style.setProperty("color", e2.target.value, "important");
+      change.color = e2.target.value;
+      if (colorHexEl) colorHexEl.textContent = e2.target.value;
     });
+    var bgHexEl = pop.querySelector("#__tbj-bghex");
     pop.querySelector("#__tbj-bg").addEventListener("input", function (e2) {
-      el.style.backgroundColor = e2.target.value; change.background = e2.target.value;
+      el.style.setProperty("background-color", e2.target.value, "important");
+      change.background = e2.target.value;
+      if (bgHexEl) bgHexEl.textContent = e2.target.value;
     });
 
     var fileInput = pop.querySelector("#__tbj-img");
