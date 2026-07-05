@@ -5,7 +5,7 @@ const tiers = [
     name: "Website",
     price: "$99",
     cadence: "/mo",
-    note: "+ one-time build fee",
+    note: "+ $300 one-time build",
     tagline: "A modern site, built and maintained for you.",
     features: [
       "Custom-designed website",
@@ -19,7 +19,7 @@ const tiers = [
     name: "Website + Voice",
     price: "$299",
     cadence: "/mo",
-    note: "+ one-time build fee",
+    note: "+ $300 one-time build",
     tagline: "Never miss a call — the AI answers and books it.",
     features: [
       "Everything in Website",
@@ -33,7 +33,7 @@ const tiers = [
     name: "Complete",
     price: "$999",
     cadence: "/mo",
-    note: "everything, done for you",
+    note: "+ $300 one-time build",
     tagline: "Your whole front office, run by AI.",
     features: [
       "Everything in Website + Voice",
