@@ -362,14 +362,15 @@ async function toolAddForgeProspect({
 }
 
 async function toolListForgeQueue({ status } = {}) {
+  const cols = `id, slug, business_name, niche, city, status, live_url, claim_code, claimed_by_user_id, created_at`;
   const res = status
     ? await query(
-        `SELECT id, slug, business_name, niche, city, status, live_url, created_at
+        `SELECT ${cols}
          FROM forge_sites WHERE status = $1 ORDER BY created_at DESC LIMIT 100`,
         [status],
       )
     : await query(
-        `SELECT id, slug, business_name, niche, city, status, live_url, created_at
+        `SELECT ${cols}
          FROM forge_sites ORDER BY created_at DESC LIMIT 100`,
       );
   if (!res.rows.length) {
@@ -377,7 +378,14 @@ async function toolListForgeQueue({ status } = {}) {
   }
   const lines = [`🏗️ **${res.rows.length} forge site(s)${status ? ` · status=${status}` : ""}:**`, ""];
   for (const r of res.rows) {
-    lines.push(`**#${r.id} ${r.business_name}** (${r.slug}) · ${r.niche || "—"} · ${r.city || "—"} · status: ${r.status}${r.live_url ? ` · ${r.live_url}` : ""}`);
+    // claim_code is the code the owner redeems at thinkbigjoe.com/portal/claim to
+    // take ownership — include it in outreach to a built (unclaimed) site.
+    const claim = r.claimed_by_user_id
+      ? " · ✓ claimed"
+      : r.claim_code
+        ? ` · claim code: ${r.claim_code}`
+        : "";
+    lines.push(`**#${r.id} ${r.business_name}** (${r.slug}) · ${r.niche || "—"} · ${r.city || "—"} · status: ${r.status}${r.live_url ? ` · ${r.live_url}` : ""}${claim}`);
   }
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
@@ -754,7 +762,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.3.0" },
+  { name: "tbj-mcp", version: "2.4.0" },
   { capabilities: { tools: {} } },
 );
 

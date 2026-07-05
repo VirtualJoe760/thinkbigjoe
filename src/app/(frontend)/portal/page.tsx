@@ -148,6 +148,18 @@ export default async function PortalPage() {
                 Have a claim code? Link your website to this account.
               </span>
             </Link>
+            <Link
+              href="/portal/rebuild"
+              className="group flex flex-col justify-center rounded-2xl border border-dashed border-line bg-surface p-8 text-center transition-colors hover:border-brand hover:bg-brand-tint"
+            >
+              <span className="text-2xl">↻</span>
+              <span className="mt-1 font-semibold tracking-tight group-hover:text-brand">
+                Rebuild an existing site
+              </span>
+              <span className="mt-1 text-sm text-ink-soft">
+                Have a website already? We'll crawl it and rebuild it better.
+              </span>
+            </Link>
           </div>
         </section>
 

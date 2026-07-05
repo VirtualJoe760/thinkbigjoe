@@ -270,3 +270,19 @@ export const forgeSites = pgTable("forge_sites", {
 	index("forge_sites_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
 	unique("forge_sites_slug_key").on(table.slug),
 ]);
+
+export const rebuildRequests = pgTable("rebuild_requests", {
+	id: serial().primaryKey().notNull(),
+	existingUrl: text("existing_url").notNull(),
+	businessName: text("business_name"),
+	name: text(),
+	email: text(),
+	phone: text(),
+	notes: text(),
+	status: text().default('requested').notNull(),
+	requestedByUserId: text("requested_by_user_id"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("rebuild_requests_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+]);
