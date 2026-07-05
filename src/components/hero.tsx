@@ -19,7 +19,7 @@ export function Hero() {
       <div className="relative mx-auto max-w-6xl px-6 pt-24 pb-20 md:pt-32 md:pb-28">
         <div className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-xs font-semibold tracking-wide text-ink-soft uppercase">
           <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-          Websites · AI Receptionists · AI Sales
+          Agentic Software · MCP Development · Websites · AI Voice
         </div>
 
         <h1 className="mt-8 max-w-4xl text-5xl font-extrabold leading-[1.05] tracking-tight text-balance md:text-7xl">
@@ -29,10 +29,10 @@ export function Hero() {
         </h1>
 
         <p className="mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft md:text-xl">
-          ThinkBigJoe builds local businesses a modern website and an AI
-          receptionist that answers every call, books the job, and never sends a
-          customer to voicemail — so you stop losing work to the competitor who
-          picked up first.
+          ThinkBigJoe builds the AI that runs your business — from a modern
+          website and an AI receptionist that books every call, to custom
+          agentic software and Model Context Protocol systems that automate the
+          work and scale what your team does best.
         </p>
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">
