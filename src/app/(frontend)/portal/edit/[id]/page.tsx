@@ -43,10 +43,6 @@ export default async function EditSitePage({ params }: { params: Promise<{ id: s
           src={`/api/site-proxy/${siteId}`}
           title={`${site.businessName} — edit`}
           className="min-h-0 flex-1 border-0"
-          // allow-scripts + allow-same-origin: the site hydrates and the editor
-          // (same-origin) can call our API. NO allow-top-navigation / allow-popups
-          // → the browser blocks any attempt to break out of the frame.
-          sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock"
         />
       ) : (
         <div className="flex flex-1 items-center justify-center p-8 text-center text-ink-soft">
