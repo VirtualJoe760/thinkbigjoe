@@ -1,7 +1,8 @@
 /* ThinkBigJoe live site editor — injected into a client's site (via the edit
- * proxy) so they can click elements and request changes. Records each edit's
- * CSS selector + current text + their note, then POSTs the batch to the portal.
- * Everything is namespaced + high z-index to avoid clashing with the site. */
+ * proxy). Clients hover to highlight, click any element, and PREVIEW changes
+ * live (edit text, recolor, swap an image/logo) before sending. Each edit
+ * records the element's selector + current text + the concrete change(s) + an
+ * optional note; the batch POSTs to the portal as markdown for the forge. */
 (function () {
   if (window.__tbjEditorLoaded) return;
   window.__tbjEditorLoaded = true;
@@ -37,88 +38,141 @@
     var t = (el.innerText || el.textContent || "").trim().replace(/\s+/g, " ");
     return t.length > 120 ? t.slice(0, 117) + "…" : t;
   }
+  function rgbToHex(c) {
+    var m = (c || "").match(/\d+/g);
+    if (!m) return "#000000";
+    return "#" + m.slice(0, 3).map(function (n) {
+      return ("0" + parseInt(n, 10).toString(16)).slice(-2);
+    }).join("");
+  }
+  // Downscale an uploaded image so the data URL stays reasonable.
+  function fileToDataUrl(file, cb) {
+    var img = new Image();
+    var url = URL.createObjectURL(file);
+    img.onload = function () {
+      var max = 1400;
+      var w = img.width, h = img.height;
+      if (w > max || h > max) { var s = Math.min(max / w, max / h); w = Math.round(w * s); h = Math.round(h * s); }
+      var cv = document.createElement("canvas");
+      cv.width = w; cv.height = h;
+      cv.getContext("2d").drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      try { cb(cv.toDataURL("image/jpeg", 0.85)); } catch (e) { cb(null); }
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); cb(null); };
+    img.src = url;
+  }
 
   // ---- highlight overlay ------------------------------------------------
   var hl = document.createElement("div");
   hl.id = "__tbj-hl";
   hl.style.cssText =
     "position:fixed;z-index:2147483000;pointer-events:none;border:2px solid #2f6bff;" +
-    "background:rgba(47,107,255,.12);border-radius:4px;display:none;transition:all .05s;";
+    "background:rgba(47,107,255,.12);border-radius:4px;display:none;";
   document.documentElement.appendChild(hl);
-
-  function moveHl(el) {
-    var r = el.getBoundingClientRect();
+  document.addEventListener("pointerover", function (e) {
+    if (isOurs(e.target) || document.getElementById("__tbj-pop")) { hl.style.display = "none"; return; }
+    var r = e.target.getBoundingClientRect();
     hl.style.display = "block";
-    hl.style.left = r.left + "px";
-    hl.style.top = r.top + "px";
-    hl.style.width = r.width + "px";
-    hl.style.height = r.height + "px";
-  }
-
-  document.addEventListener(
-    "pointerover",
-    function (e) {
-      if (isOurs(e.target)) { hl.style.display = "none"; return; }
-      moveHl(e.target);
-    },
-    true,
-  );
+    hl.style.left = r.left + "px"; hl.style.top = r.top + "px";
+    hl.style.width = r.width + "px"; hl.style.height = r.height + "px";
+  }, true);
 
   // ---- click to select --------------------------------------------------
-  document.addEventListener(
-    "click",
-    function (e) {
-      if (isOurs(e.target)) return; // let our own UI work
-      e.preventDefault();
-      e.stopPropagation();
-      openPopover(e.target, e.clientX, e.clientY);
-    },
-    true,
-  );
+  document.addEventListener("click", function (e) {
+    if (isOurs(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openPanel(e.target, e.clientX, e.clientY);
+  }, true);
 
-  // ---- note popover -----------------------------------------------------
-  function openPopover(el, x, y) {
-    closePopover();
+  // ---- edit panel -------------------------------------------------------
+  function openPanel(el, x, y) {
+    closePanel();
+    hl.style.display = "none";
     var selector = cssPath(el);
-    var text = textOf(el);
+    var origText = textOf(el);
+    var isImg = el.nodeName.toLowerCase() === "img";
+    var editableText = el.children.length === 0 && !isImg && origText;
+    var change = {}; // accumulates concrete changes for this element
+
+    var cs = getComputedStyle(el);
     var pop = document.createElement("div");
     pop.id = "__tbj-pop";
     pop.style.cssText =
-      "position:fixed;z-index:2147483001;left:" +
-      Math.min(x, window.innerWidth - 320) +
-      "px;top:" +
-      Math.min(y, window.innerHeight - 200) +
-      "px;width:300px;background:#fff;border:1px solid #e6e9ef;border-radius:12px;" +
-      "box-shadow:0 12px 40px rgba(0,0,0,.18);padding:14px;font-family:system-ui,sans-serif;";
-    pop.innerHTML =
-      '<div style="font-size:11px;font-weight:700;color:#2f6bff;text-transform:uppercase;letter-spacing:.04em;">Edit this ' +
-      el.nodeName.toLowerCase() +
-      "</div>" +
-      (text
-        ? '<div style="font-size:12px;color:#5b616e;margin-top:4px;max-height:40px;overflow:hidden;">“' +
-          text.replace(/</g, "&lt;") +
-          "”</div>"
-        : "") +
-      '<textarea id="__tbj-note" placeholder="What should change? e.g. make this bigger, swap the photo…" ' +
-      'style="width:100%;margin-top:8px;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;' +
-      'padding:8px;font-size:13px;font-family:inherit;min-height:60px;resize:vertical;"></textarea>' +
-      '<div style="display:flex;gap:8px;margin-top:8px;">' +
-      '<button id="__tbj-add" style="flex:1;background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:8px;font-weight:600;font-size:13px;cursor:pointer;">Add edit</button>' +
-      '<button id="__tbj-cancel" style="background:#f5f7fb;border:0;border-radius:999px;padding:8px 12px;font-size:13px;cursor:pointer;">Cancel</button>' +
+      "position:fixed;z-index:2147483001;left:" + Math.min(x, window.innerWidth - 340) +
+      "px;top:" + Math.min(Math.max(y, 12), window.innerHeight - 340) +
+      "px;width:320px;max-height:88vh;overflow:auto;background:#fff;border:1px solid #e6e9ef;border-radius:14px;" +
+      "box-shadow:0 12px 40px rgba(0,0,0,.2);padding:14px;font-family:system-ui,sans-serif;color:#0a0a0b;";
+
+    var html =
+      '<div style="font-size:11px;font-weight:700;color:#2f6bff;text-transform:uppercase;letter-spacing:.04em;">Preview & edit this ' +
+      el.nodeName.toLowerCase() + "</div>";
+
+    if (editableText) {
+      html += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Text</label>' +
+        '<textarea id="__tbj-text" style="width:100%;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;min-height:48px;">' +
+        origText.replace(/</g, "&lt;") + "</textarea>";
+    }
+
+    html += '<div style="display:flex;gap:12px;margin-top:10px;">' +
+      '<label style="flex:1;font-size:12px;font-weight:600;">Text color<br><input id="__tbj-color" type="color" value="' + rgbToHex(cs.color) + '" style="width:100%;height:30px;border:1px solid #e6e9ef;border-radius:6px;margin-top:4px;"></label>' +
+      '<label style="flex:1;font-size:12px;font-weight:600;">Background<br><input id="__tbj-bg" type="color" value="' + rgbToHex(cs.backgroundColor) + '" style="width:100%;height:30px;border:1px solid #e6e9ef;border-radius:6px;margin-top:4px;"></label>' +
       "</div>";
+
+    if (isImg) {
+      html += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Replace image / logo</label>' +
+        '<input id="__tbj-img" type="file" accept="image/*" style="width:100%;font-size:12px;margin-top:4px;">' +
+        '<div id="__tbj-imgnote" style="font-size:11px;color:#9aa0ad;margin-top:2px;">Upload a new image to preview it in place.</div>';
+    }
+
+    html += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Note ' +
+      '<span style="font-weight:400;color:#9aa0ad;">(optional)</span></label>' +
+      '<textarea id="__tbj-note" placeholder="Anything else? e.g. make this bigger, move it up…" ' +
+      'style="width:100%;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;min-height:44px;"></textarea>' +
+      '<div style="display:flex;gap:8px;margin-top:10px;">' +
+      '<button id="__tbj-add" style="flex:1;background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:9px;font-weight:600;font-size:13px;cursor:pointer;">Add edit</button>' +
+      '<button id="__tbj-cancel" style="background:#f5f7fb;border:0;border-radius:999px;padding:9px 12px;font-size:13px;cursor:pointer;">Close</button>' +
+      "</div>";
+
+    pop.innerHTML = html;
     document.documentElement.appendChild(pop);
-    var ta = pop.querySelector("#__tbj-note");
-    ta.focus();
-    pop.querySelector("#__tbj-cancel").onclick = closePopover;
+
+    // ---- live preview wiring ----
+    var ta = pop.querySelector("#__tbj-text");
+    if (ta) ta.addEventListener("input", function () { el.textContent = ta.value; change.newText = ta.value; });
+
+    pop.querySelector("#__tbj-color").addEventListener("input", function (e2) {
+      el.style.color = e2.target.value; change.color = e2.target.value;
+    });
+    pop.querySelector("#__tbj-bg").addEventListener("input", function (e2) {
+      el.style.backgroundColor = e2.target.value; change.background = e2.target.value;
+    });
+
+    var fileInput = pop.querySelector("#__tbj-img");
+    if (fileInput) {
+      fileInput.addEventListener("change", function () {
+        var f = fileInput.files[0];
+        if (!f) return;
+        pop.querySelector("#__tbj-imgnote").textContent = "Loading preview…";
+        fileToDataUrl(f, function (data) {
+          if (data) { el.src = data; change.image = { name: f.name, dataUrl: data }; pop.querySelector("#__tbj-imgnote").textContent = "✓ Previewing " + f.name; }
+          else pop.querySelector("#__tbj-imgnote").textContent = "Couldn't read that image.";
+        });
+      });
+    }
+
+    pop.querySelector("#__tbj-cancel").onclick = closePanel;
     pop.querySelector("#__tbj-add").onclick = function () {
-      var note = ta.value.trim();
-      if (!note) { ta.focus(); return; }
-      edits.push({ selector: selector, tag: el.nodeName.toLowerCase(), text: text, note: note });
-      closePopover();
+      var note = pop.querySelector("#__tbj-note").value.trim();
+      if (note) change.note = note;
+      if (Object.keys(change).length === 0) { pop.querySelector("#__tbj-note").focus(); return; }
+      edits.push({ selector: selector, tag: el.nodeName.toLowerCase(), text: origText, changes: change });
+      closePanel();
       renderBar();
     };
   }
-  function closePopover() {
+  function closePanel() {
     var p = document.getElementById("__tbj-pop");
     if (p) p.remove();
   }
@@ -129,19 +183,15 @@
   bar.style.cssText =
     "position:fixed;z-index:2147483002;left:50%;bottom:20px;transform:translateX(-50%);" +
     "background:#0a0a0b;color:#fff;border-radius:999px;padding:10px 16px;display:flex;align-items:center;gap:12px;" +
-    "font-family:system-ui,sans-serif;font-size:14px;box-shadow:0 12px 40px rgba(0,0,0,.3);";
+    "font-family:system-ui,sans-serif;font-size:14px;box-shadow:0 12px 40px rgba(0,0,0,.3);max-width:92vw;";
   document.documentElement.appendChild(bar);
 
   function renderBar() {
     bar.innerHTML =
-      '<span style="font-weight:600;">✏️ Click any part of your site to request a change</span>' +
-      '<span id="__tbj-count" style="background:#2f6bff;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;">' +
-      edits.length +
-      "</span>" +
+      '<span style="font-weight:600;">✏️ Click anything to preview a change</span>' +
+      '<span style="background:#2f6bff;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;">' + edits.length + "</span>" +
       (edits.length
-        ? '<button id="__tbj-send" style="background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:8px 16px;font-weight:600;font-size:13px;cursor:pointer;">Send ' +
-          edits.length +
-          " edit" + (edits.length > 1 ? "s" : "") + " →</button>"
+        ? '<button id="__tbj-send" style="background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:8px 16px;font-weight:600;font-size:13px;cursor:pointer;">Send ' + edits.length + " edit" + (edits.length > 1 ? "s" : "") + " →</button>"
         : "");
     var send = bar.querySelector("#__tbj-send");
     if (send) send.onclick = submit;
@@ -160,15 +210,10 @@
       .then(function (res) {
         if (res && res.ok) {
           edits = [];
-          bar.innerHTML =
-            '<span style="font-weight:600;">✅ Sent! Our team will apply your changes and let you know.</span>';
-        } else {
-          if (send) { send.disabled = false; send.textContent = "Retry"; }
-        }
+          bar.innerHTML = '<span style="font-weight:600;">✅ Sent! Our team will apply your changes and let you know.</span>';
+        } else if (send) { send.disabled = false; send.textContent = "Retry"; }
       })
-      .catch(function () {
-        if (send) { send.disabled = false; send.textContent = "Retry"; }
-      });
+      .catch(function () { if (send) { send.disabled = false; send.textContent = "Retry"; } });
   }
 
   renderBar();
