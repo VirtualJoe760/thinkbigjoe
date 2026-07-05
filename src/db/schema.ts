@@ -288,6 +288,8 @@ export const forgeSites = pgTable("forge_sites", {
 	oneTimePaid: boolean("one_time_paid").default(false).notNull(),
 	paidAt: timestamp("paid_at", { withTimezone: true, mode: 'string' }),
 	domainCredits: integer("domain_credits").default(0).notNull(),
+	domain: text(),
+	domainStatus: text("domain_status"),
 }, (table) => [
 	uniqueIndex("forge_sites_claim_code_key").using("btree", table.claimCode.asc().nullsLast().op("text_ops")),
 	index("forge_sites_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
