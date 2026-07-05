@@ -43,10 +43,10 @@ export function Hero() {
             Book a strategy call
           </Link>
           <Link
-            href="#pricing"
+            href="#services"
             className="inline-flex items-center justify-center rounded-full border border-line bg-background px-7 py-3.5 text-base font-semibold text-ink transition-colors hover:bg-surface"
           >
-            See pricing
+            See what we build
           </Link>
         </div>
 

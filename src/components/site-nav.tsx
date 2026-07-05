@@ -7,7 +7,6 @@ import { SiteNavMobile } from "@/components/site-nav-mobile";
 const links = [
   { href: "/solutions", label: "Solutions" },
   { href: "/#services", label: "Services" },
-  { href: "/#pricing", label: "Pricing" },
   { href: "/#approach", label: "Approach" },
   { href: "/#about", label: "About" },
   { href: "/#contact", label: "Contact" },

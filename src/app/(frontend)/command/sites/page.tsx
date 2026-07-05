@@ -40,6 +40,8 @@ export default async function SitesPage() {
     screenshotUrl: r.screenshotUrl || "",
     buildStatus: r.buildStatus || "",
     deniedReason: r.deniedReason || "",
+    claimCode: r.claimCode || "",
+    claimed: Boolean(r.claimedByUserId),
     createdAt: r.createdAt,
   }));
 

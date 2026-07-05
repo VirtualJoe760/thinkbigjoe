@@ -28,6 +28,8 @@ export type ForgeSiteItem = {
   screenshotUrl: string;
   buildStatus: string;
   deniedReason: string;
+  claimCode: string;
+  claimed: boolean;
   createdAt: string;
 };
 
@@ -245,9 +247,28 @@ function SimpleRow({ item }: { item: ForgeSiteItem }) {
             View live site
           </a>
         )}
+        {item.claimCode && <ClaimCode item={item} />}
         <StatusPill status={item.status} />
       </div>
     </div>
+  );
+}
+
+function ClaimCode({ item }: { item: ForgeSiteItem }) {
+  if (item.claimed) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 font-semibold text-green-800">
+        ✓ Claimed
+      </span>
+    );
+  }
+  return (
+    <span
+      title="Give this code to the owner — they redeem it at /portal/claim after signing up."
+      className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 font-mono font-semibold text-ink"
+    >
+      <span className="text-ink-soft">claim:</span> {item.claimCode}
+    </span>
   );
 }
 
