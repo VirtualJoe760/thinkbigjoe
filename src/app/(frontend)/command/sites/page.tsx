@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { desc } from "drizzle-orm";
 
-import { db, forgeSites } from "@/db";
+import { db, forgeSites, rebuildRequests } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { SitesQueue, type ForgeSiteItem } from "./sites-queue";
 
@@ -15,6 +15,10 @@ export default async function SitesPage() {
   await requireAdmin();
 
   const rows = await db.select().from(forgeSites).orderBy(desc(forgeSites.createdAt));
+  const rebuilds = await db
+    .select()
+    .from(rebuildRequests)
+    .orderBy(desc(rebuildRequests.createdAt));
 
   const all: ForgeSiteItem[] = rows.map((r) => ({
     id: String(r.id),
@@ -96,6 +100,46 @@ export default async function SitesPage() {
             </div>
           </section>
         )}
+
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-soft">
+            Rebuild requests <span className="ml-1 text-ink">{rebuilds.length}</span>
+          </h2>
+          <p className="mt-1 text-xs text-ink-soft">
+            Clients who asked us to crawl + rebuild their existing site.
+          </p>
+          <div className="mt-3 flex flex-col gap-3">
+            {rebuilds.length === 0 ? (
+              <p className="text-sm text-ink-soft">No rebuild requests yet.</p>
+            ) : (
+              rebuilds.map((r) => (
+                <div
+                  key={r.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-line bg-background p-4"
+                >
+                  <div className="min-w-0">
+                    <a
+                      href={r.existingUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-brand underline underline-offset-2"
+                    >
+                      {r.existingUrl}
+                    </a>
+                    <div className="text-sm text-ink-soft">
+                      {r.businessName ? `${r.businessName} · ` : ""}
+                      {r.email}
+                      {r.notes ? ` — ${r.notes}` : ""}
+                    </div>
+                  </div>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                    {r.status}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );

@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
 
-import { db, forgeSites } from "@/db";
+import { db, forgeSites, rebuildRequests } from "@/db";
 import { auth } from "@/lib/auth";
 import { normalizeClaimCode } from "@/lib/claim-code";
+import { notifyTelegram } from "@/lib/telegram";
 
 export type ClaimState = {
   ok: boolean;
@@ -59,5 +60,52 @@ export async function claimSite(
     ok: true,
     message: `Success — ${site.businessName} is now linked to your account.`,
     site: found,
+  };
+}
+
+export type RebuildState = { ok: boolean; message: string };
+
+/**
+ * Capture a "rebuild my existing site" request. We store the old URL and queue
+ * it; the forge crawls + rebuilds it in our ecosystem as a follow-up step.
+ */
+export async function requestRebuild(
+  _prev: RebuildState,
+  formData: FormData,
+): Promise<RebuildState> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) {
+    return { ok: false, message: "Please sign in to request a rebuild." };
+  }
+
+  let url = String(formData.get("url") || "").trim();
+  if (!url) return { ok: false, message: "Enter the URL of your existing website." };
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  try {
+    new URL(url);
+  } catch {
+    return { ok: false, message: "That doesn't look like a valid website address." };
+  }
+
+  const businessName = String(formData.get("businessName") || "").trim() || null;
+  const notes = String(formData.get("notes") || "").trim() || null;
+
+  await db.insert(rebuildRequests).values({
+    existingUrl: url,
+    businessName,
+    name: session.user.name ?? null,
+    email: session.user.email,
+    notes,
+    status: "requested",
+    requestedByUserId: session.user.id,
+  });
+
+  notifyTelegram(
+    `🛠️ <b>Rebuild requested</b>\n${businessName ? businessName + " — " : ""}${url}\nby ${session.user.email}`,
+  ).catch(() => {});
+
+  return {
+    ok: true,
+    message: "Got it — we'll crawl your current site and rebuild it in our ecosystem. We'll be in touch shortly.",
   };
 }
