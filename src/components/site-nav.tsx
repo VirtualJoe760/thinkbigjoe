@@ -7,6 +7,7 @@ import { SiteNavMobile } from "@/components/site-nav-mobile";
 const links = [
   { href: "/solutions", label: "Solutions" },
   { href: "/#services", label: "Services" },
+  { href: "/#pricing", label: "Pricing" },
   { href: "/#approach", label: "Approach" },
   { href: "/#about", label: "About" },
   { href: "/#contact", label: "Contact" },
@@ -31,6 +32,12 @@ export function SiteNav() {
         </div>
 
         <div className="flex items-center gap-3">
+          <a
+            href="tel:+14807642121"
+            className="hidden text-sm font-semibold text-ink transition-colors hover:text-brand lg:block"
+          >
+            (480) 764-2121
+          </a>
           <Link
             href="/login"
             className="hidden text-sm font-medium text-ink-soft transition-colors hover:text-ink sm:block"

@@ -1,19 +1,19 @@
 const services = [
   {
-    title: "Agentic Software",
-    body: "Autonomous agents that handle real workflows — research, outreach, operations, and support — wired into the tools you already run.",
+    title: "Websites That Convert",
+    body: "A fast, modern site custom-built for your business — designed to turn visitors into booked jobs. We build it, host it, and keep it running.",
   },
   {
-    title: "MCP Development",
-    body: "Custom Model Context Protocol servers that give AI secure, structured access to your data and systems. The connective tissue of modern AI.",
+    title: "AI Voice Receptionist",
+    body: "An AI that answers every call in your business's voice, 24/7 — qualifies the caller, answers questions, and books the appointment straight to your calendar.",
   },
   {
-    title: "AI Sales Funnels",
-    body: "Conversion-built landing pages and lead engines that qualify, nurture, and book — so your pipeline fills while you sleep.",
+    title: "AI Chat Widget",
+    body: "A chat assistant on your site that answers questions the moment someone lands — capturing the lead before they bounce to a competitor.",
   },
   {
-    title: "AI Strategy & Enablement",
-    body: "A clear roadmap for where AI moves the needle in your business, plus the training to make your team dangerous with it.",
+    title: "AI Sales System",
+    body: "The full done-for-you engine: finds prospects, reaches out, follows up, and books calls — so your pipeline fills while you do the work you love.",
   },
 ];
 

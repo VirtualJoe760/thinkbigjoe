@@ -9,7 +9,7 @@ export function SiteFooter() {
         <div>
           <Logo />
           <p className="mt-3 max-w-xs text-sm text-ink-soft">
-            Agentic AI & MCP development for businesses ready to think big.
+            Websites and AI receptionists for local businesses ready to think big.
           </p>
         </div>
 
@@ -26,6 +26,9 @@ export function SiteFooter() {
           <Link href="/#contact" className="hover:text-ink">
             Contact
           </Link>
+          <a href="tel:+14807642121" className="font-semibold text-ink hover:text-brand">
+            (480) 764-2121
+          </a>
         </div>
       </div>
       <div className="border-t border-line">
