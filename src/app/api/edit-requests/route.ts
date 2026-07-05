@@ -9,7 +9,14 @@ import { notifyTelegram } from "@/lib/telegram";
 
 export const dynamic = "force-dynamic";
 
-type Edit = { selector?: string; tag?: string; text?: string; note?: string };
+type EditChanges = {
+  newText?: string;
+  color?: string;
+  background?: string;
+  image?: { name?: string; dataUrl?: string };
+  note?: string;
+};
+type Edit = { selector?: string; tag?: string; text?: string; changes?: EditChanges; note?: string };
 
 /** Receives the batch of click-to-edit requests from editor.js, stores them as
  *  markdown for the forge to apply. Called same-origin from the injected editor. */
@@ -40,12 +47,23 @@ export async function POST(req: Request) {
     `Requested by: ${session.user.email}`,
     ``,
   ];
+  let imageCount = 0;
   edits.forEach((e, i) => {
+    const c = e.changes || {};
     lines.push(`${i + 1}. **${e.tag || "element"}**${e.text ? ` — “${e.text}”` : ""}`);
-    lines.push(`   - Change: ${e.note || "(no note)"}`);
+    if (c.newText) lines.push(`   - New text: “${c.newText}”`);
+    if (c.color) lines.push(`   - Text color → ${c.color}`);
+    if (c.background) lines.push(`   - Background → ${c.background}`);
+    if (c.image?.dataUrl) {
+      imageCount++;
+      lines.push(`   - Replace image/logo with uploaded file: ${c.image.name || "image"} (attached in data)`);
+    }
+    const note = c.note || e.note;
+    if (note) lines.push(`   - Note: ${note}`);
     if (e.selector) lines.push(`   - Selector: \`${e.selector}\``);
     lines.push(``);
   });
+  if (imageCount) lines.push(`_${imageCount} uploaded image(s) stored with this request (in the edits data)._`);
   const markdown = lines.join("\n");
 
   await db.insert(editRequests).values({
