@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { eq } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
 
 import { db, forgeSites, rebuildRequests, activityLog } from "@/db";
 import { auth } from "@/lib/auth";
@@ -10,6 +10,17 @@ import { normalizeClaimCode } from "@/lib/claim-code";
 import { notifyTelegram } from "@/lib/telegram";
 import { stripe, ensureStripeCustomer } from "@/lib/stripe";
 import { buildPriceId, isPlanKey, planPriceId } from "@/lib/plans";
+import {
+  quoteDomain,
+  buyDomain,
+  attachDomainToProject,
+  projectFromLiveUrl,
+  registrantContact,
+  domainsLiveMode,
+  domainsConfigured,
+} from "@/lib/domains";
+
+const DOMAIN_SERVICE_FEE = 3.99; // charged only on additional (no-credit) domains
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com";
 
@@ -114,51 +125,136 @@ export async function requestRebuild(
   };
 }
 
-export type DomainState = { ok: boolean; message: string };
+function normalizeDomain(raw: string): string {
+  return raw.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+}
+function isValidDomain(d: string): boolean {
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d);
+}
 
-/**
- * Redeem a domain credit: capture the domain the client wants. For now this
- * logs the request + pings us; the auto-register (Vercel Domains) flow will
- * hook in here to check availability and purchase against the credit.
- */
-export async function requestDomain(
-  _prev: DomainState,
+/** The user's first paid site that still has a free domain credit and no domain yet. */
+async function siteWithDomainCredit(userId: string) {
+  const [site] = await db
+    .select()
+    .from(forgeSites)
+    .where(
+      and(
+        eq(forgeSites.claimedByUserId, userId),
+        eq(forgeSites.oneTimePaid, true),
+        gt(forgeSites.domainCredits, 0),
+        isNull(forgeSites.domain),
+      ),
+    )
+    .limit(1);
+  return site ?? null;
+}
+
+export type DomainCheckState = {
+  ok: boolean;
+  message: string;
+  domain?: string;
+  available?: boolean;
+  price?: number | null;
+  hasCredit?: boolean;
+  total?: number; // what the customer pays (0 with credit, else price + fee)
+};
+
+/** Check availability + price and whether the user has a free-domain credit. Read-only. */
+export async function checkDomain(
+  _prev: DomainCheckState,
   formData: FormData,
-): Promise<DomainState> {
+): Promise<DomainCheckState> {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return { ok: false, message: "Please sign in first." };
+  if (!domainsConfigured()) return { ok: false, message: "Domain registration isn't available right now." };
 
-  const domain = String(formData.get("domain") || "")
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/.*$/, "");
-  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) {
+  const domain = normalizeDomain(String(formData.get("domain") || ""));
+  if (!isValidDomain(domain)) {
     return { ok: false, message: "Enter a valid domain, like yourbusiness.com." };
   }
 
-  // Must have a paid site with a domain credit available.
-  const credited = await db
-    .select({ id: forgeSites.id, businessName: forgeSites.businessName })
-    .from(forgeSites)
-    .where(eq(forgeSites.claimedByUserId, session.user.id))
-    .limit(50);
-  const eligible = credited.length > 0;
-  if (!eligible) {
-    return { ok: false, message: "No active site with a domain credit found on your account." };
+  const quote = await quoteDomain(domain);
+  if (!quote.available) {
+    return { ok: true, domain, available: false, message: `${domain} isn't available — try another.` };
   }
 
-  await db.insert(activityLog).values({
-    actor: "client",
-    eventType: "domain_requested",
-    summary: `${session.user.email} wants domain ${domain}`,
-    metadata: { detail: { domain, userId: session.user.id } },
-  });
-  notifyTelegram(`🌐 <b>Domain requested</b>\n${domain}\nby ${session.user.email}`).catch(() => {});
+  const credited = await siteWithDomainCredit(session.user.id);
+  const hasCredit = Boolean(credited);
+  const total = hasCredit ? 0 : (quote.price ?? 0) + DOMAIN_SERVICE_FEE;
 
   return {
     ok: true,
-    message: `Great — we'll set up ${domain} for you and point it at your site. We'll confirm by email shortly.`,
+    domain,
+    available: true,
+    price: quote.price,
+    hasCredit,
+    total,
+    message: hasCredit
+      ? `${domain} is available — free with your credit.`
+      : `${domain} is available for $${total.toFixed(2)} (domain + $${DOMAIN_SERVICE_FEE} service fee).`,
+  };
+}
+
+export type DomainRegisterState = { ok: boolean; message: string };
+
+/**
+ * Register a domain against the user's free credit and point it at their site.
+ * Real purchase only runs in live mode (with a registrant contact configured);
+ * in test mode it simulates so the flow is testable without spending money.
+ */
+export async function registerFreeDomain(
+  _prev: DomainRegisterState,
+  formData: FormData,
+): Promise<DomainRegisterState> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return { ok: false, message: "Please sign in first." };
+
+  const domain = normalizeDomain(String(formData.get("domain") || ""));
+  if (!isValidDomain(domain)) return { ok: false, message: "That domain doesn't look right." };
+
+  const site = await siteWithDomainCredit(session.user.id);
+  if (!site) return { ok: false, message: "No free domain credit available on your account." };
+
+  const quote = await quoteDomain(domain);
+  if (!quote.available) return { ok: false, message: `${domain} isn't available anymore — try another.` };
+
+  let status = "registered";
+  try {
+    const contact = registrantContact();
+    if (domainsLiveMode() && contact && quote.price != null) {
+      await buyDomain(domain, quote.price, contact);
+      const project = projectFromLiveUrl(site.liveUrl);
+      if (project) await attachDomainToProject(project, domain);
+    } else {
+      // Test mode (or no registrant contact yet): don't spend money — record intent.
+      status = "pending_setup";
+    }
+  } catch (err) {
+    console.error("[registerFreeDomain] purchase failed:", err);
+    return { ok: false, message: "We couldn't register that domain automatically — we'll set it up manually and email you." };
+  }
+
+  await db
+    .update(forgeSites)
+    .set({ domain, domainStatus: status, domainCredits: 0, updatedAt: new Date().toISOString() })
+    .where(eq(forgeSites.id, site.id));
+
+  await db.insert(activityLog).values({
+    actor: "client",
+    eventType: "domain_registered",
+    summary: `${site.businessName}: ${domain} (${status}) via free credit`,
+    metadata: { auto: true, target: String(site.id), detail: { domain, status } },
+  });
+  notifyTelegram(
+    `🌐 <b>Domain claimed</b>\n${domain} → ${site.businessName}\n${status === "registered" ? "registered + attached" : "pending manual setup (test mode)"}`,
+  ).catch(() => {});
+
+  return {
+    ok: true,
+    message:
+      status === "registered"
+        ? `Done — ${domain} is registered and being connected to your site (DNS can take up to an hour).`
+        : `Reserved ${domain} for you — we'll finish connecting it and confirm by email shortly.`,
   };
 }
 
