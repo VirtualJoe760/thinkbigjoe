@@ -75,6 +75,8 @@ export default async function PortalPage() {
       plan: forgeSites.plan,
       oneTimePaid: forgeSites.oneTimePaid,
       domainCredits: forgeSites.domainCredits,
+      domain: forgeSites.domain,
+      domainStatus: forgeSites.domainStatus,
     })
     .from(forgeSites)
     .where(eq(forgeSites.claimedByUserId, user.id));
@@ -145,22 +147,56 @@ export default async function PortalPage() {
                     <p className="mt-2 text-sm text-ink-soft">
                       {site.plan ? `${PLANS[site.plan as PlanKey]?.label ?? site.plan} plan · active` : "Active"}
                     </p>
-                    {site.domainCredits > 0 && (
+
+                    {site.domain ? (
+                      <div className="mt-4 rounded-xl border border-line bg-background p-4">
+                        <p className="text-sm font-semibold">🌐 {site.domain}</p>
+                        <p className="mt-1 text-xs text-ink-soft">
+                          {site.domainStatus === "registered"
+                            ? "Registered & connecting (DNS can take up to an hour)."
+                            : "Reserved — we're finishing the connection."}
+                        </p>
+                      </div>
+                    ) : site.domainCredits > 0 ? (
                       <div className="mt-4 rounded-xl border border-brand/40 bg-brand-tint p-4">
                         <p className="text-sm font-semibold text-brand">
                           🎁 {site.domainCredits} free domain credit
                         </p>
                         <p className="mt-1 text-xs text-ink-soft">
-                          Register a new domain on us, or transfer one you already own.
+                          Register a new domain on us, or connect one you already own.
                         </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Link
+                            href="/portal/domain"
+                            className="inline-flex items-center justify-center rounded-full bg-brand px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-dark"
+                          >
+                            Claim free domain →
+                          </Link>
+                          <Link
+                            href="/portal/transfer"
+                            className="inline-flex items-center justify-center rounded-full border border-line bg-background px-4 py-2 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                          >
+                            I own a domain
+                          </Link>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-4 flex flex-wrap gap-2">
                         <Link
                           href="/portal/domain"
-                          className="mt-3 inline-flex items-center justify-center rounded-full bg-brand px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-dark"
+                          className="inline-flex items-center justify-center rounded-full border border-line bg-background px-4 py-2 text-xs font-semibold text-ink transition-colors hover:bg-surface"
                         >
-                          Claim your domain →
+                          Add a domain
+                        </Link>
+                        <Link
+                          href="/portal/transfer"
+                          className="inline-flex items-center justify-center rounded-full border border-line bg-background px-4 py-2 text-xs font-semibold text-ink transition-colors hover:bg-surface"
+                        >
+                          Connect one I own
                         </Link>
                       </div>
                     )}
+
                     {site.liveUrl && (
                       <a
                         href={site.liveUrl}
