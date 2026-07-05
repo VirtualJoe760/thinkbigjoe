@@ -61,6 +61,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     `<script>window.__TBJ_EDIT=${JSON.stringify({
       siteId,
       saveUrl: `${origin}/api/edit-requests`,
+      genUrl: `${origin}/api/generate-image`,
     })};</script>` + `<script src="${origin}/editor.js"></script>`;
   if (/<\/body>/i.test(html)) {
     html = html.replace(/<\/body>/i, `${editorTag}</body>`);

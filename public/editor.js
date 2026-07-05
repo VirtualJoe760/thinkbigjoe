@@ -123,7 +123,12 @@
     if (isImg) {
       html += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Replace image / logo</label>' +
         '<input id="__tbj-img" type="file" accept="image/*" style="width:100%;font-size:12px;margin-top:4px;">' +
-        '<div id="__tbj-imgnote" style="font-size:11px;color:#9aa0ad;margin-top:2px;">Upload a new image to preview it in place.</div>';
+        '<div id="__tbj-imgnote" style="font-size:11px;color:#9aa0ad;margin-top:2px;">Upload a new image to preview it in place.</div>' +
+        '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">✨ Or generate with AI</label>' +
+        '<textarea id="__tbj-ai" placeholder="Describe the logo/image you want…" style="width:100%;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;min-height:44px;"></textarea>' +
+        '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#5b616e;margin-top:4px;"><input type="checkbox" id="__tbj-airef" checked> use current image as a reference</label>' +
+        '<button id="__tbj-gen" style="margin-top:6px;width:100%;background:#0a0a0b;color:#fff;border:0;border-radius:999px;padding:8px;font-weight:600;font-size:13px;cursor:pointer;">Generate</button>' +
+        '<div id="__tbj-genstatus" style="font-size:11px;color:#9aa0ad;margin-top:4px;"></div>';
     }
 
     html += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Note ' +
@@ -159,6 +164,37 @@
           if (data) { el.src = data; change.image = { name: f.name, dataUrl: data }; pop.querySelector("#__tbj-imgnote").textContent = "✓ Previewing " + f.name; }
           else pop.querySelector("#__tbj-imgnote").textContent = "Couldn't read that image.";
         });
+      });
+    }
+
+    var genBtn = pop.querySelector("#__tbj-gen");
+    if (genBtn) {
+      genBtn.addEventListener("click", function () {
+        var promptEl = pop.querySelector("#__tbj-ai");
+        var p = promptEl.value.trim();
+        if (p.length < 3) { promptEl.focus(); return; }
+        var useRef = pop.querySelector("#__tbj-airef").checked;
+        var status = pop.querySelector("#__tbj-genstatus");
+        genBtn.disabled = true;
+        status.textContent = "Generating… this can take a few seconds.";
+        fetch(CFG.genUrl || "/api/generate-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ prompt: p, refUrl: useRef ? el.src : undefined }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            genBtn.disabled = false;
+            if (res && res.ok && res.dataUrl) {
+              el.src = res.dataUrl;
+              change.image = { name: "ai-generated.png", dataUrl: res.dataUrl, prompt: p };
+              status.textContent = "✓ Generated — preview above. Tweak the prompt to regenerate, or Add edit to keep it.";
+            } else {
+              status.textContent = (res && res.error) || "Couldn't generate.";
+            }
+          })
+          .catch(function () { genBtn.disabled = false; status.textContent = "Generation failed — try again."; });
       });
     }
 
