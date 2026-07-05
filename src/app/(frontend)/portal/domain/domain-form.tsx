@@ -1,21 +1,29 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import Link from "next/link";
 
 import {
   checkDomain,
   registerFreeDomain,
+  startDomainCheckout,
   type DomainCheckState,
   type DomainRegisterState,
+  type DomainCheckoutState,
 } from "../actions";
 
 const checkInit: DomainCheckState = { ok: false, message: "" };
 const regInit: DomainRegisterState = { ok: false, message: "" };
+const buyInit: DomainCheckoutState = { ok: false, message: "" };
 
 export function DomainForm() {
   const [check, checkAction, checking] = useActionState(checkDomain, checkInit);
   const [reg, regAction, registering] = useActionState(registerFreeDomain, regInit);
+  const [buy, buyAction, buying] = useActionState(startDomainCheckout, buyInit);
+
+  useEffect(() => {
+    if (buy.url) window.location.href = buy.url;
+  }, [buy.url]);
 
   // Registered successfully → done.
   if (reg.ok) {
@@ -99,20 +107,27 @@ export function DomainForm() {
       )}
 
       {showResult && check.available && !check.hasCredit && (
-        <div className="rounded-2xl border border-line bg-surface p-6">
+        <form action={buyAction} className="rounded-2xl border border-line bg-surface p-6">
+          <input type="hidden" name="domain" value={check.domain} />
           <p className="text-sm font-medium text-ink">
             <span className="font-mono">{check.domain}</span> is available for{" "}
             <span className="font-bold">${check.total?.toFixed(2)}</span>
             <span className="text-ink-soft"> (domain + $3.99 service fee)</span>.
           </p>
-          <p className="mt-2 text-sm text-ink-soft">
-            You've already used your free domain credit. To add this one,{" "}
-            <a href="tel:+14807642121" className="font-semibold text-brand hover:underline">
-              give us a call
-            </a>{" "}
-            and we'll get it set up.
+          <p className="mt-1 text-xs text-ink-soft">
+            Registered for a year and connected to your site.
           </p>
-        </div>
+          {buy.message && !buy.ok && (
+            <p className="mt-2 text-sm font-medium text-red-600">{buy.message}</p>
+          )}
+          <button
+            type="submit"
+            disabled={buying || Boolean(buy.url)}
+            className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-60 sm:w-auto"
+          >
+            {buying || buy.url ? "Starting checkout…" : `Buy ${check.domain} — $${check.total?.toFixed(2)}`}
+          </button>
+        </form>
       )}
     </div>
   );

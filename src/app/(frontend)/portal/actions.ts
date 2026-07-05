@@ -10,15 +10,8 @@ import { normalizeClaimCode } from "@/lib/claim-code";
 import { notifyTelegram } from "@/lib/telegram";
 import { stripe, ensureStripeCustomer } from "@/lib/stripe";
 import { buildPriceId, isPlanKey, planPriceId } from "@/lib/plans";
-import {
-  quoteDomain,
-  buyDomain,
-  attachDomainToProject,
-  projectFromLiveUrl,
-  registrantContact,
-  domainsLiveMode,
-  domainsConfigured,
-} from "@/lib/domains";
+import { quoteDomain, domainsConfigured } from "@/lib/domains";
+import { fulfillDomain } from "@/lib/domain-fulfill";
 
 const DOMAIN_SERVICE_FEE = 3.99; // charged only on additional (no-credit) domains
 
@@ -218,36 +211,12 @@ export async function registerFreeDomain(
   const quote = await quoteDomain(domain);
   if (!quote.available) return { ok: false, message: `${domain} isn't available anymore — try another.` };
 
-  let status = "registered";
-  try {
-    const contact = registrantContact();
-    if (domainsLiveMode() && contact && quote.price != null) {
-      await buyDomain(domain, quote.price, contact);
-      const project = projectFromLiveUrl(site.liveUrl);
-      if (project) await attachDomainToProject(project, domain);
-    } else {
-      // Test mode (or no registrant contact yet): don't spend money — record intent.
-      status = "pending_setup";
-    }
-  } catch (err) {
-    console.error("[registerFreeDomain] purchase failed:", err);
+  const { status } = await fulfillDomain(site.id, domain, false);
+  if (status === "error" || status === "failed") {
     return { ok: false, message: "We couldn't register that domain automatically — we'll set it up manually and email you." };
   }
-
-  await db
-    .update(forgeSites)
-    .set({ domain, domainStatus: status, domainCredits: 0, updatedAt: new Date().toISOString() })
-    .where(eq(forgeSites.id, site.id));
-
-  await db.insert(activityLog).values({
-    actor: "client",
-    eventType: "domain_registered",
-    summary: `${site.businessName}: ${domain} (${status}) via free credit`,
-    metadata: { auto: true, target: String(site.id), detail: { domain, status } },
-  });
-  notifyTelegram(
-    `🌐 <b>Domain claimed</b>\n${domain} → ${site.businessName}\n${status === "registered" ? "registered + attached" : "pending manual setup (test mode)"}`,
-  ).catch(() => {});
+  // Spend the credit.
+  await db.update(forgeSites).set({ domainCredits: 0 }).where(eq(forgeSites.id, site.id));
 
   return {
     ok: true,
@@ -256,6 +225,79 @@ export async function registerFreeDomain(
         ? `Done — ${domain} is registered and being connected to your site (DNS can take up to an hour).`
         : `Reserved ${domain} for you — we'll finish connecting it and confirm by email shortly.`,
   };
+}
+
+export type DomainCheckoutState = { ok: boolean; message: string; url?: string };
+
+/**
+ * Paid domain purchase (no free credit): charge the domain price + $3.99 service
+ * fee via Stripe. On payment, the webhook registers the domain + attaches it.
+ */
+export async function startDomainCheckout(
+  _prev: DomainCheckoutState,
+  formData: FormData,
+): Promise<DomainCheckoutState> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return { ok: false, message: "Please sign in first." };
+  if (!stripe) return { ok: false, message: "Payments aren't available right now." };
+
+  const domain = normalizeDomain(String(formData.get("domain") || ""));
+  if (!isValidDomain(domain)) return { ok: false, message: "That domain doesn't look right." };
+
+  // Attach to one of the user's paid sites that doesn't have a domain yet.
+  const [site] = await db
+    .select()
+    .from(forgeSites)
+    .where(
+      and(
+        eq(forgeSites.claimedByUserId, session.user.id),
+        eq(forgeSites.oneTimePaid, true),
+        isNull(forgeSites.domain),
+      ),
+    )
+    .limit(1);
+  if (!site) {
+    return { ok: false, message: "You'll need an active site to connect a domain to." };
+  }
+
+  const quote = await quoteDomain(domain);
+  if (!quote.available || quote.price == null) {
+    return { ok: false, message: `${domain} isn't available anymore — try another.` };
+  }
+
+  try {
+    const customer = await ensureStripeCustomer(session.user.email, session.user.name);
+    const checkout = await stripe.checkout.sessions.create({
+      mode: "payment",
+      customer: customer.id,
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: "usd",
+            unit_amount: Math.round(quote.price * 100),
+            product_data: { name: `Domain: ${domain} (1 year)` },
+          },
+        },
+        {
+          quantity: 1,
+          price_data: {
+            currency: "usd",
+            unit_amount: Math.round(DOMAIN_SERVICE_FEE * 100),
+            product_data: { name: "Domain service fee" },
+          },
+        },
+      ],
+      success_url: `${SITE_URL}/portal/domain?bought=1`,
+      cancel_url: `${SITE_URL}/portal/domain`,
+      metadata: { action: "domain", domain, siteId: String(site.id), userId: session.user.id },
+    });
+    if (!checkout.url) return { ok: false, message: "Couldn't start checkout — try again." };
+    return { ok: true, message: "Redirecting…", url: checkout.url };
+  } catch (err) {
+    console.error("[startDomainCheckout] failed:", err);
+    return { ok: false, message: "Something went wrong starting checkout." };
+  }
 }
 
 export type CheckoutState = { ok: boolean; message: string; url?: string };

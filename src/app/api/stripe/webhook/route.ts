@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import type Stripe from "stripe";
 
 import { stripe } from "@/lib/stripe";
 import { db, forgeSites, activityLog } from "@/db";
 import { notifyTelegram } from "@/lib/telegram";
+import { fulfillDomain } from "@/lib/domain-fulfill";
 
 // Stripe needs the raw request body to verify the signature.
 export async function POST(req: Request) {
@@ -36,10 +37,35 @@ export async function POST(req: Request) {
       case "checkout.session.completed": {
         const s = event.data.object as Stripe.Checkout.Session;
         const siteId = Number(s.metadata?.siteId);
-        const plan = s.metadata?.plan ?? null;
         if (!Number.isFinite(siteId)) break;
 
-        // Site paid: record customer/subscription, mark active, grant 1 domain credit.
+        // Paid additional domain (payment mode) — register + attach it, no credit.
+        if (s.metadata?.action === "domain" && s.metadata?.domain) {
+          await fulfillDomain(siteId, s.metadata.domain, true);
+          break;
+        }
+
+        const plan = s.metadata?.plan ?? null;
+        const userId = s.metadata?.userId ?? null;
+
+        // Free domain credit is one per customer: only the FIRST paid site gets it.
+        let grantCredit = 1;
+        if (userId) {
+          const others = await db
+            .select({ id: forgeSites.id })
+            .from(forgeSites)
+            .where(
+              and(
+                eq(forgeSites.claimedByUserId, userId),
+                eq(forgeSites.oneTimePaid, true),
+                ne(forgeSites.id, siteId),
+              ),
+            )
+            .limit(1);
+          if (others.length > 0) grantCredit = 0; // additional website → domain is paid
+        }
+
+        // Site paid: record customer/subscription, mark active, grant domain credit.
         await db
           .update(forgeSites)
           .set({
@@ -50,7 +76,7 @@ export async function POST(req: Request) {
             subscriptionStatus: "active",
             oneTimePaid: true,
             paidAt: new Date().toISOString(),
-            domainCredits: 1,
+            domainCredits: grantCredit,
             updatedAt: new Date().toISOString(),
           })
           .where(eq(forgeSites.id, siteId));
