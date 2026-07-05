@@ -60,6 +60,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     "[data-aos],[data-animate],[data-framer-appear-id],[class*='animate-']{opacity:1!important;visibility:visible!important;transform:none!important}" +
     "[style*='opacity:0'],[style*='opacity: 0'],[style*='visibility:hidden']{opacity:1!important;visibility:visible!important;transform:none!important}" +
     "img{opacity:1!important;visibility:visible!important}" +
+    // Sticky navbars turn solid on scroll via JS (base state is bg-transparent).
+    // With JS stripped they'd float transparently over content — give them the
+    // site's own background + border so the nav looks right, on any theme.
+    "header.sticky,header[class*='top-0']{background-color:var(--color-background,#fff)!important;border-bottom-color:var(--color-border,rgba(0,0,0,.1))!important;-webkit-backdrop-filter:saturate(1.3) blur(8px)!important;backdrop-filter:saturate(1.3) blur(8px)!important}" +
     "</style>";
 
   // <base> so the site's relative CSS/images still resolve against its real host.
