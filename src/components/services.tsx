@@ -12,8 +12,24 @@ const services = [
     body: "A chat assistant on your site that answers questions the moment someone lands — capturing the lead before they bounce to a competitor.",
   },
   {
+    title: "Agentic Software",
+    body: "Autonomous agents that handle real workflows — research, outreach, operations, and support — wired into the tools you already run.",
+  },
+  {
+    title: "MCP Development",
+    body: "Custom Model Context Protocol servers that give AI secure, structured access to your data and systems. The connective tissue of modern AI.",
+  },
+  {
     title: "AI Sales System",
     body: "The full done-for-you engine: finds prospects, reaches out, follows up, and books calls — so your pipeline fills while you do the work you love.",
+  },
+  {
+    title: "AI Sales Funnels",
+    body: "Conversion-built landing pages and lead engines that qualify, nurture, and book — so your pipeline fills while you sleep.",
+  },
+  {
+    title: "AI Strategy & Enablement",
+    body: "A clear roadmap for where AI moves the needle in your business, plus the training to make your team dangerous with it.",
   },
 ];
 

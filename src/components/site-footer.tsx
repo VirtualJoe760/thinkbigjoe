@@ -9,7 +9,7 @@ export function SiteFooter() {
         <div>
           <Logo />
           <p className="mt-3 max-w-xs text-sm text-ink-soft">
-            Websites and AI receptionists for local businesses ready to think big.
+            Websites, AI receptionists & agentic AI for businesses ready to think big.
           </p>
         </div>
 
