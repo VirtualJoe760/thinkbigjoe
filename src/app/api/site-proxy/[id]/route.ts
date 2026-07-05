@@ -39,32 +39,15 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const origin = new URL(req.url).origin; // our domain — editor + save must be absolute to it
   const base = site.liveUrl.replace(/\/$/, "") + "/";
 
-  html = html
-    // Drop CSP meta tags that could block the injected script.
-    .replace(/<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]*>/gi, "")
-    // Strip the site's own scripts so its Next.js runtime can't hydrate,
-    // frame-bust, or navigate — we only want a static, styled, clickable page.
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<script\b[^>]*\/>/gi, "")
-    // Without the site's JS, lazy images never load — make them eager.
-    .replace(/loading=(["'])lazy\1/gi, 'loading="eager"');
+  // Drop CSP meta tags that could block our editor script or the site's own JS.
+  html = html.replace(/<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]*>/gi, "");
 
-  // Since we stripped JS, scroll-reveal animations (which start at opacity:0 and
-  // reveal via IntersectionObserver) would stay invisible. Force them visible.
-  const fixCss =
-    "<style id=\"__tbj-fix\">" +
-    // Let CSS keyframe animations run (many templates fade content in on load —
-    // freezing them left sections invisible). Force their end state visible too.
-    "*{animation-play-state:running!important;animation-fill-mode:forwards!important;transition:none!important}" +
-    // Force-reveal anything hidden by scroll animations (opacity / translate /
-    // visibility), across inline styles, Tailwind utilities, AOS and framer-motion.
-    "[class*=opacity-0],[style*='opacity:0'],[style*='opacity: 0'],[style*='visibility:hidden'],[style*='visibility: hidden'],[data-aos],[data-animate],[data-framer-appear-id],[class*='animate-']{opacity:1!important;visibility:visible!important}" +
-    "[style*='opacity:0'],[style*='opacity: 0'],[style*='translate'],[class*='translate-y-'],[class*='translate-x-'],[data-aos],[data-framer-appear-id]{transform:none!important}" +
-    "img{opacity:1!important;visibility:visible!important}" +
-    "</style>";
-
-  // <base> so the site's relative CSS/images still resolve against its real host.
-  const baseTag = `<base href="${base}">` + fixCss;
+  // KEEP the site's JS so it fully hydrates + renders every section. <base> makes
+  // its relative + /_next assets and data resolve against its real host (those
+  // hosts send `access-control-allow-origin: *`, so cross-origin fetches work).
+  // Safety: the edit page iframes this in a sandbox WITHOUT top-navigation/popups,
+  // so the site physically can't break out of the frame.
+  const baseTag = `<base href="${base}">`;
   if (/<head[^>]*>/i.test(html)) {
     html = html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
   } else {
