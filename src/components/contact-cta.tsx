@@ -3,6 +3,8 @@ import Link from "next/link";
 import { ContactStatus } from "./contact-status";
 
 const CONTACT_EMAIL = "josephsardella@gmail.com";
+const CONTACT_PHONE = "(480) 764-2121";
+const CONTACT_PHONE_HREF = "tel:+14807642121";
 
 export function ContactCTA() {
   return (
@@ -26,6 +28,16 @@ export function ContactCTA() {
                 {CONTACT_EMAIL}
               </a>
               .
+            </p>
+            <p className="mt-4 max-w-md leading-relaxed text-white/60">
+              Prefer to talk? Call{" "}
+              <a
+                href={CONTACT_PHONE_HREF}
+                className="font-medium text-white underline decoration-white/30 underline-offset-4 hover:decoration-white"
+              >
+                {CONTACT_PHONE}
+              </a>{" "}
+              — our AI assistant answers 24/7 and can book your call on the spot.
             </p>
 
             <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5">
