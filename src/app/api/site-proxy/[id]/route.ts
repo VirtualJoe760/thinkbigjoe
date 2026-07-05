@@ -36,24 +36,32 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     return new Response("Couldn't load the site.", { status: 502 });
   }
 
+  const origin = new URL(req.url).origin; // our domain — editor + save must be absolute to it
   const base = site.liveUrl.replace(/\/$/, "") + "/";
-  const inject =
-    `<base href="${base}">` +
-    // Neutralize any inline CSP that would block our editor script.
-    "";
+
   html = html
     // Drop CSP meta tags that could block the injected script.
-    .replace(/<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]*>/gi, "");
+    .replace(/<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]*>/gi, "")
+    // Strip the site's own scripts so its Next.js runtime can't hydrate,
+    // frame-bust, or navigate — we only want a static, styled, clickable page.
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<script\b[^>]*\/>/gi, "");
 
+  // <base> so the site's relative CSS/images still resolve against its real host.
+  const baseTag = `<base href="${base}">`;
   if (/<head[^>]*>/i.test(html)) {
-    html = html.replace(/<head([^>]*)>/i, `<head$1>${inject}`);
+    html = html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
   } else {
-    html = inject + html;
+    html = baseTag + html;
   }
 
+  // Our editor — absolute URLs to OUR origin (base href would otherwise send
+  // these to the client's domain).
   const editorTag =
-    `<script>window.__TBJ_EDIT=${JSON.stringify({ siteId, saveUrl: "/api/edit-requests" })};</script>` +
-    `<script src="/editor.js"></script>`;
+    `<script>window.__TBJ_EDIT=${JSON.stringify({
+      siteId,
+      saveUrl: `${origin}/api/edit-requests`,
+    })};</script>` + `<script src="${origin}/editor.js"></script>`;
   if (/<\/body>/i.test(html)) {
     html = html.replace(/<\/body>/i, `${editorTag}</body>`);
   } else {
