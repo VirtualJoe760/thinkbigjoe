@@ -38,24 +38,14 @@ const ADMIN_PAGES = [
     description: "Booked discovery calls and their status.",
   },
   {
-    href: "/command/automation",
-    label: "Automation",
-    description: "Venus outreach settings — daily limits, ramp, pause toggle.",
+    href: "/command/crons",
+    label: "Venus",
+    description: "Crons, audit log, and team — how Venus runs and what she's done.",
   },
   {
-    href: "/command/jobs",
-    label: "Jobs",
-    description: "Venus activity log — what she scouted, sent, and followed up on.",
-  },
-  {
-    href: "/command/analytics",
-    label: "Analytics",
-    description: "Site traffic via Vercel Analytics.",
-  },
-  {
-    href: "/command/team",
-    label: "Team",
-    description: "Portal users who have signed up.",
+    href: "/command/settings",
+    label: "Settings",
+    description: "Outreach automation, Google Calendar status, and analytics.",
   },
 ];
 

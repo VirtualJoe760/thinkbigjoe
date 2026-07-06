@@ -249,9 +249,14 @@ export default async function ProspectsPage({
               ‹ Web-dev leads
             </a>
           ) : (
-            <a href={qs({ view: "priority", page: "", v: "", gf: "" })} className="text-xs font-semibold text-ink-soft hover:text-ink">
-              LinkedIn outreach →
-            </a>
+            <div className="flex items-center gap-4">
+              <a href="/command/analyzer" className="text-xs font-semibold text-brand hover:underline">
+                Analyze a site ↗
+              </a>
+              <a href={qs({ view: "priority", page: "", v: "", gf: "" })} className="text-xs font-semibold text-ink-soft hover:text-ink">
+                LinkedIn outreach →
+              </a>
+            </div>
           )}
         </div>
 

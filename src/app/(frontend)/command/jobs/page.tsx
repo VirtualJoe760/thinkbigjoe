@@ -5,6 +5,7 @@ import { desc } from "drizzle-orm";
 import { db, activityLog } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { VENUS_CRONS } from "@/lib/venus-crons.mjs";
+import { SubNav, VENUS_TABS } from "../sub-nav";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -85,6 +86,7 @@ export default async function AuditPage({
   return (
     <div className="px-6 py-8">
       <div className="mx-auto w-full max-w-3xl">
+        <SubNav items={VENUS_TABS} />
         <h1 className="text-2xl font-extrabold tracking-tight">Audit log</h1>
         <p className="mt-1 text-sm text-ink-soft">
           Every action Venus and her scheduled agents take.{" "}
