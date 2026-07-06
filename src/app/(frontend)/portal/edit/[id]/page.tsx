@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect, notFound } from "next/navigation";
-import Link from "next/link";
 import { eq } from "drizzle-orm";
 
 import { db, forgeSites } from "@/db";
 import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
+import { EditWorkspace } from "./edit-workspace";
 
 export const metadata: Metadata = {
   title: "Edit your site",
@@ -24,31 +24,5 @@ export default async function EditSitePage({ params }: { params: Promise<{ id: s
   const owns = site.claimedByUserId === session.user.id || isAdminEmail(session.user.email);
   if (!owns) redirect("/portal");
 
-  return (
-    <div className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-line bg-background px-5 py-3">
-        <div>
-          <p className="text-xs font-semibold tracking-wide text-brand uppercase">Live edit mode</p>
-          <p className="text-sm font-bold tracking-tight">{site.businessName}</p>
-        </div>
-        <Link
-          href="/portal"
-          className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
-        >
-          Done
-        </Link>
-      </header>
-      {site.liveUrl ? (
-        <iframe
-          src={`/api/site-proxy/${siteId}`}
-          title={`${site.businessName} — edit`}
-          className="min-h-0 flex-1 border-0"
-        />
-      ) : (
-        <div className="flex flex-1 items-center justify-center p-8 text-center text-ink-soft">
-          Your site isn&apos;t live yet — check back once it&apos;s built.
-        </div>
-      )}
-    </div>
-  );
+  return <EditWorkspace siteId={siteId} liveUrl={site.liveUrl} businessName={site.businessName} />;
 }
