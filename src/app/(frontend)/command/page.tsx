@@ -4,6 +4,7 @@ import { eq, sql } from "drizzle-orm";
 
 import { db, outreach, prospects, leads, activityLog } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
+import { calendarHealth } from "@/lib/gcal";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -23,7 +24,7 @@ const PIPELINE: Array<{ key: string; label: string }> = [
 export default async function OverviewPage() {
   await requireAdmin();
 
-  const [rows, leadRows, upcomingAppointments, recentActivity] = await Promise.all([
+  const [rows, leadRows, upcomingAppointments, recentActivity, calHealth] = await Promise.all([
     db
       .select({
         outreachStatus: outreach.status,
@@ -43,14 +44,24 @@ export default async function OverviewPage() {
         id: leads.id,
         name: leads.name,
         company: leads.company,
+        email: leads.email,
+        phone: leads.phone,
+        role: leads.role,
+        industry: leads.industry,
+        teamSize: leads.teamSize,
+        timeline: leads.timeline,
+        problem: leads.problem,
+        source: leads.source,
         bookedSlot: leads.bookedSlot,
+        gcalHtmlLink: leads.gcalHtmlLink,
+        meetLink: leads.meetLink,
       })
       .from(leads)
       .where(
         sql`${leads.bookedSlot} IS NOT NULL AND ${leads.bookedSlot} >= now()::text`,
       )
       .orderBy(leads.bookedSlot)
-      .limit(5),
+      .limit(6),
     db
       .select({
         id: activityLog.id,
@@ -62,6 +73,7 @@ export default async function OverviewPage() {
       .from(activityLog)
       .orderBy(sql`${activityLog.createdAt} DESC`)
       .limit(8),
+    calendarHealth(),
   ]);
 
   const pending = rows.filter(
@@ -108,6 +120,17 @@ export default async function OverviewPage() {
     if (hrs < 24) return `${hrs}h ago`;
     const days = Math.round(hrs / 24);
     return `${days}d ago`;
+  }
+
+  // Forward-looking label for an upcoming appointment ("today" / "tomorrow" / "in 3 days").
+  function untilLabel(when: Date) {
+    const ms = when.getTime() - Date.now();
+    if (ms < 0) return "now";
+    const hrs = ms / 3600_000;
+    if (hrs < 1) return `in ${Math.max(1, Math.round(ms / 60000))} min`;
+    if (hrs < 24) return `in ${Math.round(hrs)}h`;
+    const days = Math.round(hrs / 24);
+    return days <= 1 ? "tomorrow" : `in ${days} days`;
   }
 
   function activityIcon(eventType: string) {
@@ -206,20 +229,43 @@ export default async function OverviewPage() {
           </div>
         </div>
           <div className="mt-8 rounded-2xl border border-line bg-background p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-bold tracking-tight">Upcoming appointments</h2>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold tracking-tight">Upcoming appointments</h2>
+                <span
+                  title={
+                    calHealth.ok
+                      ? `Live free/busy check succeeded on ${calHealth.calendarId}`
+                      : calHealth.configured
+                        ? `Credentials set but the API call failed: ${calHealth.error || "unknown"}`
+                        : "GCAL_* env vars are not set"
+                  }
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                    calHealth.ok
+                      ? "bg-green-100 text-green-800"
+                      : calHealth.configured
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-surface text-ink-soft"
+                  }`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${calHealth.ok ? "bg-green-600" : calHealth.configured ? "bg-amber-500" : "bg-ink-soft"}`} />
+                  {calHealth.ok ? "Calendar connected" : calHealth.configured ? "Calendar needs attention" : "Calendar not connected"}
+                </span>
+              </div>
               <Link href="/command/appointments" className="text-xs font-semibold text-brand hover:underline">
                 View all
               </Link>
             </div>
             {upcomingAppointments.length === 0 ? (
-              <p className="text-sm text-ink-soft">No upcoming calls.</p>
+              <p className="text-sm text-ink-soft">No upcoming calls booked.</p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="space-y-3">
                 {upcomingAppointments.map((appt) => {
-                  const slotDate = appt.bookedSlot
-                    ? new Date(appt.bookedSlot).toLocaleString("en-US", {
+                  const when = appt.bookedSlot ? new Date(appt.bookedSlot) : null;
+                  const dateStr = when
+                    ? when.toLocaleString("en-US", {
                         timeZone: BOOKING_TZ,
+                        weekday: "short",
                         month: "short",
                         day: "numeric",
                         hour: "numeric",
@@ -227,11 +273,57 @@ export default async function OverviewPage() {
                         hour12: true,
                       })
                     : "";
+                  const chips = [
+                    appt.industry,
+                    appt.teamSize ? `${appt.teamSize} team` : null,
+                    appt.timeline ? `timeline: ${appt.timeline}` : null,
+                  ].filter(Boolean) as string[];
                   return (
-                    <li key={appt.id} className="rounded-lg px-2 py-1.5 text-sm">
-                      <span className="font-medium">{appt.name}</span>
-                      {appt.company ? <span className="text-ink-soft"> · {appt.company}</span> : null}
-                      {slotDate ? <span className="ml-2 text-xs text-ink-soft">{slotDate} PT</span> : null}
+                    <li key={appt.id} className="rounded-xl border border-line bg-surface p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-semibold text-ink">
+                            {appt.name}
+                            {appt.company ? <span className="font-normal text-ink-soft"> · {appt.company}</span> : null}
+                            {appt.role ? <span className="font-normal text-ink-soft"> · {appt.role}</span> : null}
+                          </div>
+                          {dateStr && (
+                            <div className="text-xs font-semibold text-brand">
+                              {dateStr} PT{when ? <span className="font-normal text-ink-soft"> · {untilLabel(when)}</span> : null}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {appt.meetLink && (
+                            <a href={appt.meetLink} target="_blank" rel="noreferrer" className="rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white hover:bg-brand-dark">
+                              Join
+                            </a>
+                          )}
+                          {appt.gcalHtmlLink && (
+                            <a href={appt.gcalHtmlLink} target="_blank" rel="noreferrer" className="rounded-full border border-line px-3 py-1 text-xs font-semibold hover:bg-background">
+                              Calendar
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                      {chips.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {chips.map((c, i) => (
+                            <span key={i} className="rounded-full bg-background px-2 py-0.5 text-[11px] text-ink-soft">{c}</span>
+                          ))}
+                        </div>
+                      )}
+                      {appt.problem && (
+                        <p className="mt-2 line-clamp-3 text-sm text-ink-soft">
+                          <span className="font-medium text-ink">Wants: </span>
+                          {appt.problem}
+                        </p>
+                      )}
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-soft">
+                        {appt.email && <a href={`mailto:${appt.email}`} className="hover:text-ink">{appt.email}</a>}
+                        {appt.phone && <a href={`tel:${appt.phone}`} className="hover:text-ink">{appt.phone}</a>}
+                        {appt.source && <span>via {String(appt.source).replace(/-/g, " ")}</span>}
+                      </div>
                     </li>
                   );
                 })}

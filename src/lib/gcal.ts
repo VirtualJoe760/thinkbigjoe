@@ -151,6 +151,26 @@ export async function createEvent(
   );
 }
 
+/**
+ * Live connection check for the command overview — confirms the refresh token
+ * still works by doing a tiny free/busy ping. `configured` = env vars present;
+ * `ok` = an actual API call succeeded (token valid, not revoked).
+ */
+export async function calendarHealth(): Promise<{ configured: boolean; ok: boolean; calendarId?: string; error?: string }> {
+  if (!isCalendarConfigured()) return { configured: false, ok: false };
+  try {
+    const now = new Date();
+    // Time-box so a slow/hung Google API can't stall the overview page.
+    await Promise.race([
+      getFreeBusy(now.toISOString(), new Date(now.getTime() + 3600_000).toISOString()),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("health check timed out")), 6000)),
+    ]);
+    return { configured: true, ok: true, calendarId: calendarId() };
+  } catch (err) {
+    return { configured: true, ok: false, calendarId: calendarId(), error: err instanceof Error ? err.message : "unknown error" };
+  }
+}
+
 async function getFreeBusy(timeMin: string, timeMax: string): Promise<FreeBusySlot[]> {
   const id = calendarId();
   const result = await gcalFetch(`${BASE_URL}/freeBusy`, "POST", {
