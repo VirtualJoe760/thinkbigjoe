@@ -40,7 +40,65 @@ export type ForgeSiteItem = {
   instagramUrl: string;
   facebookUrl: string;
   contactNotes: string;
+  socialStats: { facebook?: { followers?: number; likes?: number }; instagram?: { followers?: number }; linkedin?: { followers?: number } } | null;
+  reviewQuotes: Array<{ stars?: number; name?: string; text?: string }>;
+  callPrep: string;
 };
+
+const fmtNum = (n?: number) => (n == null ? "" : n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
+
+/** Call-prep card: social reach digest, a few review quotes, and a talking-points
+ *  script so Joe has real context before he dials. Collapsed by default. */
+function CallPrepCard({ item }: { item: ForgeSiteItem }) {
+  const [open, setOpen] = useState(false);
+  const s = item.socialStats || {};
+  const reach: string[] = [];
+  if (s.instagram?.followers) reach.push(`📷 ${fmtNum(s.instagram.followers)} IG`);
+  if (s.facebook?.followers) reach.push(`👍 ${fmtNum(s.facebook.followers)} FB`);
+  if (s.linkedin?.followers) reach.push(`in ${fmtNum(s.linkedin.followers)} LinkedIn`);
+  const quotes = (item.reviewQuotes || []).filter((q) => q.text).slice(0, 3);
+  if (!item.callPrep && !quotes.length && !reach.length) return null;
+
+  return (
+    <div className="mt-2 rounded-xl border border-brand/30 bg-brand-tint/40">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+      >
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-semibold text-ink">
+          📋 Call prep
+          {reach.length > 0 && <span className="text-xs font-medium text-ink-soft">{reach.join(" · ")}</span>}
+          {quotes.length > 0 && <span className="text-xs font-medium text-ink-soft">· {quotes.length} review quotes</span>}
+        </span>
+        <span className="text-xs text-brand">{open ? "Hide" : "Show"}</span>
+      </button>
+      {open && (
+        <div className="space-y-3 border-t border-brand/20 px-3 py-2.5">
+          {quotes.length > 0 && (
+            <div>
+              <div className="text-xs font-bold uppercase tracking-wide text-ink-soft">What customers say</div>
+              <ul className="mt-1 space-y-1.5">
+                {quotes.map((q, i) => (
+                  <li key={i} className="text-sm text-ink">
+                    <span className="text-amber-500">{"★".repeat(Math.max(0, Math.min(5, q.stars || 0)))}</span>{" "}
+                    <span className="italic">“{q.text}”</span>
+                    {q.name && <span className="text-ink-soft"> — {q.name}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {item.callPrep && (
+            <div>
+              <div className="text-xs font-bold uppercase tracking-wide text-ink-soft">Talking points</div>
+              <div className="mt-1 whitespace-pre-line text-sm leading-relaxed text-ink">{item.callPrep}</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const US_STATES = new Set([
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA",
@@ -223,6 +281,7 @@ function DiscoveredRow({ item }: { item: ForgeSiteItem }) {
           </div>
           {item.fitReason && <p className="mt-2 text-sm text-ink-soft">{item.fitReason}</p>}
           <ContactCard item={item} />
+          <CallPrepCard item={item} />
           {item.source && <p className="mt-1.5 text-xs text-ink-soft">found via {item.source}</p>}
           <div className="mt-3 flex flex-wrap items-center gap-2">
         {denying ? (
