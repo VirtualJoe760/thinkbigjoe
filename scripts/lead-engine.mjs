@@ -47,7 +47,8 @@ async function apifyUsage() {
 async function maps(q, loc, max = 40) {
   const r = await fetch(`https://api.apify.com/v2/acts/compass~crawler-google-places/run-sync-get-dataset-items?token=${TOKEN}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ searchStringsArray: [q], locationQuery: loc, maxCrawledPlacesPerSearch: max, language: "en", skipClosedPlaces: true }),
+    // scrapeContacts enriches results that have a website with email + all socials.
+    body: JSON.stringify({ searchStringsArray: [q], locationQuery: loc, maxCrawledPlacesPerSearch: max, language: "en", skipClosedPlaces: true, scrapeContacts: true }),
     signal: AbortSignal.timeout(180000),
   });
   if (!r.ok) return { error: `${r.status}` };
@@ -105,11 +106,15 @@ async function maps(q, loc, max = 40) {
       if (!sl || existing.has(sl)) continue;
       if (black.has(`${sl}|${slug(b.city || "")}`)) continue;
       const mu = b.url || (b.placeId ? `https://www.google.com/maps/place/?q=place_id:${b.placeId}` : null);
+      // scrapeContacts fills these for businesses that have a website (arrays).
+      const email = (b.emails || [])[0] || null;
+      const insta = (b.instagrams || [])[0] || null;
+      const fbook = (b.facebooks || [])[0] || null;
       try {
         await c.query(
-          `INSERT INTO forge_sites (slug,business_name,niche,city,service_area,phone,google_rating,review_count,google_maps_url,fit_reason,source,status)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'lead_engine','discovered') ON CONFLICT (slug) DO NOTHING`,
-          [sl, b.title, b.categoryName || q, b.city || null, [b.city, b.state].filter(Boolean).join(", ") || null, b.phone || null, b.totalScore ? String(b.totalScore) : null, b.reviewsCount != null ? String(b.reviewsCount) : null, mu, `No website — ${b.categoryName || q}${b.reviewsCount ? `, ${b.reviewsCount} reviews` : ""}`],
+          `INSERT INTO forge_sites (slug,business_name,niche,city,service_area,phone,email,instagram_url,facebook_url,google_rating,review_count,google_maps_url,fit_reason,source,status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'lead_engine','discovered') ON CONFLICT (slug) DO NOTHING`,
+          [sl, b.title, b.categoryName || q, b.city || null, [b.city, b.state].filter(Boolean).join(", ") || null, b.phone || null, email, insta, fbook, b.totalScore ? String(b.totalScore) : null, b.reviewsCount != null ? String(b.reviewsCount) : null, mu, `No website — ${b.categoryName || q}${b.reviewsCount ? `, ${b.reviewsCount} reviews` : ""}`],
         );
         existing.add(sl);
         queued++;
