@@ -5,18 +5,35 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/logo";
 
-const LINKS = [
+// Consolidated to 6 workflow groups. `match` lists every path that should
+// highlight this item (Prospecting folds in the analyzer; Venus groups
+// crons/audit/team; Settings groups automation/analytics).
+const LINKS: Array<{ href: string; label: string; icon: string; match?: string[] }> = [
   { href: "/command", label: "Overview", icon: "M3 12l9-9 9 9M5 10v10h14V10" },
-  { href: "/command/prospects", label: "Prospecting", icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM4 20a8 8 0 0116 0" },
-  { href: "/command/analyzer", label: "Site analyzer", icon: "M11 4a7 7 0 105.29 12.29l4.2 4.2 1.42-1.42-4.2-4.2A7 7 0 0011 4z" },
+  {
+    href: "/command/prospects",
+    label: "Prospecting",
+    icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM4 20a8 8 0 0116 0",
+    match: ["/command/prospects", "/command/analyzer", "/command/sites"],
+  },
   { href: "/command/leads", label: "Leads", icon: "M4 4h16v4H4zM4 12h16v8H4z" },
-  { href: "/command/automation", label: "Automation", icon: "M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3M12 9a3 3 0 100 6 3 3 0 000-6z" },
-  { href: "/command/crons", label: "Venus crons", icon: "M12 8v4l3 3M12 2a10 10 0 100 20 10 10 0 000-20z" },
-  { href: "/command/jobs", label: "Audit log", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" },
   { href: "/command/appointments", label: "Appointments", icon: "M8 2v4M16 2v4M3 9h18M5 5h14v16H5z" },
-  { href: "/command/team", label: "Team", icon: "M17 20v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2M10 10a3 3 0 100-6 3 3 0 000 6zM21 20v-2a4 4 0 00-3-3.87" },
-  { href: "/command/analytics", label: "Analytics", icon: "M4 20V10M10 20V4M16 20v-7M22 20H2" },
+  {
+    href: "/command/crons",
+    label: "Venus",
+    icon: "M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z",
+    match: ["/command/crons", "/command/jobs", "/command/team"],
+  },
+  {
+    href: "/command/settings",
+    label: "Settings",
+    icon: "M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 13a7.9 7.9 0 000-2l2-1.6-2-3.4-2.4 1a7.9 7.9 0 00-1.7-1l-.4-2.6H10l-.4 2.6a7.9 7.9 0 00-1.7 1l-2.4-1-2 3.4 2 1.6a7.9 7.9 0 000 2l-2 1.6 2 3.4 2.4-1a7.9 7.9 0 001.7 1l.4 2.6h4l.4-2.6a7.9 7.9 0 001.7-1l2.4 1 2-3.4z",
+    match: ["/command/settings", "/command/automation", "/command/analytics"],
+  },
 ];
+
+const isActive = (l: { href: string; match?: string[] }, path: string) =>
+  (l.match || [l.href]).some((m) => (m === "/command" ? path === "/command" : path.startsWith(m)));
 
 function Icon({ d }: { d: string }) {
   return (
@@ -40,9 +57,7 @@ export function CommandHeader({ email }: { email: string }) {
     return () => window.removeEventListener("keydown", handler);
   }, [open]);
 
-  const current = LINKS.find((l) =>
-    l.href === "/command" ? path === "/command" : path.startsWith(l.href)
-  );
+  const current = LINKS.find((l) => isActive(l, path));
 
   return (
     <>
@@ -91,7 +106,7 @@ export function CommandHeader({ email }: { email: string }) {
         <nav className="flex-1 overflow-y-auto p-3">
           <div className="flex flex-col gap-1">
             {LINKS.map((l) => {
-              const active = l.href === "/command" ? path === "/command" : path.startsWith(l.href);
+              const active = isActive(l, path);
               return (
                 <Link
                   key={l.href}

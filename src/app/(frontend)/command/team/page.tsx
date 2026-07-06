@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
+import { SubNav, VENUS_TABS } from "../sub-nav";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -29,7 +30,8 @@ export default async function TeamPage() {
   return (
     <div className="px-6 py-8">
       <div className="mx-auto w-full max-w-4xl">
-        <h1 className="text-2xl font-extrabold tracking-tight">Team & users</h1>
+        <SubNav items={VENUS_TABS} />
+        <h1 className="text-2xl font-extrabold tracking-tight">Team &amp; users</h1>
 
         <h2 className="mt-6 mb-2 text-sm font-bold tracking-wide text-ink-soft uppercase">
           Admin
