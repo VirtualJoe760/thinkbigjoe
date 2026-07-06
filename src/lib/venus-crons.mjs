@@ -128,12 +128,12 @@ If any follow-ups were scheduled, call log_activity with event_type=followup_sch
     schedule: "0 4 * * *",
     stagger: "5m",
     summary: "Find local service businesses with no/bad website for the site-building forge.",
-    tools: ["add_forge_prospect", "list_forge_queue", "log_activity"],
+    tools: ["add_forge_prospect", "list_forge_queue", "list_forge_blacklist", "log_activity"],
     uiSurface: ["/command/sites"],
     eventTypes: ["forge_scout_complete", "forge_prospect_added"],
     prompt: `This is your daily scouting run. Follow your sourcing loop (AGENTS.md) to find local service businesses that need a website.
 
-1. DEDUP: call list_forge_queue (no filter) and skip any business already queued — check by name + city.
+1. DEDUP + BLACKLIST: call list_forge_queue (no filter) AND list_forge_blacklist. Skip any business already queued (by name + city) AND any business on the blacklist — Joe denied those, so never research or re-add them (match by name+city or their website domain). add_forge_prospect also hard-blocks blacklisted businesses, but don't waste a crawl on one.
 
 2. SEARCH: research 8–12 owner-operated local service businesses in the Scottsdale / Phoenix metro (your default focus unless Joe or marketing-manager gave you a different area). Trades: HVAC, roofing, electrical, plumbing, landscaping, garage doors, pest control, painting, and similar. Use Google Maps + Google Search; open and rate each site per your rubric. Queue ONLY businesses with no website (0) or a weak/dated/broken one (rated ≤ 4).
 
