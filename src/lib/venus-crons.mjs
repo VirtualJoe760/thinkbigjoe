@@ -143,6 +143,29 @@ If any follow-ups were scheduled, call log_activity with event_type=followup_sch
   },
 
   {
+    name: "TBJ Forge Outreach",
+    id: "d9818115-bb73-4d74-8f65-46f8b5ebcc36",
+    agent: "outreach",
+    schedule: "0 16 * * *",
+    stagger: "5m",
+    summary: "Draft owner-outreach emails for newly-built sites (claim code + see-your-site + book-a-call).",
+    tools: ["list_forge_outreach_queue", "save_forge_outreach_draft", "log_activity"],
+    uiSurface: ["/command/prospects (Built — ready for outreach)"],
+    eventTypes: ["forge_outreach_drafted"],
+    prompt: `This is the forge-outreach run. Sites the forge has BUILT are waiting for their owner to be told.
+
+1. PULL: call list_forge_outreach_queue (stage "none") to get every built, unclaimed site not yet contacted. Each entry has the business, its niche/city, the LIVE-SITE URL, the owner's email, and the CLAIM CODE, plus the sign-in/claim and book-a-call links.
+
+2. DRAFT (one per site that HAS an email): write a short, warm, personal email FROM JOE. It must:
+   - Tell them their new website is LIVE and reference it (the live-site link is added as a button automatically).
+   - Invite them to sign in and CLAIM it — the claim code + claim link are appended automatically, so reference the code naturally ("your claim code is below").
+   - Offer a quick call — the book-a-call button is appended automatically.
+   Keep it 3–5 short sentences, genuine and non-pushy, matched to the trade's voice. Personalize on real signal (business name, niche, town) — never invent facts. Then call save_forge_outreach_draft(site_id, subject, body). This saves a DRAFT ONLY — Joe reviews and sends every one himself. NEVER send email yourself.
+
+3. SKIP sites with no email (note them for marketing-manager to enrich). Finish with log_activity, event_type "forge_outreach_drafted", summary like "Drafted N owner emails · M built sites had no email". marketing-manager reads this for the digest — you don't message Joe directly.`,
+  },
+
+  {
     name: "TBJ Follow-up Drip",
     id: "b0272b1d-31bf-4b9c-a097-980311c4935f",
     schedule: "0 10 * * 1-5",

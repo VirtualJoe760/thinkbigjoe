@@ -106,6 +106,10 @@ export default async function ProspectsPage({
     claimCode: r.claimCode || "",
     claimed: Boolean(r.claimedByUserId),
     createdAt: r.createdAt,
+    outreachStatus: r.outreachStatus || "none",
+    outreachSubject: r.outreachSubject || "",
+    outreachDraft: r.outreachDraft || "",
+    contactedAt: r.contactedAt || "",
   }));
 
   const siteCounts: Record<WebdevView, number> = { review: 0, queued: 0, built: 0, archive: 0 };

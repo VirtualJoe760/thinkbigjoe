@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { eq, inArray } from "drizzle-orm";
 
-import { db, outreach, prospects, forgeSites } from "@/db";
+import { db, outreach, prospects, forgeSites, activityLog } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
+import { sendForgeOutreachEmail } from "@/lib/email";
 
 const now = () => new Date().toISOString();
 
@@ -71,6 +72,67 @@ export async function denyForgeSite(id: string, reason?: string) {
     .set({ status: "denied", deniedReason: reason || null })
     .where(eq(forgeSites.id, Number(id)));
   revalidatePath("/command/sites");
+}
+
+/**
+ * Send the owner-outreach email for a built site (Joe's approve-&-send gate).
+ * Uses the possibly-edited subject/body from the review UI, emails the owner the
+ * claim code + see-your-site + book-a-call CTAs, then marks the site contacted.
+ */
+export async function sendForgeOutreach(
+  id: string,
+  subject: string,
+  body: string,
+): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  const [site] = await db.select().from(forgeSites).where(eq(forgeSites.id, Number(id))).limit(1);
+  if (!site) return { ok: false, message: "Site not found." };
+  if (site.status !== "built") return { ok: false, message: "Site isn't built yet." };
+  if (!site.email) return { ok: false, message: "No owner email on this lead — can't send." };
+  if (!site.claimCode) return { ok: false, message: "No claim code on this site yet." };
+  const subj = subject.trim();
+  const text = body.trim();
+  if (!subj || !text) return { ok: false, message: "Subject and message are both required." };
+
+  // Persist the (edited) draft first so nothing is lost even if the send fails.
+  await db
+    .update(forgeSites)
+    .set({ outreachSubject: subj, outreachDraft: text, updatedAt: now() })
+    .where(eq(forgeSites.id, site.id));
+
+  const res = await sendForgeOutreachEmail({
+    to: site.email,
+    subject: subj,
+    body: text,
+    businessName: site.businessName,
+    liveUrl: site.liveUrl,
+    claimCode: site.claimCode,
+  });
+  if ("skipped" in res) return { ok: false, message: "Email isn't configured (SMTP) — nothing was sent." };
+  if ("error" in res) return { ok: false, message: "Send failed — check the logs and try again." };
+
+  await db
+    .update(forgeSites)
+    .set({ outreachStatus: "sent", contactedAt: now(), updatedAt: now() })
+    .where(eq(forgeSites.id, site.id));
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "forge_outreach_sent",
+    summary: `Sent owner outreach for ${site.businessName} → ${site.email}`,
+    metadata: { auto: true, target: site.slug, detail: { siteId: site.id, email: site.email, subject: subj } },
+  });
+  revalidatePath("/command/prospects");
+  return { ok: true, message: `Sent to ${site.email}.` };
+}
+
+/** Dismiss a built site from the outreach queue without contacting the owner. */
+export async function skipForgeOutreach(id: string) {
+  await assertAdmin();
+  await db
+    .update(forgeSites)
+    .set({ outreachStatus: "skipped", updatedAt: now() })
+    .where(eq(forgeSites.id, Number(id)));
+  revalidatePath("/command/prospects");
 }
 
 export async function markSent(id: string, prospectId: string) {

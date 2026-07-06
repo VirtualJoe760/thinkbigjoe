@@ -390,6 +390,79 @@ async function toolListForgeQueue({ status } = {}) {
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
+const APP_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "https://thinkbigjoe.com";
+
+async function toolListForgeOutreachQueue({ status } = {}) {
+  const stage = status || "none";
+  // Built + unclaimed sites at this outreach stage. A missing claim_code means the
+  // register step didn't verify it live, so those aren't ready — require it.
+  const res = await query(
+    `SELECT id, slug, business_name, niche, city, service_area, email, phone, live_url, claim_code, google_rating, review_count
+     FROM forge_sites
+     WHERE status = 'built' AND claim_code IS NOT NULL AND claimed_by_user_id IS NULL
+       AND outreach_status = $1
+     ORDER BY built_at DESC NULLS LAST, created_at DESC
+     LIMIT 50`,
+    [stage],
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: `No built, unclaimed sites with outreach_status='${stage}'. Nothing to draft.` }] };
+  }
+  const lines = [
+    `📣 **${res.rows.length} built site(s) ready for outreach** (stage=${stage}):`,
+    "",
+    `Links to weave into every message:`,
+    `  • sign in & claim: ${APP_SITE_URL}/portal/claim  (they enter the claim code after signing in)`,
+    `  • book a call with Joe: ${APP_SITE_URL}/book-appointment`,
+    "",
+  ];
+  for (const r of res.rows) {
+    const rating = r.google_rating ? ` · ${r.google_rating}★${r.review_count ? ` (${r.review_count})` : ""}` : "";
+    lines.push(`**#${r.id} ${r.business_name}** · ${r.niche || "—"} · ${r.city || r.service_area || "—"}${rating}`);
+    lines.push(`   live site: ${r.live_url || "(none)"}`);
+    lines.push(`   contact: ${r.email || "⚠️ NO EMAIL — skip, can't send"}${r.phone ? ` · ${r.phone}` : ""}`);
+    lines.push(`   claim code: ${r.claim_code}`);
+    lines.push("");
+  }
+  lines.push(
+    `For each site that HAS an email, call save_forge_outreach_draft(site_id, subject, body). Keep it warm and short: their new site is live (link it), here's the claim code to sign in and take ownership, and they can book a call with Joe. Joe reviews every draft before it sends.`,
+  );
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolSaveForgeOutreachDraft({ site_id, subject, body }) {
+  const id = Number(site_id);
+  if (!Number.isFinite(id)) return { content: [{ type: "text", text: "site_id must be a number." }] };
+  const subj = String(subject || "").trim();
+  const text = String(body || "").trim();
+  if (!subj || !text) return { content: [{ type: "text", text: "Both subject and body are required." }] };
+
+  const existing = await query(
+    `SELECT id, business_name, status, email FROM forge_sites WHERE id = $1 LIMIT 1`,
+    [id],
+  );
+  if (!existing.rows.length) return { content: [{ type: "text", text: `forge_sites #${id} not found.` }] };
+  const site = existing.rows[0];
+  if (site.status !== "built") {
+    return { content: [{ type: "text", text: `#${id} (${site.business_name}) isn't built yet (status=${site.status}) — nothing to send.` }] };
+  }
+
+  await query(
+    `UPDATE forge_sites
+     SET outreach_subject = $2, outreach_draft = $3, outreach_channel = 'email',
+         outreach_status = 'drafted', updated_at = now()
+     WHERE id = $1`,
+    [id, subj, text],
+  );
+  await audit("forge_outreach_drafted", `Drafted owner outreach for ${site.business_name} (#${id})`, {
+    target: site.business_name,
+    detail: { siteId: id, subject: subj, email: site.email || null },
+  });
+  return {
+    content: [{ type: "text", text: `✅ Draft saved for ${site.business_name} (#${id}). Joe reviews + sends it from /command/prospects → Built.` }],
+  };
+}
+
 async function toolUpdateProspect({
   prospect_id, photo_url, email, phone, website_url, google_my_business_url, source,
   website_status, website_rating, website_notes, sales_opportunities,
@@ -762,7 +835,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.4.0" },
+  { name: "tbj-mcp", version: "2.5.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -891,6 +964,33 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description: "Filter by status. Omit to list all.",
           },
         },
+      },
+    },
+    {
+      name: "list_forge_outreach_queue",
+      description: "List BUILT, unclaimed forge sites that still need an outreach email to the owner. Returns each site's business, live-site URL, contact email/phone, and its CLAIM CODE, plus the claim/sign-in/book-a-call links to include. Call this at the start of the forge-outreach job, then write each message with save_forge_outreach_draft.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
+            enum: ["none", "drafted", "sent", "replied", "scheduled"],
+            description: "Which outreach stage to list. Default 'none' = built sites not yet drafted.",
+          },
+        },
+      },
+    },
+    {
+      name: "save_forge_outreach_draft",
+      description: "Save a drafted outreach EMAIL for a built site. Write a warm, personal note that (1) tells the owner their new site is live (include the live URL), (2) gives them the claim code and tells them to sign in and claim it, and (3) invites them to book a call with Joe. Sets the site's outreach_status='drafted' — Joe reviews and sends it from /command/prospects. Do NOT send email yourself.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          site_id: { type: "number", description: "The forge_sites id (from list_forge_outreach_queue)." },
+          subject: { type: "string", description: "Email subject line." },
+          body: { type: "string", description: "Email body as plain text (line breaks become paragraphs). Include the claim code, the live-site link, the sign-in/claim prompt, and the book-a-call invitation." },
+        },
+        required: ["site_id", "subject", "body"],
       },
     },
     {
@@ -1033,6 +1133,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "add_prospect": return toolAddProspect(args);
     case "add_forge_prospect": return toolAddForgeProspect(args);
     case "list_forge_queue": return toolListForgeQueue(args);
+    case "list_forge_outreach_queue": return toolListForgeOutreachQueue(args);
+    case "save_forge_outreach_draft": return toolSaveForgeOutreachDraft(args);
     case "update_prospect": return toolUpdateProspect(args);
     case "list_approved_for_outreach": return toolListApprovedForOutreach();
     case "mark_sent": return toolMarkSent(args);

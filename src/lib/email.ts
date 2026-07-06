@@ -34,13 +34,14 @@ type SendArgs = {
   to: string | string[];
   subject: string;
   html: string;
+  replyTo?: string;
 };
 
 /**
  * Low-level send via SMTP (Nodemailer). No-ops (with a warning) when SMTP env
  * vars are unset so signups and other flows never break without email set up.
  */
-export async function sendEmail({ to, subject, html }: SendArgs) {
+export async function sendEmail({ to, subject, html, replyTo }: SendArgs) {
   if (!transporter) {
     console.warn(
       `[email] SMTP not configured — skipping "${subject}" to ${Array.isArray(to) ? to.join(", ") : to}`,
@@ -53,6 +54,7 @@ export async function sendEmail({ to, subject, html }: SendArgs) {
       to,
       subject,
       html,
+      ...(replyTo ? { replyTo } : {}),
       ...(BCC ? { bcc: BCC } : {}),
     });
     return { data: info };
@@ -83,6 +85,61 @@ function layout(bodyHtml: string) {
 
 function button(href: string, label: string) {
   return `<a href="${href}" style="display:inline-block;margin-top:24px;background:${BRAND};color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:999px;">${label}</a>`;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Cold outreach to a local business owner whose forge site is built and waiting
+ * to be claimed. The `body` is the outreach agent's personal message; we wrap it
+ * in the brand shell and append the claim code + "see your site" + "book a call"
+ * CTAs so those are always present regardless of the drafted copy. Replies route
+ * to Joe (not the no-reply box) so an interested owner can just hit reply.
+ */
+export async function sendForgeOutreachEmail(args: {
+  to: string;
+  subject: string;
+  body: string;
+  businessName: string;
+  liveUrl?: string | null;
+  claimCode: string;
+}) {
+  const paragraphs = args.body
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map(
+      (p) =>
+        `<p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#5b616e;">${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`,
+    )
+    .join("");
+
+  const claimBlock = `
+    <div style="margin:20px 0;padding:14px 18px;background:#f5f7fb;border:1px solid #e6e9ef;border-radius:12px;">
+      <div style="font-size:11px;color:#9aa0ad;text-transform:uppercase;letter-spacing:.5px;">Your claim code</div>
+      <div style="font-size:22px;font-weight:800;letter-spacing:1.5px;font-family:'Courier New',monospace;color:#0a0a0b;">${escapeHtml(args.claimCode)}</div>
+      <div style="margin-top:4px;font-size:13px;line-height:1.5;color:#5b616e;">Create your free account, then enter this code at <a href="${SITE_URL}/portal/claim" style="color:${BRAND};">${SITE_URL}/portal/claim</a> to take ownership of your site.</div>
+    </div>`;
+
+  const buttons = `
+    <div style="margin-top:8px;">
+      ${args.liveUrl ? `<a href="${args.liveUrl}" style="display:inline-block;margin:8px 8px 0 0;background:${BRAND};color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:999px;">See your new site</a>` : ""}
+      <a href="${SITE_URL}/book-appointment" style="display:inline-block;margin:8px 0 0 0;background:#0a0a0b;color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:999px;">Book a call with Joe</a>
+    </div>`;
+
+  return sendEmail({
+    to: args.to,
+    subject: args.subject,
+    replyTo: process.env.OUTREACH_REPLY_TO || "josephsardella@gmail.com",
+    html: layout(`
+      <h1 style="margin:0 0 12px;font-size:22px;font-weight:800;">${escapeHtml(args.businessName)} — your new website is ready 🎉</h1>
+      ${paragraphs}
+      ${claimBlock}
+      ${buttons}
+    `),
+  });
 }
 
 /** Account confirmation / welcome email sent when a client account is created. */
