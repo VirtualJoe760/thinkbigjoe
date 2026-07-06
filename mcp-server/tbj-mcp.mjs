@@ -739,7 +739,7 @@ async function toolListForgeNeedsCallprep() {
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
-async function toolSaveForgeCallprep({ site_id, google_rating, review_count, review_quotes, social_stats, call_prep } = {}) {
+async function toolSaveForgeCallprep({ site_id, google_rating, review_count, review_quotes, social_stats, call_prep, photo_url } = {}) {
   const id = Number(site_id);
   if (!Number.isFinite(id)) return { content: [{ type: "text", text: "site_id must be a number." }] };
   const existing = await query(`SELECT id, business_name FROM forge_sites WHERE id = $1 LIMIT 1`, [id]);
@@ -754,6 +754,7 @@ async function toolSaveForgeCallprep({ site_id, google_rating, review_count, rev
   if (Array.isArray(review_quotes) && review_quotes.length) push("review_quotes = $$::jsonb", JSON.stringify(review_quotes.slice(0, 5)));
   if (social_stats && typeof social_stats === "object") push("social_stats = $$::jsonb", JSON.stringify(social_stats));
   if (call_prep && String(call_prep).trim()) push("call_prep = $$", String(call_prep).trim());
+  if (photo_url && String(photo_url).trim()) push("photo_url = COALESCE(NULLIF(photo_url,''), $$)", String(photo_url).trim());
   if (!set.length) return { content: [{ type: "text", text: `Nothing to save for ${site.business_name} — pass review quotes, social stats, or call_prep.` }] };
   set.push("call_prep_at = now()", "updated_at = now()");
   await query(`UPDATE forge_sites SET ${set.join(", ")} WHERE id = $1`, vals);
@@ -1168,7 +1169,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.11.0" },
+  { name: "tbj-mcp", version: "2.12.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1390,6 +1391,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description: "Follower counts, e.g. { facebook: { followers: 1100 }, instagram: { followers: 2300 } }.",
           },
           call_prep: { type: "string", description: "A short talking-points script for the call: a strength to praise + a review to reference → the gap (no website) → how our plan gets them more sales + organizes lead flow → a warm close." },
+          photo_url: { type: "string", description: "A direct image URL for the business — their Google Maps business photo (lh3.googleusercontent.com…) or Facebook profile photo. Shows as the lead's thumbnail on the calling screen." },
         },
         required: ["site_id"],
       },

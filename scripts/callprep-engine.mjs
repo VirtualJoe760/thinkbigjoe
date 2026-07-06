@@ -117,6 +117,7 @@ function buildCallPrep({ name, niche, city, rating, reviewCount, quotes, fb, ig 
       reviewsByName.set(nk(p.title), {
         rating: p.totalScore ?? null,
         reviewCount: p.reviewsCount ?? null,
+        photo: p.imageUrl || (p.imageUrls || [])[0] || null,
         quotes: (p.reviews || []).filter((r) => r.text).slice(0, 4).map((r) => ({ stars: r.stars, name: r.name, text: r.text })),
       });
     }
@@ -178,10 +179,11 @@ function buildCallPrep({ name, niche, city, rating, reviewCount, quotes, fb, ig 
               call_prep = $4,
               google_rating = COALESCE($5, google_rating),
               review_count = COALESCE($6, review_count),
+              photo_url = COALESCE(NULLIF(photo_url,''), $7),
               call_prep_at = now(),
               updated_at = now()
         WHERE id = $1`,
-      [l.id, JSON.stringify(quotes), JSON.stringify(social), callPrep, rating != null ? String(rating) : null, reviewCount != null ? String(reviewCount) : null],
+      [l.id, JSON.stringify(quotes), JSON.stringify(social), callPrep, rating != null ? String(rating) : null, reviewCount != null ? String(reviewCount) : null, rv?.photo || null],
     );
     prepped++;
     if (quotes.length) withQuotes++;

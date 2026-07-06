@@ -4,7 +4,8 @@ import { desc, eq } from "drizzle-orm";
 
 import { db, leads, prospects, replyDrafts, forgeSites } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
-import { SitesQueue, type ForgeSiteItem } from "../sites/sites-queue";
+import { type ForgeSiteItem } from "../sites/sites-queue";
+import { LeadCallCard } from "./lead-call-card";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -125,30 +126,49 @@ export default async function LeadsPage() {
       socialStats: (r.socialStats as ForgeSiteItem["socialStats"]) || null,
       reviewQuotes: (r.reviewQuotes as ForgeSiteItem["reviewQuotes"]) || [],
       callPrep: r.callPrep || "",
+      photoUrl: r.photoUrl || "",
     }));
 
   return (
     <div className="px-6 py-8">
       <div className="mx-auto w-full max-w-4xl">
 
+        {/* ── Header + cross-nav to the prospecting pipeline ── */}
+        <div className="mb-6 flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight">Leads — call room</h1>
+            <p className="mt-1 text-sm text-ink-soft">
+              Your ready-to-call leads, each with a photo, reviews, and a script. Prospecting is where leads are found &amp; enriched → they land here to call.
+            </p>
+          </div>
+          <Link href="/command/prospects" className="rounded-full border border-line px-3 py-1.5 text-sm font-semibold text-brand hover:bg-brand-tint/40">
+            ← Prospecting pipeline
+          </Link>
+        </div>
+
         {/* ── Web-dev leads (built businesses to call) ── */}
         <section className="mb-10">
           <div className="mb-1 flex items-center gap-3">
-            <h2 className="text-xl font-extrabold tracking-tight">Web-dev leads — ready to call</h2>
+            <h2 className="text-xl font-extrabold tracking-tight">Ready to call</h2>
             <span className="rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-semibold text-green-700">
               {webDevLeads.length}
             </span>
           </div>
           <p className="mb-4 text-sm text-ink-soft">
-            Businesses we built a site for and haven&apos;t converted yet. Tap 📞 to call, or send the AI first-touch —
-            enriched with owner, email, and socials.
+            Businesses we built a site for and haven&apos;t converted yet. Tap 📞 to call, 💬 to text the link — the calling
+            script and their reviews are right there.
           </p>
           {webDevLeads.length === 0 ? (
             <p className="rounded-2xl border border-line bg-background p-6 text-sm text-ink-soft">
-              None to call yet — built sites show up here once the forge finishes them.
+              None to call yet — built sites show up here once the forge finishes them.{" "}
+              <Link href="/command/prospects" className="font-semibold text-brand hover:underline">Approve some in prospecting →</Link>
             </p>
           ) : (
-            <SitesQueue items={webDevLeads} />
+            <div className="grid gap-4 lg:grid-cols-2">
+              {webDevLeads.map((item) => (
+                <LeadCallCard key={item.id} item={item} />
+              ))}
+            </div>
           )}
         </section>
 

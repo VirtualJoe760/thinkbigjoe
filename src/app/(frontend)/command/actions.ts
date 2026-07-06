@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { eq, inArray } from "drizzle-orm";
 
-import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine } from "@/db";
+import { and, sql } from "drizzle-orm";
+
+import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine, jobRequests } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
 import { sendForgeOutreachEmail } from "@/lib/email";
 
@@ -197,4 +199,32 @@ export async function updateLeadEngine(input: {
     })
     .where(eq(leadEngine.id, 1));
   revalidatePath("/command/prospects");
+}
+
+/**
+ * Queue an on-demand engine run. The web app can't reach the Mac directly, so we
+ * drop a row in job_requests; a launchd poller on the Mac picks it up and runs the
+ * matching engine/cron (find = lead-engine, enrich = the free browser agent cron).
+ * Returns a friendly status; de-dupes against an already-pending request of the kind.
+ */
+export async function requestLeadJob(kind: "find" | "enrich"): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  if (kind !== "find" && kind !== "enrich") return { ok: false, message: "Unknown job." };
+  const pending = await db
+    .select({ id: jobRequests.id })
+    .from(jobRequests)
+    .where(and(eq(jobRequests.kind, kind), sql`${jobRequests.status} in ('pending','running')`))
+    .limit(1);
+  if (pending.length) {
+    return { ok: true, message: kind === "find" ? "A find run is already queued." : "An enrichment run is already queued." };
+  }
+  await db.insert(jobRequests).values({ kind, requestedBy: "joe" });
+  revalidatePath("/command/prospects");
+  return {
+    ok: true,
+    message:
+      kind === "find"
+        ? "Queued — the lead engine will run within a couple minutes."
+        : "Queued — the agent will start enriching within a couple minutes.",
+  };
 }

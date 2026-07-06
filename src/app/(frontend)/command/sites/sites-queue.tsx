@@ -43,6 +43,7 @@ export type ForgeSiteItem = {
   socialStats: { facebook?: { followers?: number; likes?: number }; instagram?: { followers?: number }; linkedin?: { followers?: number } } | null;
   reviewQuotes: Array<{ stars?: number; name?: string; text?: string }>;
   callPrep: string;
+  photoUrl: string;
 };
 
 const fmtNum = (n?: number) => (n == null ? "" : n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 
-import { updateLeadEngine } from "../actions";
+import { updateLeadEngine, requestLeadJob } from "../actions";
 
 export type LeadEngineStats = {
   monthlyLeadGoal: number;
@@ -34,6 +34,17 @@ export function LeadEnginePanel({ stats }: { stats: LeadEngineStats }) {
   const [editing, setEditing] = useState(false);
   const [pending, start] = useTransition();
   const [saved, setSaved] = useState(false);
+  const [jobPending, startJob] = useTransition();
+  const [jobMsg, setJobMsg] = useState<string | null>(null);
+
+  function runJob(kind: "find" | "enrich") {
+    setJobMsg(null);
+    startJob(async () => {
+      const res = await requestLeadJob(kind);
+      setJobMsg(res.message);
+      setTimeout(() => setJobMsg(null), 6000);
+    });
+  }
 
   const monthPct = pct(stats.leadsThisMonth, stats.monthlyLeadGoal);
   const overBudget = stats.spendUsd >= stats.monthlyBudgetUsd;
@@ -67,13 +78,32 @@ export function LeadEnginePanel({ stats }: { stats: LeadEngineStats }) {
             to browser scraping when the credit runs out.
           </p>
         </div>
-        <button
-          onClick={() => setEditing((v) => !v)}
-          className="rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink-soft hover:text-ink"
-        >
-          {editing ? "Cancel" : "Adjust goal / budget"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => runJob("find")}
+            disabled={jobPending}
+            className="rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+            title="Run the lead engine now (find new leads via Apify)"
+          >
+            ⚡ Find leads now
+          </button>
+          <button
+            onClick={() => runJob("enrich")}
+            disabled={jobPending}
+            className="rounded-lg border border-brand px-3 py-1.5 text-sm font-semibold text-brand hover:bg-brand-tint disabled:opacity-50"
+            title="Run enrichment now (free browser agent: contacts, reviews, socials, call-prep)"
+          >
+            🔎 Enrich now
+          </button>
+          <button
+            onClick={() => setEditing((v) => !v)}
+            className="rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink-soft hover:text-ink"
+          >
+            {editing ? "Cancel" : "Adjust"}
+          </button>
+        </div>
       </div>
+      {jobMsg && <div className="mt-2 rounded-lg bg-brand-tint/60 px-3 py-2 text-sm font-medium text-brand">{jobMsg}</div>}
 
       {/* Progress */}
       <div className="mt-5 grid gap-5 sm:grid-cols-3">
