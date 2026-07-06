@@ -84,20 +84,49 @@
   // Walk up from the hovered node to the nearest MEANINGFUL editable element,
   // so we never highlight invisible wrapper divs.
   function editableTarget(el) {
+    // Clicks land inside an <svg> icon — start from the svg itself.
+    var svg = el.closest ? el.closest("svg") : null;
+    if (svg) el = svg;
     while (el && el !== document.body && el.nodeType === 1) {
-      var tag = el.nodeName;
+      var tag = el.nodeName.toUpperCase();
       if (tag === "IMG") return el;
       if (tag === "A" || tag === "BUTTON") return el;
       if (TEXT_TAGS.test(tag) && (el.innerText || "").trim()) return el;
+      if (tag === "SVG") {
+        // Prefer the icon's styled container (bg colour / rounded) so we can drop
+        // an image over the whole graphic block, not just the tiny svg.
+        var c = el.parentElement;
+        if (c && c !== document.body) {
+          var cs = getComputedStyle(c);
+          var hasBg = cs.backgroundColor && !/rgba?\([^)]*,\s*0\s*\)\s*$/.test(cs.backgroundColor) && cs.backgroundColor !== "transparent";
+          if ((hasBg || /rounded/.test(c.className || "")) && !(c.innerText || "").trim()) return c;
+        }
+        return el;
+      }
+      // A block whose only content is an icon → a decorative graphic.
+      if ((tag === "DIV" || tag === "SPAN" || tag === "FIGURE" || tag === "PICTURE") && el.querySelector && el.querySelector("svg") && !(el.innerText || "").trim()) return el;
       el = el.parentElement;
     }
     return null;
   }
   function elType(el) {
-    var tag = el.nodeName;
+    var tag = el.nodeName.toUpperCase();
     if (tag === "IMG") return "image";
     if (tag === "A" || tag === "BUTTON") return "button";
+    if (tag === "SVG" || (el.querySelector && el.querySelector("svg"))) return "graphic";
     return "text";
+  }
+  function applyImage(el, type, dataUrl) {
+    if (type === "graphic") {
+      el.style.setProperty("background-image", "url(" + dataUrl + ")", "important");
+      el.style.setProperty("background-size", "cover", "important");
+      el.style.setProperty("background-position", "center", "important");
+      el.style.setProperty("background-repeat", "no-repeat", "important");
+      var s = el.querySelector && el.querySelector("svg");
+      if (s) s.style.opacity = "0"; else el.style.opacity = "1";
+    } else {
+      el.src = dataUrl;
+    }
   }
 
   // ---- highlight overlay (also the spotlight when a panel is open) -------
@@ -168,7 +197,7 @@
     var h =
       '<div style="display:flex;justify-content:space-between;align-items:center;">' +
       '<span style="font-size:11px;font-weight:700;color:#2f6bff;text-transform:uppercase;letter-spacing:.04em;">Edit ' +
-      (type === "image" ? "image" : type === "button" ? "button" : el.nodeName.toLowerCase()) + "</span>" +
+      (type === "image" ? "image" : type === "graphic" ? "graphic" : type === "button" ? "button" : el.nodeName.toLowerCase()) + "</span>" +
       '<button id="__tbj-x" aria-label="close" style="border:0;background:#f5f7fb;border-radius:8px;width:26px;height:26px;cursor:pointer;font-size:15px;">✕</button></div>';
 
     if (type === "text" || type === "button") {
@@ -185,13 +214,14 @@
           '<input id="__tbj-bg" type="color" value="' + bgHex + '" style="width:100%;height:30px;border:1px solid #e6e9ef;border-radius:6px;margin-top:4px;padding:0;"></label>';
       }
     }
-    if (type === "image") {
-      h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Replace image</label>' +
+    if (type === "image" || type === "graphic") {
+      var isGfx = type === "graphic";
+      h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">' + (isGfx ? "Replace this graphic with an image" : "Replace image") + "</label>" +
         '<input id="__tbj-img" type="file" accept="image/*" style="width:100%;font-size:12px;margin-top:4px;">' +
         '<div id="__tbj-in" style="font-size:11px;color:#9aa0ad;margin-top:2px;">Upload to preview it in place.</div>' +
         '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">✨ Or generate with AI</label>' +
-        '<textarea id="__tbj-ai" placeholder="Describe the image/logo…" style="width:100%;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;min-height:40px;"></textarea>' +
-        '<label style="display:flex;gap:6px;font-size:11px;color:#5b616e;margin-top:4px;"><input type="checkbox" id="__tbj-ar" checked> use current image as reference</label>' +
+        '<textarea id="__tbj-ai" placeholder="' + (isGfx ? "Describe an image to use here…" : "Describe the image/logo…") + '" style="width:100%;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;min-height:40px;"></textarea>' +
+        (isGfx ? "" : '<label style="display:flex;gap:6px;font-size:11px;color:#5b616e;margin-top:4px;"><input type="checkbox" id="__tbj-ar" checked> use current image as reference</label>') +
         '<button id="__tbj-gen" style="margin-top:6px;width:100%;background:#0a0a0b;color:#fff;border:0;border-radius:999px;padding:8px;font-weight:600;font-size:13px;cursor:pointer;">Generate</button>' +
         '<div id="__tbj-gs" style="font-size:11px;color:#9aa0ad;margin-top:4px;"></div>';
     }
@@ -217,16 +247,16 @@
     if (fi) fi.addEventListener("change", function () {
       var f = fi.files[0]; if (!f) return;
       pop.querySelector("#__tbj-in").textContent = "Loading preview…";
-      fileToDataUrl(f, function (d) { if (d) { el.src = d; change.image = { name: f.name, dataUrl: d }; pop.querySelector("#__tbj-in").textContent = "✓ Previewing " + f.name; } else pop.querySelector("#__tbj-in").textContent = "Couldn't read that image."; });
+      fileToDataUrl(f, function (d) { if (d) { applyImage(el, type, d); change.image = { name: f.name, dataUrl: d }; if (type === "graphic") change.replaceGraphic = true; pop.querySelector("#__tbj-in").textContent = "✓ Previewing " + f.name; } else pop.querySelector("#__tbj-in").textContent = "Couldn't read that image."; });
     });
     var gen = pop.querySelector("#__tbj-gen");
     if (gen) gen.addEventListener("click", function () {
       var pr = pop.querySelector("#__tbj-ai").value.trim(); if (pr.length < 3) { pop.querySelector("#__tbj-ai").focus(); return; }
-      var useRef = pop.querySelector("#__tbj-ar").checked, gs = pop.querySelector("#__tbj-gs");
+      var arEl = pop.querySelector("#__tbj-ar"), gs = pop.querySelector("#__tbj-gs");
       gen.disabled = true; gs.textContent = "Generating… a few seconds.";
-      fetch(GEN_URL, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ prompt: pr, refUrl: useRef ? el.src : undefined }) })
+      fetch(GEN_URL, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ prompt: pr, refUrl: type === "image" && arEl && arEl.checked ? el.src : undefined }) })
         .then(function (r) { return r.json(); })
-        .then(function (res) { gen.disabled = false; if (res && res.ok && res.dataUrl) { el.src = res.dataUrl; change.image = { name: "ai-generated.png", dataUrl: res.dataUrl, prompt: pr }; gs.textContent = "✓ Generated — Add edit to keep it."; } else gs.textContent = (res && res.error) || "Couldn't generate."; })
+        .then(function (res) { gen.disabled = false; if (res && res.ok && res.dataUrl) { applyImage(el, type, res.dataUrl); change.image = { name: "ai-generated.png", dataUrl: res.dataUrl, prompt: pr }; if (type === "graphic") change.replaceGraphic = true; gs.textContent = "✓ Generated — Add edit to keep it."; } else gs.textContent = (res && res.error) || "Couldn't generate."; })
         .catch(function () { gen.disabled = false; gs.textContent = "Generation failed."; });
     });
 

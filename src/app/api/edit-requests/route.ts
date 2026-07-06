@@ -14,6 +14,7 @@ type EditChanges = {
   color?: string;
   background?: string;
   image?: { name?: string; dataUrl?: string };
+  replaceGraphic?: boolean;
   variant?: string;
   note?: string;
 };
@@ -67,7 +68,8 @@ export async function POST(req: Request) {
     if (c.background) lines.push(`   - Background → ${c.background}`);
     if (c.image?.dataUrl) {
       imageCount++;
-      lines.push(`   - Replace image/logo with uploaded file: ${c.image.name || "image"} (attached in data)`);
+      if (c.replaceGraphic) lines.push(`   - Replace this icon/graphic with the uploaded image: ${c.image.name || "image"} (attached in data)`);
+      else lines.push(`   - Replace image/logo with uploaded file: ${c.image.name || "image"} (attached in data)`);
     }
     const note = c.note || e.note;
     if (note) lines.push(`   - Note: ${note}`);
