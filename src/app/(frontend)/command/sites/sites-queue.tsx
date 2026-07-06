@@ -33,6 +33,30 @@ export type ForgeSiteItem = {
   createdAt: string;
 };
 
+const US_STATES = new Set([
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA",
+  "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT",
+  "VA", "WA", "WV", "WI", "WY", "DC",
+]);
+
+/** Pull a US state code out of a free-text location (service area usually ends "…, AZ"). */
+function stateFrom(s: string): string {
+  const tokens = (s || "").toUpperCase().match(/\b[A-Z]{2}\b/g);
+  if (!tokens) return "";
+  // Prefer the last valid state token — the state trails the location string.
+  for (let i = tokens.length - 1; i >= 0; i--) if (US_STATES.has(tokens[i])) return tokens[i];
+  return "";
+}
+
+/** "Mesa, AZ" from city="Mesa" + serviceArea="Mesa, AZ East Valley". */
+function cityState(item: ForgeSiteItem): string {
+  const st = stateFrom(item.serviceArea) || stateFrom(item.city);
+  const city = (item.city || "").replace(/,\s*[A-Za-z]{2}\s*$/, "").trim();
+  if (!city) return st;
+  return st ? `${city}, ${st}` : city;
+}
+
 function StatusPill({ status }: { status: string }) {
   const styles: Record<string, string> = {
     discovered: "bg-amber-100 text-amber-800",
@@ -109,7 +133,7 @@ function DiscoveredRow({ item }: { item: ForgeSiteItem }) {
             <span className="font-semibold text-ink">{item.businessName}</span>
             <Rating item={item} />
           </div>
-          <div className="text-sm text-ink-soft">{item.niche} · {item.city}</div>
+          <div className="text-sm text-ink-soft">{item.niche} · {cityState(item)}</div>
         </div>
         <StatusPill status={item.status} />
       </div>
@@ -176,7 +200,7 @@ function SimpleRow({ item }: { item: ForgeSiteItem }) {
           <span className="font-semibold text-ink">{item.businessName}</span>
           <Rating item={item} />
         </div>
-        <div className="text-sm text-ink-soft">{item.niche} · {item.city}</div>
+        <div className="text-sm text-ink-soft">{item.niche} · {cityState(item)}</div>
       </div>
       <div className="flex flex-wrap items-center gap-3 text-xs">
         <ExternalLinks item={item} />
