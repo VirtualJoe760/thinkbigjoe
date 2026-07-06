@@ -707,6 +707,65 @@ async function toolEnrichForgeContact({ site_id, owner_name, email, phone, insta
   return { content: [{ type: "text", text: `✅ Enriched ${site.business_name} (#${id})${found ? ` — ${found}` : ""}. (Existing values kept; only blanks filled.)` }] };
 }
 
+async function toolListForgeNeedsCallprep() {
+  // Sites with no call-prep yet — the ones to research for talking points before Joe
+  // dials. Most-reviewed first (warmest), built/approved boosted.
+  const res = await query(
+    `SELECT id, business_name, niche, city, service_area, phone, google_rating, review_count,
+            google_maps_url, facebook_url, instagram_url, existing_website_url, status
+     FROM forge_sites
+     WHERE call_prep IS NULL OR call_prep = ''
+     ORDER BY (status IN ('built','approved')) DESC, NULLIF(review_count,'')::int DESC NULLS LAST, created_at DESC
+     LIMIT 25`,
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: "Every lead already has call-prep — nothing to research." }] };
+  }
+  const lines = [`📋 **${res.rows.length} lead(s) need call-prep** (most-reviewed first):`, ""];
+  for (const r of res.rows) {
+    const dig = [
+      r.google_maps_url ? `Maps: ${r.google_maps_url}` : `search Google Maps for "${r.business_name} ${r.city || ""}"`,
+      r.facebook_url && `FB: ${r.facebook_url}`,
+      r.instagram_url && `IG: ${r.instagram_url}`,
+      r.existing_website_url && `site: ${r.existing_website_url}`,
+    ].filter(Boolean);
+    lines.push(`**#${r.id} ${r.business_name}** · ${r.niche || "—"} · ${r.city || r.service_area || "—"} [${r.status}]${r.google_rating ? ` · ${r.google_rating}★ / ${r.review_count || "?"} reviews` : ""}`);
+    lines.push(`   dig here: ${dig.join(" · ")}`);
+    lines.push("");
+  }
+  lines.push(
+    `For each: open their Google Maps listing → read the exact rating + copy 2–3 real review quotes (reviewer name + text). Open their Facebook/Instagram → note follower counts. Then call save_forge_callprep(site_id, google_rating, review_count, review_quotes[{stars,name,text}], social_stats{facebook:{followers},instagram:{followers}}, call_prep). Write call_prep as a short talking-points script: a strength to praise + a real review to reference → the gap (no website) → how our plan gets them more sales + organizes their lead flow → a warm close.`,
+  );
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolSaveForgeCallprep({ site_id, google_rating, review_count, review_quotes, social_stats, call_prep } = {}) {
+  const id = Number(site_id);
+  if (!Number.isFinite(id)) return { content: [{ type: "text", text: "site_id must be a number." }] };
+  const existing = await query(`SELECT id, business_name FROM forge_sites WHERE id = $1 LIMIT 1`, [id]);
+  if (!existing.rows.length) return { content: [{ type: "text", text: `forge_sites #${id} not found.` }] };
+  const site = existing.rows[0];
+
+  const set = [];
+  const vals = [id];
+  const push = (frag, v) => { vals.push(v); set.push(frag.replace("$$", `$${vals.length}`)); };
+  if (google_rating != null && String(google_rating).trim()) push("google_rating = COALESCE($$, google_rating)", String(google_rating).trim());
+  if (review_count != null && String(review_count).trim()) push("review_count = COALESCE($$, review_count)", String(review_count).trim());
+  if (Array.isArray(review_quotes) && review_quotes.length) push("review_quotes = $$::jsonb", JSON.stringify(review_quotes.slice(0, 5)));
+  if (social_stats && typeof social_stats === "object") push("social_stats = $$::jsonb", JSON.stringify(social_stats));
+  if (call_prep && String(call_prep).trim()) push("call_prep = $$", String(call_prep).trim());
+  if (!set.length) return { content: [{ type: "text", text: `Nothing to save for ${site.business_name} — pass review quotes, social stats, or call_prep.` }] };
+  set.push("call_prep_at = now()", "updated_at = now()");
+  await query(`UPDATE forge_sites SET ${set.join(", ")} WHERE id = $1`, vals);
+
+  const nQuotes = Array.isArray(review_quotes) ? review_quotes.length : 0;
+  await audit("forge_callprep", `Call-prep saved for ${site.business_name} (#${id}) — ${nQuotes} review quotes`, {
+    target: site.business_name,
+    detail: { siteId: id, quotes: nQuotes, hasScript: !!call_prep },
+  });
+  return { content: [{ type: "text", text: `✅ Call-prep saved for ${site.business_name} (#${id}) — ${nQuotes} review quote(s)${call_prep ? " + talking points" : ""}.` }] };
+}
+
 async function toolListForgeFollowupDue() {
   // Sites that got an initial email, aren't claimed, and are overdue for a follow-up
   // (>3 days since the last touch, fewer than 3 emails total). Include the prior
@@ -1109,7 +1168,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.10.0" },
+  { name: "tbj-mcp", version: "2.11.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1296,6 +1355,41 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           facebook_url: { type: "string", description: "Facebook page URL." },
           linkedin_url: { type: "string", description: "LinkedIn company/owner URL." },
           notes: { type: "string", description: "Any other useful contact context (best way to reach, hours, gatekeeper, etc.)." },
+        },
+        required: ["site_id"],
+      },
+    },
+    {
+      name: "list_forge_needs_callprep",
+      description: "List leads with no call-prep yet — research these before Joe calls. Returns each business + where to look (Maps/Facebook/Instagram) so you can gather the rating, a few review quotes, and follower counts. Call this to start a call-prep run, then write findings with save_forge_callprep. Free browser research — no paid scraping.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "save_forge_callprep",
+      description: "Save call-prep intelligence you researched for a lead: Google rating, review count, a few real review quotes, social follower counts, and a talking-points script for the call. Powers the Call-prep card in /command/prospects. Pass only what you found.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          site_id: { type: "number", description: "The forge_sites id (from list_forge_needs_callprep)." },
+          google_rating: { type: "string", description: "Google star rating, e.g. \"4.9\"." },
+          review_count: { type: "string", description: "Number of Google reviews, e.g. \"199\"." },
+          review_quotes: {
+            type: "array",
+            description: "2–3 real review quotes. Each: { stars, name, text }.",
+            items: {
+              type: "object",
+              properties: {
+                stars: { type: "number" },
+                name: { type: "string" },
+                text: { type: "string" },
+              },
+            },
+          },
+          social_stats: {
+            type: "object",
+            description: "Follower counts, e.g. { facebook: { followers: 1100 }, instagram: { followers: 2300 } }.",
+          },
+          call_prep: { type: "string", description: "A short talking-points script for the call: a strength to praise + a review to reference → the gap (no website) → how our plan gets them more sales + organizes lead flow → a warm close." },
         },
         required: ["site_id"],
       },
@@ -1500,6 +1594,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "list_forge_followup_due": return toolListForgeFollowupDue(args);
     case "list_forge_needs_contact": return toolListForgeNeedsContact(args);
     case "enrich_forge_contact": return toolEnrichForgeContact(args);
+    case "list_forge_needs_callprep": return toolListForgeNeedsCallprep(args);
+    case "save_forge_callprep": return toolSaveForgeCallprep(args);
     case "list_forge_blacklist": return toolListForgeBlacklist(args);
     case "update_prospect": return toolUpdateProspect(args);
     case "list_approved_for_outreach": return toolListApprovedForOutreach();

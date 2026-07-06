@@ -65,26 +65,31 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
     name: "TBJ Forge Contact Enrichment",
     id: "eb7d66fe-8347-452e-bde7-53df7455f886",
     agent: "prospector",
-    schedule: "0 5 * * *",
+    schedule: "0 6,13,20 * * *",
     stagger: "5m",
-    summary: "Find owner names, emails, and socials for forge sites missing a way to reach them.",
-    tools: ["list_forge_needs_contact", "apify_extract_contacts", "apify_find_instagram", "enrich_forge_contact", "log_activity"],
-    uiSurface: ["/command/prospects (contact cards)"],
-    eventTypes: ["forge_contact_enriched"],
-    prompt: `This is your contact-enrichment run. Lots of forge sites have a phone but no EMAIL or OWNER name — Joe needs a real way to reach these owners (to call and email them).
+    summary: "Browser-research contact info AND call-prep (reviews, social stats, talking points) for forge leads — free, no paid scraping.",
+    tools: ["list_forge_needs_contact", "list_forge_needs_callprep", "enrich_forge_contact", "save_forge_callprep", "log_activity"],
+    uiSurface: ["/command/prospects (contact cards + Call-prep card)"],
+    eventTypes: ["forge_contact_enriched", "forge_callprep"],
+    prompt: `This is your enrichment run — the FREE, browser-based way to fill lead data (do NOT use the paid Apify tools here; those cost money and the paid engines handle bulk finding). You do two jobs each run: (A) find missing contact info, (B) build call-prep. You drive Chrome — this is exactly the research you're best at.
 
-1. PULL: call list_forge_needs_contact — sites missing an email or owner (BUILT ones first, they're ready for outreach/calls).
+=== A) CONTACT ENRICHMENT ===
+1. PULL: call list_forge_needs_contact — leads missing an email or owner (BUILT ones first).
+2. HUNT by hand, be exhaustive: Google Business Profile + "[biz] owner/email"; Facebook About + Messenger; LinkedIn; Nextdoor; directories — Yelp, **BBB** (names the owner/principal), Angi, Thumbtack, Yellow Pages, Manta, local Chamber; Secretary of State registry; WHOIS. Capture the OWNER's name, a real EMAIL, and social URLs. NEVER invent contact info — only record what you verify.
+3. SAVE: enrich_forge_contact(site_id, owner_name, email, phone, instagram_url, facebook_url, linkedin_url, notes) — only fields you found; it gap-fills.
 
-2. HUNT — start with Apify (fast + cheap), then fill gaps by hand:
-   - **If they have a website** → call **apify_extract_contacts(their site URL)** FIRST. One call returns every email, phone, and social URL on the site (this is how we found real owner emails already).
-   - **If they're IG-native / no site** → call **apify_find_instagram("<business name> <city>")** to pull the handle + bio email/phone.
-   - **If Apify errors** (❌ — e.g. the free credit is used up), skip straight to the by-hand sources below — don't stop enriching.
-   - **Fill any remaining gaps by hand** — be exhaustive, don't stop at the first miss: Google Business Profile + searches ("[biz] owner/email"); Facebook About + Messenger, LinkedIn (company + owner), Nextdoor; directories — Yelp, **BBB** (names the owner/principal), Angi, HomeAdvisor, Thumbtack, Yellow Pages, Manta, local Chamber; the state Secretary of State registry (owner/registered agent); and WHOIS on their domain.
-   Capture: the OWNER / decision-maker's name, a real EMAIL, social profile URLs (Instagram/Facebook/LinkedIn), and a short note on the BEST way to reach them. NEVER invent contact info — only record what you actually verify.
+=== B) CALL-PREP (what Joe says on the phone) ===
+4. PULL: call list_forge_needs_callprep — leads with no talking points yet (most-reviewed first).
+5. For each, open in Chrome and gather:
+   - **Google Maps listing** → the exact star rating + review count, and copy **2–3 real review quotes** (reviewer name + the text — pick positive, specific ones).
+   - **Facebook / Instagram** → their **follower counts**.
+6. SAVE: save_forge_callprep(site_id, google_rating, review_count, review_quotes:[{stars,name,text}], social_stats:{facebook:{followers},instagram:{followers}}, call_prep). Write **call_prep** as a tight script Joe can read off:
+   - Open warm — praise a real strength (their rating, years in business) and reference a specific review.
+   - The gap — no website, so people who search them can't find/book them; those leads go to a competitor who has a site.
+   - The pitch — our plan turns their reputation into booked jobs: a pro site + click-to-call + online booking + a dashboard that captures & organizes every lead (more sales, less chaos).
+   - Close — offer to text them the live site we already built.
 
-3. SAVE: call enrich_forge_contact(site_id, owner_name, email, phone, instagram_url, facebook_url, linkedin_url, notes) with ONLY the fields you found. It gap-fills, so it won't overwrite what's already there.
-
-4. LOG: finish with log_activity, event_type "forge_contact_enriched", summary like "Enriched N sites · M new emails · K owner names". marketing-manager reads this for the digest — you don't message Joe directly.`,
+7. LOG: finish with log_activity, event_type "forge_contact_enriched", summary like "Enriched N contacts · Call-prepped M leads". marketing-manager reads this for the digest — you don't message Joe directly.`,
   },
 
   {
