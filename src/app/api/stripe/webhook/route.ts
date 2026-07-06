@@ -34,6 +34,21 @@ export async function POST(req: Request) {
 
   try {
     switch (event.type) {
+      // Owner passed the Stripe Identity document + selfie check → mark the site verified.
+      case "identity.verification_session.verified": {
+        const vs = event.data.object as Stripe.Identity.VerificationSession;
+        const siteId = Number(vs.metadata?.siteId);
+        if (!Number.isFinite(siteId)) break;
+        await db.update(forgeSites).set({ idVerifiedAt: new Date().toISOString() }).where(eq(forgeSites.id, siteId));
+        await db.insert(activityLog).values({
+          actor: "system",
+          eventType: "identity_verified",
+          summary: `Owner ID-verified for site #${siteId}`,
+          metadata: { auto: true, detail: { siteId, sessionId: vs.id } },
+        });
+        break;
+      }
+
       case "checkout.session.completed": {
         const s = event.data.object as Stripe.Checkout.Session;
         const siteId = Number(s.metadata?.siteId);

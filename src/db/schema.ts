@@ -313,6 +313,17 @@ export const forgeBlacklist = pgTable("forge_blacklist", {
 	unique("forge_blacklist_norm_key_key").on(table.normKey),
 ]);
 
+export const jobRequests = pgTable("job_requests", {
+	id: serial().primaryKey().notNull(),
+	kind: text().notNull(),
+	status: text().default('pending').notNull(),
+	requestedBy: text("requested_by"),
+	note: text(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	startedAt: timestamp("started_at", { withTimezone: true, mode: 'string' }),
+	finishedAt: timestamp("finished_at", { withTimezone: true, mode: 'string' }),
+});
+
 export const forgeSites = pgTable("forge_sites", {
 	id: serial().primaryKey().notNull(),
 	slug: text().notNull(),
@@ -374,20 +385,11 @@ export const forgeSites = pgTable("forge_sites", {
 	marketingApprovedAt: timestamp("marketing_approved_at", { withTimezone: true, mode: 'string' }),
 	revisionNote: text("revision_note"),
 	revisionRequestedAt: timestamp("revision_requested_at", { withTimezone: true, mode: 'string' }),
+	idVerifiedAt: timestamp("id_verified_at", { withTimezone: true, mode: 'string' }),
+	idVerificationSession: text("id_verification_session"),
 }, (table) => [
 	uniqueIndex("forge_sites_claim_code_key").using("btree", table.claimCode.asc().nullsLast().op("text_ops")),
 	index("forge_sites_outreach_status_idx").using("btree", table.outreachStatus.asc().nullsLast().op("text_ops")),
 	index("forge_sites_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
 	unique("forge_sites_slug_key").on(table.slug),
 ]);
-
-export const jobRequests = pgTable("job_requests", {
-	id: serial().primaryKey().notNull(),
-	kind: text().notNull(),
-	status: text().default('pending').notNull(),
-	requestedBy: text("requested_by"),
-	note: text(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	startedAt: timestamp("started_at", { withTimezone: true, mode: 'string' }),
-	finishedAt: timestamp("finished_at", { withTimezone: true, mode: 'string' }),
-});
