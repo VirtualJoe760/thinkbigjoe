@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 
-import { db, outreach, prospects, forgeSites } from "@/db";
+import { db, outreach, prospects, forgeSites, leadEngine } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { parseProspectRecon } from "@/lib/prospect-recon";
 import { ReviewQueue, type QueueItem } from "../review-queue";
 import { SitesQueue, type ForgeSiteItem } from "../sites/sites-queue";
+import { LeadEnginePanel, type LeadEngineStats } from "./lead-engine-panel";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -76,6 +77,34 @@ export default async function ProspectsPage({
   const gf = sp.gf === "only" ? "only" : "";
   const q = (sp.q || "").trim();
   const qLower = q.toLowerCase();
+
+  // --- Lead engine progress (goal + spend the scheduled scraper works toward) ---
+  const engineCfg = await db.select().from(leadEngine).where(eq(leadEngine.id, 1)).limit(1).then((r) => r[0]);
+  let engineStats: LeadEngineStats | null = null;
+  if (engineCfg) {
+    const scalar = async (query: ReturnType<typeof sql>): Promise<number> => {
+      const res = (await db.execute(query)) as unknown as { rows?: { n: number }[] } | { n: number }[];
+      const list = Array.isArray(res) ? res : res.rows || [];
+      return Number(list[0]?.n ?? 0);
+    };
+    const [leadsThisMonth, leadsToday] = await Promise.all([
+      scalar(sql`SELECT count(*)::int AS n FROM forge_sites WHERE created_at >= date_trunc('month', now())`),
+      scalar(sql`SELECT count(*)::int AS n FROM forge_sites WHERE created_at >= date_trunc('day', now())`),
+    ]);
+    const nowD = new Date();
+    const daysInMonth = new Date(nowD.getUTCFullYear(), nowD.getUTCMonth() + 1, 0).getUTCDate();
+    engineStats = {
+      monthlyLeadGoal: engineCfg.monthlyLeadGoal,
+      monthlyBudgetUsd: Number(engineCfg.monthlyBudgetUsd),
+      enabled: engineCfg.enabled,
+      leadsThisMonth,
+      leadsToday,
+      dailyTarget: Math.ceil(engineCfg.monthlyLeadGoal / daysInMonth),
+      spendUsd: Number(engineCfg.spendUsd),
+      lastRunSummary: engineCfg.lastRunSummary,
+      lastRunAt: engineCfg.lastRunAt,
+    };
+  }
 
   // --- Web-dev leads (the forge queue) — always loaded; this is the primary surface. ---
   const forgeRows = await db.select().from(forgeSites).orderBy(desc(forgeSites.createdAt));
@@ -266,6 +295,12 @@ export default async function ProspectsPage({
             </div>
           )}
         </div>
+
+        {!isLinkedIn && engineStats && (
+          <div className="mt-6">
+            <LeadEnginePanel stats={engineStats} />
+          </div>
+        )}
 
         {isLinkedIn ? (
           <>

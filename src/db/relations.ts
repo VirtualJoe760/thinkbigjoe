@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { prospects, outreach, followUps, conversations, leads, meetingBriefs, agentTasks } from "./schema";
+import { prospects, outreach, followUps, conversations, meetingBriefs, agentTasks, leads } from "./schema";
 
 export const outreachRelations = relations(outreach, ({one}) => ({
 	prospect: one(prospects, {
@@ -12,9 +12,9 @@ export const prospectsRelations = relations(prospects, ({many}) => ({
 	outreaches: many(outreach),
 	followUps: many(followUps),
 	conversations: many(conversations),
-	leads: many(leads),
 	meetingBriefs: many(meetingBriefs),
 	agentTasks: many(agentTasks),
+	leads: many(leads),
 }));
 
 export const followUpsRelations = relations(followUps, ({one}) => ({
@@ -31,13 +31,6 @@ export const conversationsRelations = relations(conversations, ({one}) => ({
 	}),
 }));
 
-export const leadsRelations = relations(leads, ({one}) => ({
-	prospect: one(prospects, {
-		fields: [leads.prospectId],
-		references: [prospects.id]
-	}),
-}));
-
 export const meetingBriefsRelations = relations(meetingBriefs, ({one}) => ({
 	prospect: one(prospects, {
 		fields: [meetingBriefs.prospectId],
@@ -48,6 +41,13 @@ export const meetingBriefsRelations = relations(meetingBriefs, ({one}) => ({
 export const agentTasksRelations = relations(agentTasks, ({one}) => ({
 	prospect: one(prospects, {
 		fields: [agentTasks.prospectId],
+		references: [prospects.id]
+	}),
+}));
+
+export const leadsRelations = relations(leads, ({one}) => ({
+	prospect: one(prospects, {
+		fields: [leads.prospectId],
 		references: [prospects.id]
 	}),
 }));

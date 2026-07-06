@@ -14,6 +14,14 @@
 // manifest (add / edit by name). OpenClaw only executes — this is the plan.
 //
 // Plain .mjs (no TS) so both the Next.js app and the sync script import it.
+//
+// NOT listed here (deterministic launchd crons on Joe's Mac, not OpenClaw agents):
+//   • forge-poll   (com.thinkbigjoe.forgepoll)  — builds approved forge_sites.
+//   • lead-engine  (com.thinkbigjoe.leadengine) — every 3h, scrapes Apify toward the
+//     monthly LEAD GOAL within the APIFY BUDGET (config + progress in the `lead_engine`
+//     table, shown on /command/prospects). scripts/lead-engine.mjs. When the Apify
+//     credit is spent it no-ops and the agent scout cron below (browser fallback) carries
+//     the goal. These are infra, not cognitive work — so they live in launchd, not here.
 // ---------------------------------------------------------------------------
 
 export const VENUS_CRONS = [
@@ -21,13 +29,15 @@ export const VENUS_CRONS = [
     name: "TBJ Forge Prospect Scout",
     id: "f35d15ce-4f67-489b-aef3-fe426b3aa007",
     agent: "prospector",
-    schedule: "0 4 * * *",
+    schedule: "0 4,12,20 * * *",
     stagger: "5m",
-    summary: "Find local service businesses with no/bad website for the site-building forge.",
+    summary: "Find local service businesses with no/bad website for the site-building forge (3×/day, toward the monthly lead goal).",
     tools: ["apify_find_businesses", "apify_find_instagram", "apify_extract_contacts", "add_forge_prospect", "list_forge_queue", "list_forge_blacklist", "log_activity"],
-    uiSurface: ["/command/sites"],
+    uiSurface: ["/command/sites", "/command/prospects (Lead engine panel)"],
     eventTypes: ["forge_scout_complete", "forge_prospect_added"],
-    prompt: `This is your daily scouting run. Follow your sourcing loop (AGENTS.md) to find local service businesses that need a website.
+    prompt: `This is a scouting run (you run 3× a day now). Follow your sourcing loop (AGENTS.md) to find local service businesses that need a website.
+
+THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–5 sales a day by calling. A deterministic "lead engine" scrapes bulk leads via Apify every 3 hours; YOUR job is to ADD to that with the businesses Apify's basic search misses — Instagram-native businesses, businesses needing a judgment call on a weak existing site, and (when the Apify credit is used up) browser-scraped leads. Push hard toward the daily pace every run.
 
 1. DEDUP + BLACKLIST: call list_forge_queue (no filter) AND list_forge_blacklist. Skip any business already queued (by name + city) AND any business on the blacklist — Joe denied those, so never research or re-add them (match by name+city or their website domain). add_forge_prospect also hard-blocks blacklisted businesses, but don't waste a crawl on one.
 
