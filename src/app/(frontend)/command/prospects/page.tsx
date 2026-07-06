@@ -111,6 +111,10 @@ export default async function ProspectsPage({
     outreachDraft: r.outreachDraft || "",
     contactedAt: r.contactedAt || "",
     followupCount: r.followupCount || 0,
+    ownerName: r.ownerName || "",
+    instagramUrl: r.instagramUrl || "",
+    facebookUrl: r.facebookUrl || "",
+    contactNotes: r.contactNotes || "",
   }));
 
   const siteCounts: Record<WebdevView, number> = { review: 0, queued: 0, built: 0, archive: 0 };
@@ -250,6 +254,9 @@ export default async function ProspectsPage({
             </a>
           ) : (
             <div className="flex items-center gap-4">
+              <a href="/api/forge/export" className="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1 text-xs font-semibold text-ink hover:bg-surface">
+                ⬇ Export CSV
+              </a>
               <a href="/command/analyzer" className="text-xs font-semibold text-brand hover:underline">
                 Analyze a site ↗
               </a>

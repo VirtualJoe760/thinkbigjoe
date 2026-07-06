@@ -503,6 +503,75 @@ async function toolSaveForgeOutreachDraft({ site_id, subject, body }) {
   };
 }
 
+async function toolListForgeNeedsContact() {
+  // Sites still missing an email or an owner name — the ones worth hunting a
+  // reachable channel for. Built ones first (they're ready for outreach/calls).
+  const res = await query(
+    `SELECT id, business_name, niche, city, service_area, phone, email, owner_name,
+            existing_website_url, live_url, google_maps_url, linkedin_url, instagram_url, facebook_url, status
+     FROM forge_sites
+     WHERE status IN ('built','approved','discovered')
+       AND (email IS NULL OR email = '' OR owner_name IS NULL OR owner_name = '')
+     ORDER BY (status = 'built') DESC, created_at DESC
+     LIMIT 40`,
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: "Every site already has an email + owner name — nothing to enrich." }] };
+  }
+  const lines = [`🔎 **${res.rows.length} site(s) need contact enrichment** (built first):`, ""];
+  for (const r of res.rows) {
+    const have = [r.email && "email", r.owner_name && "owner", r.phone && "phone", r.instagram_url && "IG", r.facebook_url && "FB", r.linkedin_url && "LinkedIn"].filter(Boolean);
+    const dig = [r.existing_website_url && `their site: ${r.existing_website_url}`, r.google_maps_url && `maps: ${r.google_maps_url}`, r.live_url && `our build: ${r.live_url}`].filter(Boolean);
+    lines.push(`**#${r.id} ${r.business_name}** · ${r.niche || "—"} · ${r.city || r.service_area || "—"} [${r.status}]`);
+    lines.push(`   have: ${have.join(", ") || "phone only"} · MISSING: ${[!r.email && "email", !r.owner_name && "owner"].filter(Boolean).join(" + ")}`);
+    if (dig.length) lines.push(`   dig here: ${dig.join(" · ")}`);
+    lines.push("");
+  }
+  lines.push(
+    `For each: open their website's contact/about page, their Google Maps listing, and search Instagram, Facebook and LinkedIn for the business. Find the OWNER's name and a real EMAIL, plus any social profile URLs. Then call enrich_forge_contact(site_id, owner_name, email, phone, instagram_url, facebook_url, linkedin_url, notes) — only pass the fields you actually found. Blank fields aren't overwritten.`,
+  );
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolEnrichForgeContact({ site_id, owner_name, email, phone, instagram_url, facebook_url, linkedin_url, notes } = {}) {
+  const id = Number(site_id);
+  if (!Number.isFinite(id)) return { content: [{ type: "text", text: "site_id must be a number." }] };
+  const existing = await query(`SELECT id, business_name FROM forge_sites WHERE id = $1 LIMIT 1`, [id]);
+  if (!existing.rows.length) return { content: [{ type: "text", text: `forge_sites #${id} not found.` }] };
+  const site = existing.rows[0];
+
+  // Gap-fill only: COALESCE(NULLIF(col,''), new) keeps any value already there and
+  // fills blanks with what was found — so enrichment never clobbers good data.
+  const set = [];
+  const vals = [id];
+  const fill = (col, v) => {
+    if (v !== undefined && String(v).trim()) {
+      vals.push(String(v).trim());
+      set.push(`${col} = COALESCE(NULLIF(${col}, ''), $${vals.length})`);
+    }
+  };
+  fill("owner_name", owner_name);
+  fill("email", email);
+  fill("phone", phone);
+  fill("instagram_url", instagram_url);
+  fill("facebook_url", facebook_url);
+  fill("linkedin_url", linkedin_url);
+  if (notes && String(notes).trim()) {
+    vals.push(String(notes).trim());
+    set.push(`contact_notes = COALESCE(contact_notes || E'\\n', '') || $${vals.length}`);
+  }
+  if (!set.length) return { content: [{ type: "text", text: `Nothing to save for ${site.business_name} — pass at least one field you found.` }] };
+  set.push(`contact_enriched_at = now()`, `updated_at = now()`);
+  await query(`UPDATE forge_sites SET ${set.join(", ")} WHERE id = $1`, vals);
+
+  await audit("forge_contact_enriched", `Enriched contact for ${site.business_name} (#${id})`, {
+    target: site.business_name,
+    detail: { siteId: id, found: { owner_name, email, phone, instagram_url, facebook_url, linkedin_url } },
+  });
+  const found = [owner_name && `owner ${owner_name}`, email && `email ${email}`, phone && `phone ${phone}`].filter(Boolean).join(" · ");
+  return { content: [{ type: "text", text: `✅ Enriched ${site.business_name} (#${id})${found ? ` — ${found}` : ""}. (Existing values kept; only blanks filled.)` }] };
+}
+
 async function toolListForgeFollowupDue() {
   // Sites that got an initial email, aren't claimed, and are overdue for a follow-up
   // (>3 days since the last touch, fewer than 3 emails total). Include the prior
@@ -905,7 +974,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.7.0" },
+  { name: "tbj-mcp", version: "2.8.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1034,6 +1103,29 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description: "Filter by status. Omit to list all.",
           },
         },
+      },
+    },
+    {
+      name: "list_forge_needs_contact",
+      description: "List forge sites still missing an owner name or email — the ones to enrich. Returns what contact info exists and where to dig (their website, Google Maps, socials). Call this to start a contact-enrichment run, then write findings with enrich_forge_contact.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "enrich_forge_contact",
+      description: "Save contact info found for a forge site: the owner's name, an email, phone, and social profile URLs (Instagram/Facebook/LinkedIn). Gap-fill only — blank fields on the record get filled, existing values are kept. Pass only the fields you actually found. Appends anything useful to contact_notes.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          site_id: { type: "number", description: "The forge_sites id (from list_forge_needs_contact)." },
+          owner_name: { type: "string", description: "The owner/decision-maker's name, if found." },
+          email: { type: "string", description: "A real contact email for the business/owner." },
+          phone: { type: "string", description: "Phone number, if a better one than what's on file was found." },
+          instagram_url: { type: "string", description: "Instagram profile URL." },
+          facebook_url: { type: "string", description: "Facebook page URL." },
+          linkedin_url: { type: "string", description: "LinkedIn company/owner URL." },
+          notes: { type: "string", description: "Any other useful contact context (best way to reach, hours, gatekeeper, etc.)." },
+        },
+        required: ["site_id"],
       },
     },
     {
@@ -1216,6 +1308,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "list_forge_outreach_queue": return toolListForgeOutreachQueue(args);
     case "save_forge_outreach_draft": return toolSaveForgeOutreachDraft(args);
     case "list_forge_followup_due": return toolListForgeFollowupDue(args);
+    case "list_forge_needs_contact": return toolListForgeNeedsContact(args);
+    case "enrich_forge_contact": return toolEnrichForgeContact(args);
     case "list_forge_blacklist": return toolListForgeBlacklist(args);
     case "update_prospect": return toolUpdateProspect(args);
     case "list_approved_for_outreach": return toolListApprovedForOutreach();

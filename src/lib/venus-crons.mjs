@@ -143,6 +143,32 @@ If any follow-ups were scheduled, call log_activity with event_type=followup_sch
   },
 
   {
+    name: "TBJ Forge Contact Enrichment",
+    id: "eb7d66fe-8347-452e-bde7-53df7455f886",
+    agent: "prospector",
+    schedule: "0 5 * * *",
+    stagger: "5m",
+    summary: "Find owner names, emails, and socials for forge sites missing a way to reach them.",
+    tools: ["list_forge_needs_contact", "enrich_forge_contact", "log_activity"],
+    uiSurface: ["/command/prospects (contact cards)"],
+    eventTypes: ["forge_contact_enriched"],
+    prompt: `This is your contact-enrichment run. Lots of forge sites have a phone but no EMAIL or OWNER name — Joe needs a real way to reach these owners (to call and email them).
+
+1. PULL: call list_forge_needs_contact — sites missing an email or owner (BUILT ones first, they're ready for outreach/calls).
+
+2. HUNT (for each): open their existing website's contact/about page, their Google Maps listing, and search INSTAGRAM, FACEBOOK, and LINKEDIN for the business. Find:
+   - the OWNER / decision-maker's name,
+   - a real EMAIL (info@/contact@ or a personal one — prefer one that reaches the owner),
+   - social profile URLs (Instagram, Facebook, LinkedIn),
+   - a short note on the best way to reach them.
+   Use Google + the socials. NEVER invent contact info — only record what you actually verify on a real page.
+
+3. SAVE: call enrich_forge_contact(site_id, owner_name, email, phone, instagram_url, facebook_url, linkedin_url, notes) with ONLY the fields you found. It gap-fills, so it won't overwrite what's already there.
+
+4. LOG: finish with log_activity, event_type "forge_contact_enriched", summary like "Enriched N sites · M new emails · K owner names". marketing-manager reads this for the digest — you don't message Joe directly.`,
+  },
+
+  {
     name: "TBJ Forge Outreach",
     id: "d9818115-bb73-4d74-8f65-46f8b5ebcc36",
     agent: "outreach",

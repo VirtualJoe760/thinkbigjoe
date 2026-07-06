@@ -1,4 +1,4 @@
-import { pgTable, serial, boolean, varchar, integer, date, timestamp, index, foreignKey, text, jsonb, check, numeric, uniqueIndex, unique, pgEnum } from "drizzle-orm/pg-core"
+import { pgTable, serial, boolean, varchar, integer, date, timestamp, index, foreignKey, text, jsonb, check, numeric, unique, uniqueIndex, pgEnum } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 export const enumLeadsEmailType = pgEnum("enum_leads_email_type", ['business', 'free'])
@@ -273,6 +273,33 @@ export const rebuildRequests = pgTable("rebuild_requests", {
 	index("rebuild_requests_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
 ]);
 
+export const editRequests = pgTable("edit_requests", {
+	id: serial().primaryKey().notNull(),
+	siteId: integer("site_id").notNull(),
+	requestedByUserId: text("requested_by_user_id"),
+	markdown: text().notNull(),
+	edits: jsonb(),
+	status: text().default('requested').notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("edit_requests_site_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops")),
+	index("edit_requests_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+]);
+
+export const forgeBlacklist = pgTable("forge_blacklist", {
+	id: serial().primaryKey().notNull(),
+	normKey: text("norm_key").notNull(),
+	businessName: text("business_name").notNull(),
+	city: text(),
+	domain: text(),
+	reason: text(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("forge_blacklist_domain_idx").using("btree", table.domain.asc().nullsLast().op("text_ops")),
+	unique("forge_blacklist_norm_key_key").on(table.normKey),
+]);
+
 export const forgeSites = pgTable("forge_sites", {
 	id: serial().primaryKey().notNull(),
 	slug: text().notNull(),
@@ -320,36 +347,14 @@ export const forgeSites = pgTable("forge_sites", {
 	contactedAt: timestamp("contacted_at", { withTimezone: true, mode: 'string' }),
 	outreachNotes: text("outreach_notes"),
 	followupCount: integer("followup_count").default(0).notNull(),
+	ownerName: text("owner_name"),
+	instagramUrl: text("instagram_url"),
+	facebookUrl: text("facebook_url"),
+	contactNotes: text("contact_notes"),
+	contactEnrichedAt: timestamp("contact_enriched_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
 	uniqueIndex("forge_sites_claim_code_key").using("btree", table.claimCode.asc().nullsLast().op("text_ops")),
 	index("forge_sites_outreach_status_idx").using("btree", table.outreachStatus.asc().nullsLast().op("text_ops")),
 	index("forge_sites_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
 	unique("forge_sites_slug_key").on(table.slug),
-]);
-
-export const editRequests = pgTable("edit_requests", {
-	id: serial().primaryKey().notNull(),
-	siteId: integer("site_id").notNull(),
-	requestedByUserId: text("requested_by_user_id"),
-	markdown: text().notNull(),
-	edits: jsonb(),
-	status: text().default('requested').notNull(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	index("edit_requests_site_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops")),
-	index("edit_requests_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
-]);
-
-export const forgeBlacklist = pgTable("forge_blacklist", {
-	id: serial().primaryKey().notNull(),
-	normKey: text("norm_key").notNull(),
-	businessName: text("business_name").notNull(),
-	city: text(),
-	domain: text(),
-	reason: text(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	index("forge_blacklist_domain_idx").using("btree", table.domain.asc().nullsLast().op("text_ops")),
-	unique("forge_blacklist_norm_key_key").on(table.normKey),
 ]);
