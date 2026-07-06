@@ -42,7 +42,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `no forge_sites row for slug '${slug}'` }, { status: 404 });
   }
 
-  const clean = body.buildStatus === "clean";
+  // "clean" from the local build isn't enough — a site is only "ready for
+  // outreach" if its live URL actually serves (Vercel deploys can fail even when
+  // the local build passed, e.g. lockfile/rootDir). Verify the deploy is really up.
+  let liveOk = false;
+  const liveUrl = body.liveUrl || existing.liveUrl;
+  if (body.buildStatus === "clean" && liveUrl) {
+    try {
+      const res = await fetch(liveUrl, { method: "GET", redirect: "follow", signal: AbortSignal.timeout(12000) });
+      const text = res.ok ? await res.text() : "";
+      // A broken deploy is usually a 404 (alias unassigned), but Vercel platform
+      // error pages can also return 200 — reject those by their signature too.
+      liveOk =
+        res.ok &&
+        !/DEPLOYMENT_NOT_FOUND|DEPLOYMENT_DISABLED|404: NOT_FOUND|The deployment could not be found|This deployment (can not|cannot) be found|Application error: a (client|server)-side exception/i.test(
+          text,
+        );
+    } catch {
+      liveOk = false;
+    }
+  }
+  const clean = body.buildStatus === "clean" && liveOk;
   const now = new Date().toISOString();
 
   // Mint a claim code the first time a site builds cleanly (keep any existing
@@ -63,11 +83,16 @@ export async function POST(req: Request) {
     })
     .where(eq(forgeSites.id, existing.id));
 
+  const failReason = clean
+    ? ""
+    : body.buildStatus === "clean" && !liveOk
+      ? ` — build was clean but the live URL isn't serving (deploy failed): ${liveUrl || "?"}`
+      : ` — build failed`;
   await db.insert(activityLog).values({
     actor: "forge",
     eventType: clean ? "forge_site_built" : "forge_site_build_failed",
-    summary: `${existing.businessName} (${slug}) — ${clean ? `built, live at ${body.liveUrl || "?"}` : `build failed`}`,
-    metadata: { auto: true, target: slug, detail: { buildStatus: body.buildStatus, liveUrl: body.liveUrl, claimCode } },
+    summary: `${existing.businessName} (${slug})${clean ? ` — built + verified live at ${liveUrl}` : failReason}`,
+    metadata: { auto: true, target: slug, detail: { buildStatus: body.buildStatus, liveUrl, liveOk, claimCode } },
   });
 
   return NextResponse.json({ ok: true, status: clean ? "built" : "build_failed", claimCode });
