@@ -23,6 +23,66 @@ This Next.js app (Vercel + Neon Postgres, Drizzle, pnpm) is the **command center
 → **[docs/VENUS_UI_MAPPING.md](docs/VENUS_UI_MAPPING.md)** — every UI surface mapped to the
 cron/tool/engine that feeds it, plus the full-stack shipping checklist below.
 
+## The ecosystem — three systems, one Neon database
+
+There are **three separate codebases** plus a set of external services. Neon Postgres is the
+connective tissue — every system reads/writes the same `forge_sites` (and related) tables, so the
+database *is* the shared state, even though the code lives in three different places on two
+different machines.
+
+```
+ ┌─────────────────────────────┐        ┌──────────────────────────────┐
+ │  OpenClaw agent org          │        │  the forge                    │
+ │  (Joe's Mac, gateway proc)   │        │  ~/code/webdev-templates       │
+ │                               │        │  (separate repo, this repo's  │
+ │  Venus + prospector +         │        │   sibling on Joe's Mac)        │
+ │  outreach + marketing-manager │        │                                │
+ │  → MCP tools (this repo's     │        │  claude -p builds + deploys    │
+ │    mcp-server/tbj-mcp.mjs)    │        │  sites from a template         │
+ │  → finds/enriches/drafts      │        │  library onto Vercel           │
+ └───────────────┬───────────────┘        └────────────────┬───────────────┘
+                 │  writes forge_sites                       │  writes forge_sites
+                 │  (discovered, contact info,                │  (built, live_url,
+                 │   call-prep, outreach drafts)               │   build_status)
+                 └───────────────────┬────────────────────────┘
+                                     ▼
+                     ┌───────────────────────────────┐
+                     │   Neon Postgres (shared DB)     │
+                     └───────────────┬─────────────────┘
+                                     ▼
+                     ┌───────────────────────────────┐
+                     │   THIS REPO — thinkbigjoe app    │
+                     │   (Vercel + Next.js)              │
+                     │                                    │
+                     │   /command/**  — Joe's control room │
+                     │   /portal/**   — the site owner's    │
+                     │                  claimed-site portal  │
+                     │   /api/**      — webhooks + forge      │
+                     │                  register + Stripe/     │
+                     │                  Retell/voice endpoints  │
+                     └───────────────────────────────────┘
+```
+
+**Where does a given change belong?**
+
+| You want to… | Edit… |
+|---|---|
+| Change what an agent says/does, its personality, its autonomy rules | OpenClaw persona files (`~/.openclaw/agents/<id>/*.md`, or Venus's `~/.openclaw/workspace/`) — see [OPENCLAW.md](docs/OPENCLAW.md). **Not this repo.** |
+| Add/change a scheduled agent job (what it runs, when, which tools) | `src/lib/venus-crons.mjs` in **this repo**, then `npm run venus:sync` — the manifest is version-controlled here even though the agents themselves live on the Mac. |
+| Add a new thing an agent can read/write in the database | `mcp-server/tbj-mcp.mjs` in **this repo** (the MCP tool), registered in both handlers, calling `audit()`. |
+| Change what a generated site LOOKS like (a template, a shared component, the hero, a section) | `~/code/webdev-templates` — **a different repo**, cloned separately on Joe's Mac. See [FORGE.md](docs/FORGE.md). |
+| Change how sites get *picked/queued/built* (the forge pipeline itself, cost safety, the queue) | Also `~/code/webdev-templates` (`factory/*.sh`, `factory/*.mjs`) — but the **triggering** side (approve/revise/rebuild buttons, the `job_requests` queue, the Lead Engine) is **this repo**. |
+| Change anything Joe sees/clicks in the command center, or anything a claimed-site owner sees in their portal | **This repo** (`src/app/(frontend)/command/**`, `src/app/(frontend)/portal/**`). |
+| Add a new external integration (Stripe, Retell, Apify, Google Calendar) | Almost always **this repo** (`src/lib/*.ts`, `src/app/api/**`) — external services are called from the Vercel app, not from OpenClaw or the forge directly. |
+
+**The one thing to never forget:** because the forge and the OpenClaw agents run on **Joe's Mac**,
+not Vercel, a change to `mcp-server/tbj-mcp.mjs` or `venus-crons.mjs` in this repo only takes
+effect once deployed (MCP: automatically, it's stdio-spawned fresh per session — no restart
+needed; crons: after `npm run venus:sync`). A change to the forge itself
+(`webdev-templates`) never touches this repo's deploy at all — it's a fully separate push/deploy
+cycle on a fully separate machine and Vercel project(s) (one `tbj-<slug>` project per generated
+site, distinct from this app's own Vercel project).
+
 ## THE RULE: a feature ships full-stack, in one PR
 
 Never build a capability as "just UI" or "just backend." Every one is **three layers that ship
