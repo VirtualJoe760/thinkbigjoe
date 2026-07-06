@@ -26,17 +26,24 @@ async function fetchRef(url: string): Promise<{ mime: string; data: string } | n
 }
 
 /**
- * Generate an image; returns a data URL (data:image/...;base64,...) or null.
- * `refUrl` (optional) — an existing image to refine/condition on.
+ * Generate or edit an image; returns a data URL (data:image/...;base64,...) or null.
+ * `ref` (optional) — an existing image to condition on / edit; may be an https URL
+ * OR a data: URL (e.g. the current studio canvas).
  */
-export async function generateImage(prompt: string, refUrl?: string): Promise<string | null> {
+export async function generateImage(prompt: string, ref?: string): Promise<string | null> {
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
   if (!key) return null;
 
   const parts: Part[] = [{ text: prompt }];
-  if (refUrl) {
-    const ref = await fetchRef(refUrl);
-    if (ref) parts.push({ inline_data: { mime_type: ref.mime, data: ref.data } });
+  if (ref) {
+    let inline: { mime: string; data: string } | null = null;
+    if (ref.startsWith("data:")) {
+      const m = ref.match(/^data:([^;]+);base64,(.+)$/);
+      if (m && Buffer.byteLength(m[2], "base64") <= 6_000_000) inline = { mime: m[1], data: m[2] };
+    } else if (/^https?:\/\//.test(ref)) {
+      inline = await fetchRef(ref);
+    }
+    if (inline) parts.push({ inline_data: { mime_type: inline.mime, data: inline.data } });
   }
 
   const res = await fetch(ENDPOINT, {

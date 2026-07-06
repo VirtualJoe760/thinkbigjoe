@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Image generation isn't set up." }, { status: 503 });
   }
 
-  let body: { prompt?: string; refUrl?: string };
+  let body: { prompt?: string; refUrl?: string; refDataUrl?: string };
   try {
     body = await req.json();
   } catch {
@@ -25,10 +25,16 @@ export async function POST(req: Request) {
   if (prompt.length < 3) {
     return NextResponse.json({ ok: false, error: "Describe what you want first." }, { status: 400 });
   }
-  const refUrl = typeof body.refUrl === "string" && /^https?:\/\//.test(body.refUrl) ? body.refUrl : undefined;
+  // Editing (studio canvas) sends a data: URL; element-refine sends an https URL.
+  const ref =
+    typeof body.refDataUrl === "string" && body.refDataUrl.startsWith("data:")
+      ? body.refDataUrl
+      : typeof body.refUrl === "string" && /^https?:\/\//.test(body.refUrl)
+        ? body.refUrl
+        : undefined;
 
   try {
-    const dataUrl = await generateImage(prompt, refUrl);
+    const dataUrl = await generateImage(prompt, ref);
     if (!dataUrl) return NextResponse.json({ ok: false, error: "No image came back — try rephrasing." });
     return NextResponse.json({ ok: true, dataUrl });
   } catch (err) {
