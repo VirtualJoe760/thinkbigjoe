@@ -8,6 +8,7 @@ import { Logo } from "@/components/logo";
 const LINKS = [
   { href: "/command", label: "Overview", icon: "M3 12l9-9 9 9M5 10v10h14V10" },
   { href: "/command/prospects", label: "Prospecting", icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM4 20a8 8 0 0116 0" },
+  { href: "/command/analyzer", label: "Site analyzer", icon: "M11 4a7 7 0 105.29 12.29l4.2 4.2 1.42-1.42-4.2-4.2A7 7 0 0011 4z" },
   { href: "/command/leads", label: "Leads", icon: "M4 4h16v4H4zM4 12h16v8H4z" },
   { href: "/command/automation", label: "Automation", icon: "M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3M12 9a3 3 0 100 6 3 3 0 000-6z" },
   { href: "/command/crons", label: "Venus crons", icon: "M12 8v4l3 3M12 2a10 10 0 100 20 10 10 0 000-20z" },

@@ -234,6 +234,26 @@ export const agentTasks = pgTable("agent_tasks", {
 		}).onDelete("cascade"),
 ]);
 
+export const siteAnalyses = pgTable("site_analyses", {
+	id: serial().primaryKey().notNull(),
+	url: text().notNull(),
+	finalUrl: text("final_url"),
+	status: text().default('analyzed').notNull(),
+	businessName: text("business_name"),
+	analysis: jsonb(),
+	logoUrl: text("logo_url"),
+	screenshotUrl: text("screenshot_url"),
+	rebuildRequestId: integer("rebuild_request_id"),
+	forgeSiteId: integer("forge_site_id"),
+	requestedByUserId: text("requested_by_user_id"),
+	error: text(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("site_analyses_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+	index("site_analyses_url_idx").using("btree", table.url.asc().nullsLast().op("text_ops")),
+]);
+
 export const rebuildRequests = pgTable("rebuild_requests", {
 	id: serial().primaryKey().notNull(),
 	existingUrl: text("existing_url").notNull(),
