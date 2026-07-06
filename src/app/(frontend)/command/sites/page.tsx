@@ -56,6 +56,7 @@ export default async function SitesPage() {
     outreachSubject: r.outreachSubject || "",
     outreachDraft: r.outreachDraft || "",
     contactedAt: r.contactedAt || "",
+    followupCount: r.followupCount || 0,
   }));
 
   const needsReview = all.filter((i) => i.status === "discovered");

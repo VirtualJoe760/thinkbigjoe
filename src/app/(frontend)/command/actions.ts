@@ -135,15 +135,16 @@ export async function sendForgeOutreach(
   if ("skipped" in res) return { ok: false, message: "Email isn't configured (SMTP) — nothing was sent." };
   if ("error" in res) return { ok: false, message: "Send failed — check the logs and try again." };
 
+  const touch = (site.followupCount || 0) + 1;
   await db
     .update(forgeSites)
-    .set({ outreachStatus: "sent", contactedAt: now(), updatedAt: now() })
+    .set({ outreachStatus: "sent", contactedAt: now(), followupCount: touch, updatedAt: now() })
     .where(eq(forgeSites.id, site.id));
   await db.insert(activityLog).values({
     actor: "joe",
     eventType: "forge_outreach_sent",
-    summary: `Sent owner outreach for ${site.businessName} → ${site.email}`,
-    metadata: { auto: true, target: site.slug, detail: { siteId: site.id, email: site.email, subject: subj } },
+    summary: `Sent owner outreach (touch ${touch}) for ${site.businessName} → ${site.email}`,
+    metadata: { auto: true, target: site.slug, detail: { siteId: site.id, email: site.email, subject: subj, touch } },
   });
   revalidatePath("/command/prospects");
   return { ok: true, message: `Sent to ${site.email}.` };

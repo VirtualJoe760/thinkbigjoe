@@ -110,6 +110,7 @@ export default async function ProspectsPage({
     outreachSubject: r.outreachSubject || "",
     outreachDraft: r.outreachDraft || "",
     contactedAt: r.contactedAt || "",
+    followupCount: r.followupCount || 0,
   }));
 
   const siteCounts: Record<WebdevView, number> = { review: 0, queued: 0, built: 0, archive: 0 };
