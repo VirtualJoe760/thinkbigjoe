@@ -15,6 +15,31 @@
 
   var TEXT_TAGS = /^(H1|H2|H3|H4|H5|H6|P|SPAN|A|BUTTON|LI|BLOCKQUOTE|LABEL|STRONG|EM|SMALL|DD|DT|FIGCAPTION)$/;
 
+  // Section mode: swap whole sections / component layouts (forge @webdev/ui variants).
+  var mode = "element";
+  var SECTIONS = {
+    home: { label: "Hero", variants: ["split", "fullBleed", "centered", "minimal"] },
+    stats: { label: "Stats band", variants: ["band", "inline"] },
+    services: { label: "Services", variants: ["cards", "list", "alternating"] },
+    about: { label: "About", variants: [] },
+    gallery: { label: "Gallery", variants: [] },
+    pricing: { label: "Pricing", variants: [] },
+    testimonials: { label: "Testimonials", variants: [] },
+    faq: { label: "FAQ", variants: [] },
+    cta: { label: "Call-to-action", variants: [] },
+    contact: { label: "Contact", variants: [] },
+  };
+  function sectionTarget(el) {
+    while (el && el !== document.body && el.nodeType === 1) {
+      var t = el.nodeName;
+      if (t === "HEADER") return { el: el, id: "nav", label: "Navigation bar", variants: ["standard", "centered", "floating"] };
+      if (t === "FOOTER") return { el: el, id: "footer", label: "Footer", variants: [] };
+      if (t === "SECTION" && el.id) { var s = SECTIONS[el.id] || { label: el.id, variants: [] }; return { el: el, id: el.id, label: s.label, variants: s.variants }; }
+      el = el.parentElement;
+    }
+    return null;
+  }
+
   // ---- helpers ----------------------------------------------------------
   function isOurs(el) {
     return el && el.closest && el.closest("#__tbj-editor, #__tbj-hl, #__tbj-pop, #__tbj-dim");
@@ -92,7 +117,7 @@
   document.addEventListener("pointerover", function (e) {
     if (document.getElementById("__tbj-pop")) return;      // frozen while editing
     if (isOurs(e.target)) { hoveredEl = null; hl.style.display = "none"; return; }
-    var t = editableTarget(e.target);
+    var t = mode === "section" ? ((sectionTarget(e.target) || {}).el) : editableTarget(e.target);
     if (!t) { hoveredEl = null; hl.style.display = "none"; return; }
     hoveredEl = t; hl.style.boxShadow = "none"; moveHl(t);
   }, true);
@@ -106,8 +131,8 @@
   document.addEventListener("click", function (e) {
     if (isOurs(e.target)) return;
     e.preventDefault(); e.stopPropagation();
-    var t = editableTarget(e.target);
-    if (t) openPanel(t);
+    if (mode === "section") { var si = sectionTarget(e.target); if (si) openSectionPanel(si); }
+    else { var t = editableTarget(e.target); if (t) openPanel(t); }
   }, true);
 
   // ---- snapshot / restore (forgiveness) ---------------------------------
@@ -230,6 +255,59 @@
     hl.style.boxShadow = "none"; hl.style.display = "none"; selectedEl = null;
   }
 
+  // ---- section panel (layout / component swaps — applied by the forge) --
+  function openSectionPanel(info) {
+    closePanel();
+    selectedEl = info.el;
+    moveHl(info.el);
+    hl.style.boxShadow = "0 0 0 9999px rgba(10,10,11,.55)";
+    var chosen = { variant: null };
+
+    var pop = document.createElement("div");
+    pop.id = "__tbj-pop";
+    pop.style.cssText =
+      "position:fixed;z-index:2147483001;width:300px;max-height:82vh;overflow:auto;background:#fff;" +
+      "border:1px solid #e6e9ef;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.35);padding:14px;" +
+      "font-family:system-ui,sans-serif;color:#0a0a0b;left:-9999px;top:0;";
+
+    var h =
+      '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+      '<span style="font-size:11px;font-weight:700;color:#2f6bff;text-transform:uppercase;letter-spacing:.04em;">' + info.label + " section</span>" +
+      '<button id="__tbj-x" aria-label="close" style="border:0;background:#f5f7fb;border-radius:8px;width:26px;height:26px;cursor:pointer;font-size:15px;">✕</button></div>';
+    if (info.variants && info.variants.length) {
+      h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Choose a layout</label><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">';
+      info.variants.forEach(function (v) { h += '<button type="button" class="__tbj-v" data-v="' + v + '" style="border:1px solid #e6e9ef;background:#fff;border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer;">' + v + "</button>"; });
+      h += "</div>";
+    }
+    h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:12px;">Describe a change ' +
+      (info.variants && info.variants.length ? '<span style="font-weight:400;color:#9aa0ad;">(optional)</span>' : "") + "</label>" +
+      '<textarea id="__tbj-snote" placeholder="e.g. make this a video hero, parallax background, add a testimonial…" style="width:100%;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;min-height:56px;"></textarea>' +
+      '<div style="display:flex;gap:8px;margin-top:10px;"><button id="__tbj-sadd" style="flex:1;background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:9px;font-weight:600;font-size:13px;cursor:pointer;">Request change</button>' +
+      '<button id="__tbj-scancel" style="background:#f5f7fb;border:0;border-radius:999px;padding:9px 12px;font-size:13px;cursor:pointer;">Cancel</button></div>' +
+      '<div style="font-size:11px;color:#9aa0ad;margin-top:6px;text-align:center;">Layout changes are applied by our team.</div>';
+    pop.innerHTML = h;
+    document.documentElement.appendChild(pop);
+    positionPanel(pop, info.el.getBoundingClientRect());
+
+    Array.prototype.forEach.call(pop.querySelectorAll(".__tbj-v"), function (btn) {
+      btn.onclick = function () {
+        chosen.variant = btn.getAttribute("data-v");
+        Array.prototype.forEach.call(pop.querySelectorAll(".__tbj-v"), function (b) { b.style.background = "#fff"; b.style.color = "#0a0a0b"; b.style.borderColor = "#e6e9ef"; });
+        btn.style.background = "#2f6bff"; btn.style.color = "#fff"; btn.style.borderColor = "#2f6bff";
+      };
+    });
+    pop.querySelector("#__tbj-x").onclick = closePanel;
+    pop.querySelector("#__tbj-scancel").onclick = closePanel;
+    pop.querySelector("#__tbj-sadd").onclick = function () {
+      var note = pop.querySelector("#__tbj-snote").value.trim();
+      if (!chosen.variant && !note) { pop.querySelector("#__tbj-snote").focus(); return; }
+      var sel = info.id === "nav" ? "header" : info.id === "footer" ? "footer" : "section#" + info.id;
+      edits.push({ selector: sel, tag: "section", text: info.label, section: info.id, changes: { variant: chosen.variant || undefined, note: note || undefined } });
+      history.push({ el: info.el, snapshot: snapshot(info.el) }); // no live change; keeps Undo consistent
+      closePanel(); renderBar();
+    };
+  }
+
   // ---- toolbar ----------------------------------------------------------
   var bar = document.createElement("div");
   bar.id = "__tbj-editor";
@@ -245,12 +323,19 @@
     edits.pop();
     renderBar();
   }
+  function modeBtn(id, label, on) {
+    return '<button id="' + id + '" style="border:0;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;' +
+      (on ? "background:#2f6bff;color:#fff;" : "background:transparent;color:#cfd2d8;") + '">' + label + "</button>";
+  }
   function renderBar() {
     bar.innerHTML =
-      '<span style="font-weight:600;">✏️ Click anything to edit</span>' +
+      '<span style="display:inline-flex;background:#2a2b31;border-radius:999px;padding:2px;">' +
+      modeBtn("__tbj-m-el", "Elements", mode === "element") + modeBtn("__tbj-m-sec", "Sections", mode === "section") + "</span>" +
       (edits.length ? '<button id="__tbj-undo" style="background:#33343a;color:#fff;border:0;border-radius:999px;padding:7px 12px;font-size:13px;cursor:pointer;">↶ Undo</button>' : "") +
       '<span style="background:#2f6bff;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;">' + edits.length + "</span>" +
       (edits.length ? '<button id="__tbj-send" style="background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:8px 16px;font-weight:600;font-size:13px;cursor:pointer;">Send ' + edits.length + " edit" + (edits.length > 1 ? "s" : "") + " →</button>" : "");
+    bar.querySelector("#__tbj-m-el").onclick = function () { mode = "element"; closePanel(); hl.style.display = "none"; renderBar(); };
+    bar.querySelector("#__tbj-m-sec").onclick = function () { mode = "section"; closePanel(); hl.style.display = "none"; renderBar(); };
     var u = bar.querySelector("#__tbj-undo"); if (u) u.onclick = undo;
     var s = bar.querySelector("#__tbj-send"); if (s) s.onclick = submit;
   }
