@@ -1,13 +1,15 @@
-> ## ⚠️ RETIRED — there is no VPS anymore
+> ## ⚠️ RETIRED — there is no VPS anymore (and the thing it was replaced by is ALSO retired)
 >
-> This DigitalOcean Gmail-IMAP sentinel has been decommissioned. Reply detection now runs on the
-> **Mac Mini** via the **TBJ LinkedIn Inbox Check** cron (every 30 min) calling the
-> `save_inbound_reply` MCP tool in `mcp-server/tbj-mcp.mjs` — which writes the `conversations` row,
-> flips `prospects.status = 'replied'`, and triggers a drafted reply. No droplet, no IMAP watcher.
+> This DigitalOcean Gmail-IMAP sentinel has been decommissioned. It was superseded by a "TBJ
+> LinkedIn Inbox Check" cron calling `save_inbound_reply` — **that cron has since been removed
+> too** (the LinkedIn/B2B funnel is retired; see [`linkedin-sender/README.md`](../linkedin-sender/README.md)).
+> `save_inbound_reply`/`schedule_followup` still exist in `mcp-server/tbj-mcp.mjs` but nothing
+> calls them right now — orphaned tools, not active infrastructure. This file's *previous*
+> banner claimed the cron replacement was current; it wasn't kept in sync when that, too, was
+> retired — a real example of exactly the doc-drift AGENTS.md's docs protocol exists to prevent.
 >
-> **For the current architecture, read [`docs/VENUS_UI_MAPPING.md`](../docs/VENUS_UI_MAPPING.md)**
-> (see the `/command/leads` reply flow) and the "Current architecture (as built)" section of
-> [`docs/ACQUISITION_SYSTEM.md`](../docs/ACQUISITION_SYSTEM.md).
+> **For the current architecture, read [`docs/FORGE.md`](../docs/FORGE.md)** (the actual
+> business/pipeline now) and [`docs/README.md`](../docs/README.md) (the doc index).
 >
 > Everything below is kept for historical reference only.
 

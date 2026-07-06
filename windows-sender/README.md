@@ -1,3 +1,14 @@
+> ## ⚠️ RETIRED — the LinkedIn/B2B funnel is not the current business
+>
+> Same story as [`../linkedin-sender/`](../linkedin-sender/README.md) (which superseded this local
+> Windows version anyway): ThinkBigJoe's focus shifted to **local-service webdev via the forge**
+> (see [`docs/FORGE.md`](../docs/FORGE.md)), not insurance/mortgage/wealth/law B2B outreach.
+>
+> Kept for historical/setup reference only. If this machine still has a scheduled Task running
+> `run-sender.mjs`, that's independent of this doc being stale — check Task Scheduler directly.
+
+---
+
 # Windows drip-sender + reply-poster (Playwright)
 
 Sends your **approved** LinkedIn connection requests on a human-paced drip during your

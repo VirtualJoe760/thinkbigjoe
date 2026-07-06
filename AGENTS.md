@@ -34,13 +34,22 @@ rules — read before queuing any site build**: [`docs/FORGE.md`](docs/FORGE.md)
 
 ## Docs protocol — how this file stays fast AND current
 
-Don't let docs drift silently (see FORGE.md's incident writeup for what that cost once). Before
-you consider a change done:
+Don't let docs drift silently (see FORGE.md's incident writeup for what that cost once — and
+docs/README.md's "Every README.md" table for a second, worse example: `factory/README.md` fully
+described a retired pipeline, and `vps-sentinel/README.md`'s own "replaced by X" banner went
+stale when X was *also* later retired — nobody was checking a README describing something old
+when the new thing changed again). Before you consider a change done:
 
 1. **Check `docs/README.md`'s index** — does anything you touched match one of its "read this
    when…" triggers (a nav tab, a cron, an MCP tool, the forge lifecycle, an env var, a file path)?
 2. **If yes, update that doc in the same change** — not a follow-up, not a TODO.
-3. **If the change is big enough to need its own explanation and nothing fits**, add a new doc
+3. **Retiring or replacing a feature is its own trigger, separate from #1.** Grep
+   `docs/README.md`'s "Every README.md" table for anything that *describes the old behavior* —
+   not just docs about the new one — and either update it or add a `⚠️ RETIRED` banner (see
+   existing examples: `vps-sentinel/README.md`, `linkedin-sender/README.md`). A stale "this
+   replaced X" banner is exactly as misleading as no banner at all if X is later retired too —
+   check what a doc *points to*, not just what it directly describes.
+4. **If the change is big enough to need its own explanation and nothing fits**, add a new doc
    and list it in `docs/README.md`. Don't let it live only in a commit message.
 
 ## Working rules
