@@ -23,6 +23,9 @@ This Next.js app (Vercel + Neon Postgres, Drizzle, pnpm) is the **command center
 → **[docs/VENUS_UI_MAPPING.md](docs/VENUS_UI_MAPPING.md)** — every UI surface mapped to the
 cron/tool/engine that feeds it, plus the full-stack shipping checklist below.
 
+**→ [docs/README.md](docs/README.md) is the documentation index — start there** to find which
+doc covers the change you're about to make.
+
 ## The ecosystem — three systems, one Neon database
 
 There are **three separate codebases** plus a set of external services. Neon Postgres is the
@@ -136,3 +139,9 @@ Rules when you add a Venus capability:
 - **Never commit secrets or PII**: no `.env*` files, no prospecting CSVs (gitignored under `/prospecting/`).
 - Commit at each logical milestone; end commit messages with the `Co-Authored-By:` trailer.
 - DB is the source of truth for schema — pull with `npm run db:pull`, don't hand-edit `src/db/schema.ts`.
+- **Keep `docs/` current — in the same change, not a follow-up.** Before finishing any
+  non-trivial change, ask whether it made something in [`docs/README.md`](docs/README.md)'s
+  index inaccurate (a nav tab, a cron, an MCP tool, the forge lifecycle, an env var, a file path)
+  and fix that doc too. A stale doc is actively misleading — see FORGE.md's incident writeup for
+  what drift costs in practice. If a change is big enough to need its own explanation and no
+  existing doc fits, add a new one and list it in `docs/README.md`.

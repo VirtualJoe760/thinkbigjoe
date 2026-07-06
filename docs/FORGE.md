@@ -12,6 +12,90 @@ the fixes are load-bearing, not decoration.
 
 ---
 
+## Architecture map — directory layout
+
+```
+~/code/webdev-templates/                  ← separate repo, NOT this one. Lives on Joe's Mac only.
+├── packages/ui/                          @webdev/ui — shared, content-agnostic component library
+│   └── src/
+│       ├── styles/globals.css              base @theme tokens
+│       ├── primitives/                     Button, Container, Section, Heading, Card, …
+│       ├── sections/                       Navbar, Hero, Services, Stats, Testimonials, CTA,
+│       │                                    TrustBar, ProcessSteps, BeforeAfter, … (grows as the
+│       │                                    template-designer mode adds new section types)
+│       └── hooks/useReveal.ts              scroll-reveal (the thing that was silently broken —
+│                                            see the Hero-fade fix in git history)
+├── templates/                            THE TEMPLATE LIBRARY — each dir is a distinct, reusable
+│   │                                      design, cloned fresh per new site
+│   ├── frontend-base/                      "classic-service" — the original balanced skeleton
+│   ├── bold-trades/                        designer-built (dark/muscular trades)
+│   ├── premium-service/                    designer-built (editorial/serif)
+│   ├── friendly-local/                     designer-built (warm/rounded)
+│   ├── clean-corporate/                    designer-built (grid/blue-professional)
+│   ├── modern-tech/                        designer-built (gradient/bento)
+│   └── registry.json                       THE INDEX — { id, dir, enabled, bestFor, preview }
+│                                            forge-build.sh picks an enabled template from here
+├── factory/
+│   ├── design-languages.json               the aesthetic specs the designer mode builds FROM
+│   ├── forge-build.sh                       builds ONE site (see lifecycle below)
+│   ├── forge-poll.mjs                       the queue worker (polls Neon, claims, runs forge-build)
+│   ├── forge-template.sh                    the template-DESIGNER mode (builds a new template)
+│   ├── deploy-vercel.mjs                    pushes a built site live (Vercel API)
+│   ├── queue/                               per-build business.json inputs (transient, gitignored-ish)
+│   └── sites/.forge.lock.d                  the single-worker lock directory (see Queue architecture)
+└── sites/<slug>/                         ONE GENERATED SITE per business — a full Next.js app,
+                                           cloned from a template dir, content filled in, deployed
+                                           to its own Vercel project (tbj-<slug>.vercel.app)
+```
+
+**The template vs. the site — don't confuse them.** `templates/<name>/` is the reusable design
+(edit it to fix a bug across every future build, or via the designer mode to add a new one).
+`sites/<slug>/` is one already-generated business's copy — editing it fixes only that one site.
+A bug found on a live site almost always belongs in `templates/`, not `sites/<slug>/`.
+
+---
+
+## Connecting to it — env vars, secrets, and how the pieces actually talk
+
+The forge and this app (`thinkbigjoe`) are separate codebases on **the same Mac**, connected by
+three things: a shared Neon database, a shared Vercel token, and files read directly off disk
+(there is no API between them — it's all local filesystem + one shared Postgres connection
+string).
+
+| What | Lives where | Read by |
+|---|---|---|
+| `DATABASE_URL_UNPOOLED`, `CRON_SECRET` | `~/code/thinkbigjoe/.env.local` | `forge-poll.mjs` reads **this app's** `.env.local` directly off disk (`path.join(HOME, "code/thinkbigjoe/.env.local")`) — the forge has no `.env` of its own for these. |
+| `VERCEL_TOKEN`, `GITHUB_TOKEN` | `~/code/nanocrew/.env.local` | `forge-build.sh` / `deploy-vercel.mjs` — **a third repo's** env file. (Historical — nanocrew was an earlier project; the tokens just live there.) |
+| `GEMINI_API_KEY` (image generation) | `~/.openclaw/service-env/ai.openclaw.gateway.env` | Sourced by `forge-build.sh` at the top (`set -a; source "$ENVF"`) — the same env file the OpenClaw gateway uses. |
+| Claude Code auth | macOS Keychain (`claude auth status`) | `forge-build.sh` explicitly `unset`s `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` so `claude -p` is forced onto the **subscription** login, not a stray API key — this is the #1 thing to verify if a build's cost looks wrong. |
+| `FORGE_APP_URL` (optional) | shell env when running `forge-poll.mjs` | Where it POSTs build results — defaults to `https://thinkbigjoe.com`. |
+
+**No API key or webhook connects the two repos** — `forge-poll.mjs` talks to Neon directly with
+the connection string it read out of thinkbigjoe's `.env.local`, and reports results back over
+plain HTTPS to `POST https://thinkbigjoe.com/api/forge/register` (Bearer `CRON_SECRET`, the same
+secret both sides read from that one `.env.local` file). If you move either repo to a different
+machine, this whole connection breaks until both paths are updated.
+
+**Manually triggering things (no UI, straight from the terminal):**
+```bash
+cd ~/code/webdev-templates
+
+# Run the queue worker once (processes at most one approved job, see Queue architecture)
+node factory/forge-poll.mjs
+
+# Force-build a specific approved row directly, optionally pinning a template
+bash factory/forge-build.sh factory/queue/<slug>.json [template-dir]
+
+# Design a brand-new template from a design-language spec (expensive — see Cost model)
+bash factory/forge-template.sh <language-id>
+
+# Check what's currently running/queued before touching anything
+launchctl list | grep thinkbigjoe
+ls sites/.forge.lock.d 2>/dev/null && echo "a build IS active" || echo "idle"
+```
+
+---
+
 ## The lead lifecycle (full pipeline, prospect → paying customer)
 
 ```
