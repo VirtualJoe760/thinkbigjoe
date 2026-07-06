@@ -1,3 +1,23 @@
+> ## ⚠️ RETIRED — the LinkedIn/B2B funnel is not the current business
+>
+> ThinkBigJoe's focus shifted to **local-service webdev via the forge** (see
+> [`docs/FORGE.md`](../docs/FORGE.md)) — building and selling websites to owner-operated local
+> trades (HVAC, plumbing, roofing, etc.), not the insurance/mortgage/wealth/law B2B outreach this
+> sender was built for (2026-07-06, per Joe).
+>
+> **This code is NOT deleted and its GitHub Actions workflow (`linkedin-sender.yml`) is not
+> disabled** — it will still run every ~10 min if `/command/automation` is toggled on and there
+> are approved LinkedIn prospects queued. Treat it as dormant infrastructure for a demoted
+> secondary channel, not the plan. If you're reading this because a LinkedIn message went out
+> unexpectedly, check `/command/automation`'s toggle first.
+>
+> **For the current architecture, read [`docs/FORGE.md`](../docs/FORGE.md)** (the actual pipeline)
+> and [`docs/README.md`](../docs/README.md) (the doc index).
+>
+> Everything below is kept for historical/setup reference only.
+
+---
+
 # LinkedIn sender — cloud (Browserbase + Playwright)
 
 Sends your **approved** LinkedIn connection requests on a human-paced drip during your working

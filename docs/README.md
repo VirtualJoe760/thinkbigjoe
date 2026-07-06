@@ -89,22 +89,22 @@ remembers. ⚠️ = retired/legacy, kept only for history; safe to ignore unless
 
 | README | Status | What it covers |
 |---|---|---|
-| [`/README.md`](../README.md) | Boilerplate | Unedited `create-next-app` default — not useful, kept only because tooling expects a root README. Consider replacing its content with a short pointer to `docs/README.md` instead of deleting it. |
+| [`/README.md`](../README.md) | Active | Short pointer to `AGENTS.md` + this index, plus local-dev commands. |
 | [`/docs/README.md`](README.md) | **This file** | The documentation index. |
-| [`/prospecting/README.md`](../prospecting/README.md) | Active, but private | Gitignored on purpose (`/prospecting/` in `.gitignore`) — contains real prospect data notes, not code documentation. |
-| [`/linkedin-sender/README.md`](../linkedin-sender/README.md) | Active (legacy funnel) | The cloud (Browserbase/Playwright) LinkedIn connection-request drip-sender — still runs, but it's the demoted B2B/LinkedIn funnel behind Prospecting's "LinkedIn outreach" link, not the primary pipeline. |
-| [`/windows-sender/README.md`](../windows-sender/README.md) | Active (legacy funnel) | Same job as linkedin-sender, Windows/Playwright variant. |
-| `/vps-sentinel/README.md` | ⚠️ Retired | Says so at the top — the DigitalOcean Gmail-IMAP sentinel; no VPS anymore. |
-| `/macmini-runner/README.md` | ⚠️ Retired | Says so at the top — replaced entirely by Venus on OpenClaw. |
+| `/_archive/prospecting-linkedin-insurance-2026-06/README.md` | ⚠️ Archived (2026-07-06) | The old insurance/mortgage/wealth/law LinkedIn B2B prospecting notes — from before the pivot to local-service webdev. Was never in git (`/prospecting/` was gitignored — real PII); the whole folder was moved out of the live tree rather than deleted, kept for reference only. Not the current clientele. |
+| [`/linkedin-sender/README.md`](../linkedin-sender/README.md) | ⚠️ Retired (docs-only — GitHub Action NOT disabled) | The cloud (Browserbase/Playwright) LinkedIn connection-request drip-sender, for the now-retired B2B/insurance funnel. **Its `linkedin-sender.yml` GitHub Action is still scheduled every ~10 min** and will run if `/command/automation` is toggled on with approved prospects queued — the code/infra wasn't touched, only the docs now say clearly that this isn't the business anymore. |
+| [`/windows-sender/README.md`](../windows-sender/README.md) | ⚠️ Retired (docs-only) | Same job as linkedin-sender, Windows/Playwright variant; superseded by it anyway. |
+| `/vps-sentinel/README.md` | ⚠️ Retired | The DigitalOcean Gmail-IMAP sentinel; no VPS anymore. Its own "replaced by X" banner had gone stale too (X was later removed) — fixed 2026-07-06, see the banner for the story. |
+| `/macmini-runner/README.md` | ⚠️ Retired | Replaced entirely by Venus on OpenClaw — this banner has stayed accurate. |
 
 **`~/code/webdev-templates` (the forge — separate repo, see [FORGE.md](FORGE.md)):**
 
 | README | Status | What it covers |
 |---|---|---|
-| `webdev-templates/README.md` | Active | The monorepo overview — stack, layout, "make a new site from this template" (predates the template-designer mode; the registry/multi-template system in FORGE.md supersedes the manual "copy frontend-base" instructions here). |
-| `webdev-templates/factory/README.md` | Active | The build pipeline scripts, in more granular detail than FORGE.md's architecture map. |
-| `webdev-templates/packages/ui/README.md` | Active | `@webdev/ui` component library conventions. |
-| `webdev-templates/templates/backend-service-business/README.md` | Unclear — verify before relying on it | A template variant not mentioned anywhere else in current docs; confirm whether it's still used before treating it as current. |
+| `webdev-templates/README.md` | Active | The monorepo overview — stack, layout, the template registry (updated 2026-07-06 to mention `templates/registry.json` + the template-designer mode instead of only describing the original single `frontend-base` copy-paste flow). |
+| `webdev-templates/factory/README.md` | ⚠️ Outdated, banner-replaced | Used to describe the retired Adrian/Cleo/Leo multi-agent pipeline in full detail. Now a short banner pointing to `docs/FORGE.md` (this repo) as the source of truth, rather than re-describing the current pipeline in a second place with no index watching over it. |
+| `webdev-templates/packages/ui/README.md` | Active | `@webdev/ui` component library conventions — still accurate. |
+| `webdev-templates/templates/backend-service-business/README.md` | ⚠️ Flagged unverified | Not referenced by `templates/registry.json` or any current forge script — added a banner saying so explicitly rather than silently leaving it looking current. Confirm with Joe whether this is a live future product line before building on it. |
 
 **Not a README, but functions as one:** OpenClaw agent persona files
 (`~/.openclaw/agents/<id>/*.md`) are documentation-as-config for each agent — see
@@ -125,6 +125,15 @@ Common triggers to watch for:
 - Changed the forge's lifecycle, queue behavior, template library, or anything cost-related →
   `FORGE.md`.
 - Added a new doc → add it to the table above.
+- **Retired or replaced a whole feature/pipeline** → this is the trigger that actually broke
+  down before (2026-07-06): `webdev-templates/factory/README.md` fully described the retired
+  Adrian/Cleo/Leo pipeline for months, and `vps-sentinel/README.md`'s own "retired, replaced by
+  X" banner went stale when X was *also* retired later. **Scan the "Every README.md" table for
+  anything describing the OLD thing — not just anything about the new one — and either update it
+  or add a `⚠️ RETIRED`/`⚠️ OUTDATED` banner** (copy the style already used on
+  `vps-sentinel/README.md`, `macmini-runner/README.md`, `linkedin-sender/README.md`). Do this
+  even in a repo with no doc index of its own (like `webdev-templates`) — that lack of an index
+  is exactly why its README went unnoticed for so long.
 
 If you're not sure a doc is still accurate, the fastest check is to grep the actual code/config
 for the specific claim (file paths, env var names, table/column names) rather than trust the doc's
