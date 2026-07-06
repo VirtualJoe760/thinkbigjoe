@@ -150,6 +150,8 @@ export default async function ProspectsPage({
     reviewQuotes: (r.reviewQuotes as ForgeSiteItem["reviewQuotes"]) || [],
     callPrep: r.callPrep || "",
     photoUrl: r.photoUrl || "",
+    marketingApprovedAt: r.marketingApprovedAt || "",
+    revisionNote: r.revisionNote || "",
   }));
 
   const siteCounts: Record<WebdevView, number> = { review: 0, queued: 0, built: 0, archive: 0 };
