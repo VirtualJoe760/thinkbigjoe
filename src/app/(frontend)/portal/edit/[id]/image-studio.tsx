@@ -2,26 +2,41 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const PRESETS = [
-  { label: "✨ Enhance", prompt: "Enhance this image: improve lighting, sharpness, color and detail while keeping the exact same composition and subject." },
-  { label: "Remove background", prompt: "Remove the background completely, keep only the main subject on a transparent background." },
-  { label: "Brighten", prompt: "Brighten and add warmth to this image, keep it natural." },
-  { label: "Studio look", prompt: "Give this a clean professional product/studio look with soft even lighting and a subtle backdrop." },
-  { label: "Sharpen", prompt: "Increase clarity and sharpness, reduce blur and noise, keep the composition." },
+type AssetType = { key: string; label: string; hint: string; round?: boolean };
+const ASSET_TYPES: AssetType[] = [
+  { key: "logo", label: "Logo", hint: "as a clean, simple brand logo — centered, crisp, on a plain or transparent background" },
+  { key: "circle", label: "Circular logo", hint: "as a circular logo/badge designed to fit inside a circle, centered", round: true },
+  { key: "og", label: "OG image", hint: "as a 1200×630 social-share banner (Open Graph) with the brand feel, wide and balanced" },
+  { key: "hero", label: "Hero image", hint: "as a wide 16:9 hero background photo, leaving clear space on the left for headline text" },
+  { key: "carousel", label: "Carousel image", hint: "as a clean 4:3 gallery/carousel image" },
 ];
 
-export function ImageStudio() {
+const PRESETS = [
+  { label: "✨ Enhance", prompt: "Enhance this image: improve lighting, sharpness, color and detail, keep the exact composition and subject." },
+  { label: "Remove bg", prompt: "Remove the background completely; keep only the main subject on a transparent background." },
+  { label: "Brighten", prompt: "Brighten and add natural warmth." },
+  { label: "Sharpen", prompt: "Increase clarity and sharpness, reduce blur and noise; keep the composition." },
+];
+
+export function ImageStudio({ siteId }: { siteId: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [src, setSrc] = useState<string | null>(null);
+  const [assetType, setAssetType] = useState<AssetType>(ASSET_TYPES[0]);
+  const [assets, setAssets] = useState<{ label: string; url: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [genPrompt, setGenPrompt] = useState("");
+  const [useRef_, setUseRef] = useState(true);
   const [editPrompt, setEditPrompt] = useState("");
   const [rot, setRot] = useState(0);
   const [adj, setAdj] = useState({ brightness: 100, contrast: 100, saturate: 100 });
 
-  // (re)draw the canvas with current rotation + filters
+  useEffect(() => {
+    fetch(`/api/site-assets/${siteId}`).then((r) => r.json()).then((d) => setAssets(d.assets || [])).catch(() => {});
+  }, [siteId]);
+
+  const round = assetType.round;
   const draw = useCallback(() => {
     const cv = canvasRef.current, img = imgRef.current;
     if (!cv || !img) return;
@@ -31,78 +46,107 @@ export function ImageStudio() {
     const ctx = cv.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, cv.width, cv.height);
-    ctx.filter = `brightness(${adj.brightness}%) contrast(${adj.contrast}%) saturate(${adj.saturate}%)`;
     ctx.save();
+    if (round) { ctx.beginPath(); ctx.arc(cv.width / 2, cv.height / 2, Math.min(cv.width, cv.height) / 2, 0, Math.PI * 2); ctx.clip(); }
+    ctx.filter = `brightness(${adj.brightness}%) contrast(${adj.contrast}%) saturate(${adj.saturate}%)`;
     ctx.translate(cv.width / 2, cv.height / 2);
     ctx.rotate((rot * Math.PI) / 180);
     ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
     ctx.restore();
-  }, [rot, adj]);
+  }, [rot, adj, round]);
 
-  // load a new source image, then draw
   useEffect(() => {
     if (!src) return;
     const img = new Image();
+    img.crossOrigin = "anonymous";
     img.onload = () => { imgRef.current = img; setRot(0); setAdj({ brightness: 100, contrast: 100, saturate: 100 }); draw(); };
+    img.onerror = () => setStatus("Couldn't load that image.");
     img.src = src;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
-  useEffect(() => { draw(); }, [rot, adj, draw]);
+  useEffect(() => { draw(); }, [rot, adj, round, draw]);
 
   const currentDataUrl = () => canvasRef.current?.toDataURL("image/png") || null;
 
-  async function generate() {
-    if (genPrompt.trim().length < 3) return;
-    setBusy(true); setStatus("Generating…");
+  async function post(prompt: string, ref?: string | null) {
+    setBusy(true); setStatus(ref ? "Working on it…" : "Generating…");
     try {
-      const res = await fetch("/api/generate-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: genPrompt }) }).then((r) => r.json());
-      if (res.ok && res.dataUrl) { setSrc(res.dataUrl); setStatus(""); } else setStatus(res.error || "Couldn't generate.");
-    } catch { setStatus("Generation failed."); }
+      const res = await fetch("/api/generate-image", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, refDataUrl: ref || undefined }),
+      }).then((r) => r.json());
+      if (res.ok && res.dataUrl) { setSrc(res.dataUrl); setStatus(""); } else setStatus(res.error || "Didn't work — try again.");
+    } catch { setStatus("Request failed."); }
     setBusy(false);
   }
-
-  async function aiEdit(instruction: string) {
+  const generate = () => genPrompt.trim().length >= 3 && post(`${genPrompt.trim()} — ${assetType.hint}`, useRef_ && src ? currentDataUrl() : undefined);
+  const aiEdit = (instruction: string) => {
     const ref = currentDataUrl();
-    if (!ref) { setStatus("Add an image first (generate or upload)."); return; }
-    if (instruction.trim().length < 3) return;
-    setBusy(true); setStatus("Working on it…");
-    try {
-      const res = await fetch("/api/generate-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: instruction, refDataUrl: ref }) }).then((r) => r.json());
-      if (res.ok && res.dataUrl) { setSrc(res.dataUrl); setStatus(""); } else setStatus(res.error || "Couldn't edit.");
-    } catch { setStatus("Edit failed."); }
-    setBusy(false);
-  }
+    if (!ref) { setStatus("Load or generate an image first."); return; }
+    if (instruction.trim().length >= 3) post(instruction.trim(), ref);
+  };
 
+  function loadFromUrl(url: string) {
+    setStatus("Loading asset…"); setBusy(true);
+    // Route through our proxy-free fetch → dataURL so it's editable + exportable.
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => { const c = document.createElement("canvas"); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext("2d")?.drawImage(img, 0, 0); try { setSrc(c.toDataURL("image/png")); setStatus(""); } catch { setStatus("That asset blocked editing."); } setBusy(false); };
+    img.onerror = () => { setStatus("Couldn't load that asset."); setBusy(false); };
+    img.src = url;
+  }
   function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]; if (!f) return;
     const fr = new FileReader(); fr.onload = () => setSrc(String(fr.result)); fr.readAsDataURL(f);
   }
   function download() {
     const url = currentDataUrl(); if (!url) return;
-    const a = document.createElement("a"); a.href = url; a.download = "thinkbigjoe-image.png"; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = `${assetType.key}.png`; a.click();
   }
 
-  const disabled = busy;
   return (
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-      {/* controls */}
-      <aside className="w-full shrink-0 space-y-5 overflow-y-auto border-b border-line bg-surface p-5 md:w-80 md:border-b-0 md:border-r">
+      <aside className="w-full shrink-0 space-y-4 overflow-y-auto border-b border-line bg-surface p-4 text-sm md:w-72 md:border-b-0 md:border-r">
+        <Section title="Asset type">
+          <div className="flex flex-wrap gap-1.5">
+            {ASSET_TYPES.map((t) => (
+              <button key={t.key} onClick={() => setAssetType(t)} className={`rounded-full border px-2.5 py-1 text-xs font-medium ${assetType.key === t.key ? "border-brand bg-brand text-white" : "border-line bg-background hover:bg-brand-tint"}`}>{t.label}</button>
+            ))}
+          </div>
+        </Section>
+
         <Section title="Generate">
-          <textarea value={genPrompt} onChange={(e) => setGenPrompt(e.target.value)} placeholder="Describe an image to create…" className="w-full rounded-xl border border-line bg-background px-3 py-2 text-sm" rows={2} />
-          <button onClick={generate} disabled={disabled} className="mt-2 w-full rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50">Generate</button>
-          <label className="mt-2 block cursor-pointer rounded-full border border-line bg-background px-4 py-2 text-center text-sm font-semibold hover:bg-surface">
-            Upload an image<input type="file" accept="image/*" onChange={onUpload} className="hidden" />
-          </label>
+          <textarea value={genPrompt} onChange={(e) => setGenPrompt(e.target.value)} placeholder={`Describe a ${assetType.label.toLowerCase()}…`} className="w-full rounded-xl border border-line bg-background px-3 py-2 text-sm" rows={2} />
+          {src && (
+            <label className="mt-1.5 flex items-center gap-1.5 text-xs text-ink-soft"><input type="checkbox" checked={useRef_} onChange={(e) => setUseRef(e.target.checked)} /> build from the current image</label>
+          )}
+          <button onClick={generate} disabled={busy} className="mt-2 w-full rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50">Generate</button>
+        </Section>
+
+        <Section title="Start from">
+          <label className="block cursor-pointer rounded-full border border-line bg-background px-4 py-2 text-center text-xs font-semibold hover:bg-surface">Upload an image<input type="file" accept="image/*" onChange={onUpload} className="hidden" /></label>
+          {assets.length > 0 && (
+            <>
+              <p className="mt-2 text-xs text-ink-soft">Your site&apos;s assets:</p>
+              <div className="mt-1 grid grid-cols-3 gap-1.5">
+                {assets.map((a, i) => (
+                  <button key={i} onClick={() => loadFromUrl(a.url)} title={a.label} className="group relative aspect-square overflow-hidden rounded-lg border border-line bg-background hover:border-brand">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={a.url} alt={a.label} className="h-full w-full object-contain p-1" />
+                    <span className="absolute inset-x-0 bottom-0 bg-ink/70 py-0.5 text-center text-[9px] text-white opacity-0 group-hover:opacity-100">{a.label}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </Section>
 
         <Section title="AI enhance">
-          <div className="flex flex-wrap gap-2">
-            {PRESETS.map((p) => (
-              <button key={p.label} onClick={() => aiEdit(p.prompt)} disabled={disabled} className="rounded-full border border-line bg-background px-3 py-1.5 text-xs font-medium hover:bg-brand-tint disabled:opacity-50">{p.label}</button>
-            ))}
+          <div className="flex flex-wrap gap-1.5">
+            {PRESETS.map((p) => (<button key={p.label} onClick={() => aiEdit(p.prompt)} disabled={busy} className="rounded-full border border-line bg-background px-2.5 py-1 text-xs font-medium hover:bg-brand-tint disabled:opacity-50">{p.label}</button>))}
           </div>
-          <textarea value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} placeholder="Or describe an edit… e.g. add a sunset sky" className="mt-2 w-full rounded-xl border border-line bg-background px-3 py-2 text-sm" rows={2} />
-          <button onClick={() => aiEdit(editPrompt)} disabled={disabled} className="mt-2 w-full rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90 disabled:opacity-50">AI edit</button>
+          <textarea value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} placeholder="Or describe an edit…" className="mt-2 w-full rounded-xl border border-line bg-background px-3 py-2 text-sm" rows={2} />
+          <button onClick={() => aiEdit(editPrompt)} disabled={busy} className="mt-2 w-full rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90 disabled:opacity-50">AI edit</button>
         </Section>
 
         <Section title="Adjust">
@@ -115,23 +159,21 @@ export function ImageStudio() {
           </div>
         </Section>
 
-        <button onClick={download} disabled={!src} className="w-full rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-40">⬇ Download</button>
+        <button onClick={download} disabled={!src} className="w-full rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-40">⬇ Download {assetType.label}</button>
       </aside>
 
-      {/* canvas */}
       <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[repeating-conic-gradient(#e9edf3_0%_25%,#f6f8fb_0%_50%)] bg-[length:24px_24px] p-6">
         {src ? (
           <canvas ref={canvasRef} className="max-h-full max-w-full rounded-lg shadow-lg" />
         ) : (
-          <div className="text-center text-ink-soft">
-            <p className="text-lg font-semibold">🎨 Image Studio</p>
-            <p className="mt-1 text-sm">Generate an image from a prompt, or upload one to edit.</p>
+          <div className="max-w-sm text-center text-ink-soft">
+            <p className="text-lg font-semibold">🎨 Brand-asset studio</p>
+            <p className="mt-1 text-sm">Pick an asset type, then generate one from a prompt, load your site&apos;s current asset, or upload an image to edit.</p>
           </div>
         )}
         {status && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-ink px-4 py-2 text-sm font-medium text-white shadow-lg">
-            {busy && <span className="mr-2 inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white align-middle" />}
-            {status}
+            {busy && <span className="mr-2 inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white align-middle" />}{status}
           </div>
         )}
       </div>
@@ -140,16 +182,11 @@ export function ImageStudio() {
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <h3 className="text-xs font-bold uppercase tracking-wide text-ink-soft">{title}</h3>
-      <div className="mt-2">{children}</div>
-    </div>
-  );
+  return (<div><h3 className="text-xs font-bold uppercase tracking-wide text-ink-soft">{title}</h3><div className="mt-1.5">{children}</div></div>);
 }
 function Slider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
-    <label className="mt-2 block text-xs font-medium text-ink-soft">
+    <label className="mt-1.5 block text-xs font-medium text-ink-soft">
       <span className="flex justify-between"><span>{label}</span><span>{value}%</span></span>
       <input type="range" min={0} max={200} value={value} onChange={(e) => onChange(Number(e.target.value))} className="mt-1 w-full accent-brand" />
     </label>
