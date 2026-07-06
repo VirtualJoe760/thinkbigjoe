@@ -129,9 +129,21 @@ export async function POST(req: Request) {
       },
     });
 
+    const meetLink =
+      (event as { hangoutLink?: string }).hangoutLink ||
+      (event as { conferenceData?: { entryPoints?: Array<{ entryPointType?: string; uri?: string }> } }).conferenceData?.entryPoints?.find(
+        (e) => e.entryPointType === "video",
+      )?.uri ||
+      null;
     await db
       .update(leads)
-      .set({ status: "booked", bookedSlot: start.toISOString() })
+      .set({
+        status: "booked",
+        bookedSlot: start.toISOString(),
+        gcalEventId: event.id || null,
+        gcalHtmlLink: event.htmlLink || null,
+        meetLink,
+      })
       .where(eq(leads.id, leadId))
       .catch((err) => console.error("[appointments] lead update failed:", err));
 

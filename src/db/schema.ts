@@ -119,37 +119,6 @@ export const conversations = pgTable("conversations", {
 	check("conversations_direction_check", sql`(direction)::text = ANY ((ARRAY['inbound'::character varying, 'outbound'::character varying])::text[])`),
 ]);
 
-export const leads = pgTable("leads", {
-	id: serial().primaryKey().notNull(),
-	name: varchar().notNull(),
-	email: varchar().notNull(),
-	phone: varchar(),
-	company: varchar(),
-	role: varchar(),
-	industry: varchar(),
-	teamSize: enumLeadsTeamSize("team_size"),
-	timeline: enumLeadsTimeline(),
-	problem: varchar(),
-	emailType: enumLeadsEmailType("email_type"),
-	source: enumLeadsSource().notNull(),
-	sourcePath: varchar("source_path"),
-	status: enumLeadsStatus().default('new'),
-	bookedSlot: varchar("booked_slot"),
-	notes: varchar(),
-	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	createdAt: timestamp("created_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	prospectId: integer("prospect_id"),
-}, (table) => [
-	index("leads_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
-	index("leads_email_idx").using("btree", table.email.asc().nullsLast().op("text_ops")),
-	index("leads_updated_at_idx").using("btree", table.updatedAt.asc().nullsLast().op("timestamptz_ops")),
-	foreignKey({
-			columns: [table.prospectId],
-			foreignColumns: [prospects.id],
-			name: "leads_prospect_id_fkey"
-		}),
-]);
-
 export const agents = pgTable("agents", {
 	id: varchar({ length: 40 }).primaryKey().notNull(),
 	name: varchar({ length: 80 }).notNull(),
@@ -252,6 +221,40 @@ export const siteAnalyses = pgTable("site_analyses", {
 }, (table) => [
 	index("site_analyses_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
 	index("site_analyses_url_idx").using("btree", table.url.asc().nullsLast().op("text_ops")),
+]);
+
+export const leads = pgTable("leads", {
+	id: serial().primaryKey().notNull(),
+	name: varchar().notNull(),
+	email: varchar().notNull(),
+	phone: varchar(),
+	company: varchar(),
+	role: varchar(),
+	industry: varchar(),
+	teamSize: enumLeadsTeamSize("team_size"),
+	timeline: enumLeadsTimeline(),
+	problem: varchar(),
+	emailType: enumLeadsEmailType("email_type"),
+	source: enumLeadsSource().notNull(),
+	sourcePath: varchar("source_path"),
+	status: enumLeadsStatus().default('new'),
+	bookedSlot: varchar("booked_slot"),
+	notes: varchar(),
+	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	createdAt: timestamp("created_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	prospectId: integer("prospect_id"),
+	gcalEventId: text("gcal_event_id"),
+	gcalHtmlLink: text("gcal_html_link"),
+	meetLink: text("meet_link"),
+}, (table) => [
+	index("leads_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	index("leads_email_idx").using("btree", table.email.asc().nullsLast().op("text_ops")),
+	index("leads_updated_at_idx").using("btree", table.updatedAt.asc().nullsLast().op("timestamptz_ops")),
+	foreignKey({
+			columns: [table.prospectId],
+			foreignColumns: [prospects.id],
+			name: "leads_prospect_id_fkey"
+		}),
 ]);
 
 export const rebuildRequests = pgTable("rebuild_requests", {
