@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { eq, inArray } from "drizzle-orm";
 
-import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist } from "@/db";
+import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
 import { sendForgeOutreachEmail } from "@/lib/email";
 
@@ -176,4 +176,25 @@ export async function markSent(id: string, prospectId: string) {
       .where(eq(prospects.id, Number(prospectId)));
   }
   revalidatePath("/command", "layout");
+}
+
+// --- Lead engine config (goal + Apify budget the scheduled scraper works toward) ---
+export async function updateLeadEngine(input: {
+  monthlyLeadGoal: number;
+  monthlyBudgetUsd: number;
+  enabled: boolean;
+}) {
+  await assertAdmin();
+  const goal = Math.max(0, Math.round(input.monthlyLeadGoal || 0));
+  const budget = Math.max(0, Math.round((input.monthlyBudgetUsd || 0) * 100) / 100);
+  await db
+    .update(leadEngine)
+    .set({
+      monthlyLeadGoal: goal,
+      monthlyBudgetUsd: String(budget),
+      enabled: !!input.enabled,
+      updatedAt: now(),
+    })
+    .where(eq(leadEngine.id, 1));
+  revalidatePath("/command/prospects");
 }

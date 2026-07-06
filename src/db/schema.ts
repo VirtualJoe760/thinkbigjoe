@@ -273,6 +273,19 @@ export const rebuildRequests = pgTable("rebuild_requests", {
 	index("rebuild_requests_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
 ]);
 
+export const leadEngine = pgTable("lead_engine", {
+	id: serial().primaryKey().notNull(),
+	monthlyLeadGoal: integer("monthly_lead_goal").default(2500).notNull(),
+	monthlyBudgetUsd: numeric("monthly_budget_usd").default('25').notNull(),
+	enabled: boolean().default(true).notNull(),
+	comboOffset: integer("combo_offset").default(0).notNull(),
+	spendMonth: text("spend_month"),
+	spendUsd: numeric("spend_usd").default('0').notNull(),
+	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
+	lastRunSummary: text("last_run_summary"),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+});
+
 export const editRequests = pgTable("edit_requests", {
 	id: serial().primaryKey().notNull(),
 	siteId: integer("site_id").notNull(),
