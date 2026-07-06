@@ -20,7 +20,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com";
 export type ClaimState = {
   ok: boolean;
   message: string;
-  site?: { businessName: string; liveUrl: string | null };
+  site?: { id: number; businessName: string; liveUrl: string | null };
 };
 
 /**
@@ -49,7 +49,7 @@ export async function claimSite(
   if (!site) {
     return { ok: false, message: "That code didn't match any site — double-check it and try again." };
   }
-  const found = { businessName: site.businessName, liveUrl: site.liveUrl };
+  const found = { id: site.id, businessName: site.businessName, liveUrl: site.liveUrl };
 
   if (site.claimedByUserId && site.claimedByUserId !== session.user.id) {
     return { ok: false, message: "This site has already been claimed by another account." };
