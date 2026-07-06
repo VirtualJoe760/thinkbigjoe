@@ -112,6 +112,10 @@ write — this is what makes `/command/jobs` a trustworthy audit log independent
 *says* it did in its end-of-run summary. See [VENUS_UI_MAPPING.md](VENUS_UI_MAPPING.md) for the
 full tool ↔ UI surface map and the "ship full-stack" rule.
 
+**For the full wiring** (how `openclaw.json` spawns the MCP server, why Claude Code sessions
+don't call these tools at runtime, and the duplicated-`DATABASE_URL` gotcha) see
+[MCP_TOOLS.md](MCP_TOOLS.md).
+
 ---
 
 ## Skills that manage the org itself

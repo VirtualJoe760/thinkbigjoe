@@ -74,9 +74,42 @@ from this app's own Vercel project).
 |---|---|
 | [`AGENTS.md`](../AGENTS.md) *(repo root)* | Always — the entry point. Points here, states the full-stack shipping rule, and the docs-freshness protocol. |
 | [`OPENCLAW.md`](OPENCLAW.md) | You're touching an agent's behavior/personality, adding or editing a cron, debugging why an agent "isn't doing anything," or need to know which model an agent should run on. |
+| [`MCP_TOOLS.md`](MCP_TOOLS.md) | You need to understand how Claude Code, OpenClaw's agents, and this app relate through the MCP server — or you're adding a new MCP tool. |
 | [`FORGE.md`](FORGE.md) | You're touching site-building: a template, the queue/poller, deploy behavior, or anything that could trigger a `claude -p` build. **Read before any bulk `forge_sites` status change.** Includes the architecture map + exact env-var wiring between this repo and the forge repo. |
 | [`VENUS_UI_MAPPING.md`](VENUS_UI_MAPPING.md) | You're building or changing a `/command/**` or `/portal/**` surface, and need to know which MCP tool/cron/engine is supposed to feed it (or vice versa — a UI surface exists and you need to find its data source). |
 | [`ACQUISITION_SYSTEM.md`](ACQUISITION_SYSTEM.md) | You need the original multi-agent client-acquisition gameplan for context. **Partly aspirational** — it says so at the top; treat anything not corroborated by the docs above as not-yet-built, not as current behavior. |
+
+## Every README.md in the ecosystem
+
+The doc list above is the curated `docs/*.md` — this table is every **README.md file that
+physically exists**, across all three codebases, so nothing is hiding in a subdirectory nobody
+remembers. ⚠️ = retired/legacy, kept only for history; safe to ignore unless you're archaeologizing.
+
+**This repo (thinkbigjoe):**
+
+| README | Status | What it covers |
+|---|---|---|
+| [`/README.md`](../README.md) | Boilerplate | Unedited `create-next-app` default — not useful, kept only because tooling expects a root README. Consider replacing its content with a short pointer to `docs/README.md` instead of deleting it. |
+| [`/docs/README.md`](README.md) | **This file** | The documentation index. |
+| [`/prospecting/README.md`](../prospecting/README.md) | Active, but private | Gitignored on purpose (`/prospecting/` in `.gitignore`) — contains real prospect data notes, not code documentation. |
+| [`/linkedin-sender/README.md`](../linkedin-sender/README.md) | Active (legacy funnel) | The cloud (Browserbase/Playwright) LinkedIn connection-request drip-sender — still runs, but it's the demoted B2B/LinkedIn funnel behind Prospecting's "LinkedIn outreach" link, not the primary pipeline. |
+| [`/windows-sender/README.md`](../windows-sender/README.md) | Active (legacy funnel) | Same job as linkedin-sender, Windows/Playwright variant. |
+| `/vps-sentinel/README.md` | ⚠️ Retired | Says so at the top — the DigitalOcean Gmail-IMAP sentinel; no VPS anymore. |
+| `/macmini-runner/README.md` | ⚠️ Retired | Says so at the top — replaced entirely by Venus on OpenClaw. |
+
+**`~/code/webdev-templates` (the forge — separate repo, see [FORGE.md](FORGE.md)):**
+
+| README | Status | What it covers |
+|---|---|---|
+| `webdev-templates/README.md` | Active | The monorepo overview — stack, layout, "make a new site from this template" (predates the template-designer mode; the registry/multi-template system in FORGE.md supersedes the manual "copy frontend-base" instructions here). |
+| `webdev-templates/factory/README.md` | Active | The build pipeline scripts, in more granular detail than FORGE.md's architecture map. |
+| `webdev-templates/packages/ui/README.md` | Active | `@webdev/ui` component library conventions. |
+| `webdev-templates/templates/backend-service-business/README.md` | Unclear — verify before relying on it | A template variant not mentioned anywhere else in current docs; confirm whether it's still used before treating it as current. |
+
+**Not a README, but functions as one:** OpenClaw agent persona files
+(`~/.openclaw/agents/<id>/*.md`) are documentation-as-config for each agent — see
+[OPENCLAW.md](OPENCLAW.md) rather than looking for a README there; there isn't one, the persona
+files themselves are the reference.
 
 ## Keeping this current
 
@@ -86,6 +119,9 @@ Common triggers to watch for:
 - Added/removed a `/command/**` or `/portal/**` route or nav tab → `VENUS_UI_MAPPING.md`.
 - Added/edited/removed a Venus cron, an MCP tool, or the agent roster → `OPENCLAW.md` and/or
   `VENUS_UI_MAPPING.md`.
+- Added a new MCP tool, or changed how OpenClaw/the app/Claude Code connect to `tbj-mcp.mjs` →
+  `MCP_TOOLS.md`.
+- Added/removed a README.md anywhere in the ecosystem → the table above ("Every README.md").
 - Changed the forge's lifecycle, queue behavior, template library, or anything cost-related →
   `FORGE.md`.
 - Added a new doc → add it to the table above.
