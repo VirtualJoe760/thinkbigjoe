@@ -13,16 +13,30 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function EditSitePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EditSitePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const { id } = await params;
+  const { tab } = await searchParams;
   const siteId = Number(id);
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) redirect(`/login?redirect=/portal/edit/${id}`);
+  if (!session) redirect(`/login?redirect=/portal/edit/${id}${tab === "studio" ? "?tab=studio" : ""}`);
 
   const [site] = await db.select().from(forgeSites).where(eq(forgeSites.id, siteId)).limit(1);
   if (!site) notFound();
   const owns = site.claimedByUserId === session.user.id || isAdminEmail(session.user.email);
   if (!owns) redirect("/portal");
 
-  return <EditWorkspace siteId={siteId} liveUrl={site.liveUrl} businessName={site.businessName} />;
+  return (
+    <EditWorkspace
+      siteId={siteId}
+      liveUrl={site.liveUrl}
+      businessName={site.businessName}
+      initialTab={tab === "studio" ? "studio" : "site"}
+    />
+  );
 }

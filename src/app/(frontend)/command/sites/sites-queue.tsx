@@ -358,6 +358,29 @@ function SimpleRow({ item }: { item: ForgeSiteItem }) {
           <StatusPill status={item.status} />
         </div>
       </div>
+      {(item.status === "built" || item.status === "building") && (
+        // Admin tools: open the site editor / image studio to make quick fixes
+        // (e.g. resize a logo) before this site goes out to marketing.
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <a
+            href={`/portal/edit/${item.id}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface"
+          >
+            ✏️ Edit site
+          </a>
+          <a
+            href={`/portal/edit/${item.id}?tab=studio`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface"
+          >
+            🎨 Image studio
+          </a>
+          <span className="text-xs text-ink-soft">review &amp; adjust before marketing</span>
+        </div>
+      )}
       <ContactCard item={item} />
       {showOutreach && <OutreachPanel item={item} />}
     </div>

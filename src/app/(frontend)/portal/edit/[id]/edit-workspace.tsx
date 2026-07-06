@@ -9,12 +9,14 @@ export function EditWorkspace({
   siteId,
   liveUrl,
   businessName,
+  initialTab = "site",
 }: {
   siteId: number;
   liveUrl: string | null;
   businessName: string;
+  initialTab?: "site" | "studio";
 }) {
-  const [tab, setTab] = useState<"site" | "studio">("site");
+  const [tab, setTab] = useState<"site" | "studio">(initialTab);
 
   return (
     <div className="flex h-screen flex-col">
