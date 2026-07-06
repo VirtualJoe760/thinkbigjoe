@@ -3,11 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { eq, inArray } from "drizzle-orm";
 
-import { db, outreach, prospects, forgeSites, activityLog } from "@/db";
+import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
 import { sendForgeOutreachEmail } from "@/lib/email";
 
 const now = () => new Date().toISOString();
+const slugify = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+const hostOf = (u: string) => {
+  try {
+    return new URL(/^https?:\/\//.test(u) ? u : `https://${u}`).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+};
 
 export async function approveDraft(id: string) {
   await assertAdmin();
@@ -67,11 +75,27 @@ export async function approveForgeSite(id: string) {
 
 export async function denyForgeSite(id: string, reason?: string) {
   await assertAdmin();
+  const [site] = await db.select().from(forgeSites).where(eq(forgeSites.id, Number(id))).limit(1);
   await db
     .update(forgeSites)
     .set({ status: "denied", deniedReason: reason || null })
     .where(eq(forgeSites.id, Number(id)));
+  // Blacklist the business so the prospector never re-crawls or re-adds it. Keyed on
+  // normalized name+city and (if any) its website domain — so a reworded name still hits.
+  if (site) {
+    await db
+      .insert(forgeBlacklist)
+      .values({
+        normKey: `${slugify(site.businessName)}|${slugify(site.city || "")}`,
+        businessName: site.businessName,
+        city: site.city || null,
+        domain: hostOf(site.existingWebsiteUrl || ""),
+        reason: reason || "denied",
+      })
+      .onConflictDoNothing();
+  }
   revalidatePath("/command/sites");
+  revalidatePath("/command/prospects");
 }
 
 /**

@@ -334,6 +334,17 @@ function slugifyBusinessName(name) {
     .replace(/(^-|-$)/g, "");
 }
 
+/** Bare hostname of a URL (no scheme, no www), or null. */
+function hostOf(url) {
+  const u = String(url || "").trim();
+  if (!u) return null;
+  try {
+    return new URL(/^https?:\/\//.test(u) ? u : `https://${u}`).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
 async function toolAddForgeProspect({
   business_name, niche, city, service_area, phone, email,
   existing_website_url, brand_color, fit_reason, source = "venus_forge_scout", notes,
@@ -346,6 +357,21 @@ async function toolAddForgeProspect({
   const existing = await query(`SELECT id FROM forge_sites WHERE slug = $1 LIMIT 1`, [slug]);
   if (existing.rows.length) {
     return { content: [{ type: "text", text: `⚠️ ${business_name} is already in the forge queue (slug: ${slug}).` }] };
+  }
+  // Blacklist guard — Joe denied this business before; never re-add / re-crawl it.
+  // Match on normalized name+city OR the existing site's domain (name may be reworded).
+  const normKey = `${slug}|${slugifyBusinessName(city)}`;
+  const domain = hostOf(existing_website_url);
+  const blocked = await query(
+    `SELECT reason FROM forge_blacklist WHERE norm_key = $1 OR (domain IS NOT NULL AND domain = $2) LIMIT 1`,
+    [normKey, domain],
+  );
+  if (blocked.rows.length) {
+    await audit("forge_prospect_blacklisted", `Skipped blacklisted business ${business_name} (${city || "?"})`, {
+      target: slug,
+      detail: { city, reason: blocked.rows[0].reason || "denied" },
+    });
+    return { content: [{ type: "text", text: `🚫 ${business_name} (${city || "?"}) is BLACKLISTED (previously denied${blocked.rows[0].reason ? `: ${blocked.rows[0].reason}` : ""}). Not added — do not research it again.` }] };
   }
   const res = await query(
     `INSERT INTO forge_sites (slug, business_name, niche, city, service_area, phone, email, existing_website_url, brand_color, google_rating, review_count, google_maps_url, linkedin_url, fit_reason, source, notes, status)
@@ -386,6 +412,20 @@ async function toolListForgeQueue({ status } = {}) {
         ? ` · claim code: ${r.claim_code}`
         : "";
     lines.push(`**#${r.id} ${r.business_name}** (${r.slug}) · ${r.niche || "—"} · ${r.city || "—"} · status: ${r.status}${r.live_url ? ` · ${r.live_url}` : ""}${claim}`);
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolListForgeBlacklist() {
+  const res = await query(
+    `SELECT business_name, city, domain, reason FROM forge_blacklist ORDER BY created_at DESC LIMIT 200`,
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: "Blacklist is empty — no businesses to avoid yet." }] };
+  }
+  const lines = [`🚫 **${res.rows.length} blacklisted business(es)** — do NOT research or add these:`, ""];
+  for (const r of res.rows) {
+    lines.push(`- ${r.business_name}${r.city ? ` · ${r.city}` : ""}${r.domain ? ` · ${r.domain}` : ""}${r.reason ? ` — ${r.reason}` : ""}`);
   }
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
@@ -835,7 +875,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.5.0" },
+  { name: "tbj-mcp", version: "2.6.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -965,6 +1005,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
         },
       },
+    },
+    {
+      name: "list_forge_blacklist",
+      description: "List businesses Joe has DENIED — never research, crawl, or add these to the forge queue. Call this at the start of a forge scouting run and skip any match (by name+city or website domain). add_forge_prospect also hard-blocks them as a backstop.",
+      inputSchema: { type: "object", properties: {} },
     },
     {
       name: "list_forge_outreach_queue",
@@ -1135,6 +1180,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "list_forge_queue": return toolListForgeQueue(args);
     case "list_forge_outreach_queue": return toolListForgeOutreachQueue(args);
     case "save_forge_outreach_draft": return toolSaveForgeOutreachDraft(args);
+    case "list_forge_blacklist": return toolListForgeBlacklist(args);
     case "update_prospect": return toolUpdateProspect(args);
     case "list_approved_for_outreach": return toolListApprovedForOutreach();
     case "mark_sent": return toolMarkSent(args);

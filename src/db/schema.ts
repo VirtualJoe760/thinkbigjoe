@@ -336,3 +336,16 @@ export const editRequests = pgTable("edit_requests", {
 	index("edit_requests_site_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops")),
 	index("edit_requests_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
 ]);
+
+export const forgeBlacklist = pgTable("forge_blacklist", {
+	id: serial().primaryKey().notNull(),
+	normKey: text("norm_key").notNull(),
+	businessName: text("business_name").notNull(),
+	city: text(),
+	domain: text(),
+	reason: text(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("forge_blacklist_domain_idx").using("btree", table.domain.asc().nullsLast().op("text_ops")),
+	unique("forge_blacklist_norm_key_key").on(table.normKey),
+]);
