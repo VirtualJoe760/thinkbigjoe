@@ -349,6 +349,7 @@ async function toolAddForgeProspect({
   business_name, niche, city, service_area, phone, email,
   existing_website_url, brand_color, fit_reason, source = "venus_forge_scout", notes,
   google_rating, review_count, google_maps_url, linkedin_url,
+  owner_name, instagram_url, facebook_url,
 }) {
   const slug = slugifyBusinessName(business_name);
   if (!slug) {
@@ -374,17 +375,18 @@ async function toolAddForgeProspect({
     return { content: [{ type: "text", text: `🚫 ${business_name} (${city || "?"}) is BLACKLISTED (previously denied${blocked.rows[0].reason ? `: ${blocked.rows[0].reason}` : ""}). Not added — do not research it again.` }] };
   }
   const res = await query(
-    `INSERT INTO forge_sites (slug, business_name, niche, city, service_area, phone, email, existing_website_url, brand_color, google_rating, review_count, google_maps_url, linkedin_url, fit_reason, source, notes, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'discovered')
+    `INSERT INTO forge_sites (slug, business_name, niche, city, service_area, phone, email, existing_website_url, brand_color, google_rating, review_count, google_maps_url, linkedin_url, owner_name, instagram_url, facebook_url, fit_reason, source, notes, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 'discovered')
      RETURNING id`,
-    [slug, business_name, niche, city, service_area, phone, email, existing_website_url, brand_color, google_rating, review_count, google_maps_url, linkedin_url, fit_reason, source, notes],
+    [slug, business_name, niche, city, service_area, phone, email, existing_website_url, brand_color, google_rating, review_count, google_maps_url, linkedin_url, owner_name, instagram_url, facebook_url, fit_reason, source, notes],
   );
   const site_id = res.rows[0].id;
+  const channels = [email && "email", phone && "phone", owner_name && "owner", instagram_url && "IG", facebook_url && "FB", linkedin_url && "LinkedIn"].filter(Boolean);
   await audit("forge_prospect_added", `Added ${business_name}${niche ? ` · ${niche}` : ""} to forge queue`, {
     target: slug,
-    detail: { city, niche, source, fitReason: fit_reason },
+    detail: { city, niche, source, fitReason: fit_reason, channels },
   });
-  return { content: [{ type: "text", text: `✅ Added ${business_name} (slug: ${slug}) to the forge queue — awaiting Joe's approval to build. [id ${site_id}]` }] };
+  return { content: [{ type: "text", text: `✅ Added ${business_name} (slug: ${slug}) — channels: ${channels.join(", ") || "none yet"}. Awaiting Joe's approval to build. [id ${site_id}]` }] };
 }
 
 async function toolListForgeQueue({ status } = {}) {
@@ -437,7 +439,8 @@ async function toolListForgeOutreachQueue({ status } = {}) {
   // Built + unclaimed sites at this outreach stage. A missing claim_code means the
   // register step didn't verify it live, so those aren't ready — require it.
   const res = await query(
-    `SELECT id, slug, business_name, niche, city, service_area, email, phone, live_url, claim_code, google_rating, review_count
+    `SELECT id, slug, business_name, niche, city, service_area, owner_name, email, phone, live_url, claim_code,
+            google_rating, review_count, instagram_url, facebook_url, linkedin_url
      FROM forge_sites
      WHERE status = 'built' AND claim_code IS NOT NULL AND claimed_by_user_id IS NULL
        AND outreach_status = $1
@@ -449,7 +452,7 @@ async function toolListForgeOutreachQueue({ status } = {}) {
     return { content: [{ type: "text", text: `No built, unclaimed sites with outreach_status='${stage}'. Nothing to draft.` }] };
   }
   const lines = [
-    `📣 **${res.rows.length} built site(s) ready for outreach** (stage=${stage}):`,
+    `📣 **${res.rows.length} built site(s) ready for FIRST-TOUCH** (stage=${stage}):`,
     "",
     `Links to weave into every message:`,
     `  • sign in & claim: ${APP_SITE_URL}/portal/claim  (they enter the claim code after signing in)`,
@@ -458,29 +461,34 @@ async function toolListForgeOutreachQueue({ status } = {}) {
   ];
   for (const r of res.rows) {
     const rating = r.google_rating ? ` · ${r.google_rating}★${r.review_count ? ` (${r.review_count})` : ""}` : "";
-    lines.push(`**#${r.id} ${r.business_name}** · ${r.niche || "—"} · ${r.city || r.service_area || "—"}${rating}`);
-    lines.push(`   live site: ${r.live_url || "(none)"}`);
-    lines.push(`   contact: ${r.email || "⚠️ NO EMAIL — skip, can't send"}${r.phone ? ` · ${r.phone}` : ""}`);
-    lines.push(`   claim code: ${r.claim_code}`);
+    const socials = [r.instagram_url && `IG:${r.instagram_url}`, r.facebook_url && `FB:${r.facebook_url}`, r.linkedin_url && `LinkedIn:${r.linkedin_url}`].filter(Boolean);
+    lines.push(`**#${r.id} ${r.business_name}**${r.owner_name ? ` · owner ${r.owner_name}` : ""} · ${r.niche || "—"} · ${r.city || r.service_area || "—"}${rating}`);
+    lines.push(`   live site: ${r.live_url || "(none)"} · claim code: ${r.claim_code}`);
+    lines.push(`   channels → email: ${r.email || "(none)"}${r.phone ? ` · phone: ${r.phone}` : ""}${socials.length ? ` · ${socials.join(" · ")}` : ""}`);
     lines.push("");
   }
   lines.push(
-    `For each site that HAS an email, call save_forge_outreach_draft(site_id, subject, body). Keep it warm and short: their new site is live (link it), here's the claim code to sign in and take ownership, and they can book a call with Joe. Joe reviews every draft before it sends.`,
+    `You do the FIRST TOUCH; Joe CALLS them second. For each site, message the owner on the BEST channel available:\n` +
+      `  • Has an EMAIL → call save_forge_outreach_draft(site_id, "email", subject, body). Joe reviews + sends.\n` +
+      `  • No email but a SOCIAL (Instagram/Facebook/LinkedIn) → call save_forge_outreach_draft(site_id, channel, "", body) with a short DM, Joe reviews it, you send the DM on that platform, then call mark_forge_outreach_sent(site_id, channel).\n` +
+      `  • No email or social → leave it; its phone is on Joe's contact card to call.\n` +
+      `Keep it warm and short: their new site is live (link it), the claim code to take ownership, and an invite to talk. Never invent contact info.`,
   );
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
-async function toolSaveForgeOutreachDraft({ site_id, subject, body }) {
+const OUTREACH_CHANNELS = ["email", "instagram", "facebook", "linkedin", "sms"];
+
+async function toolSaveForgeOutreachDraft({ site_id, subject, body, channel = "email" }) {
   const id = Number(site_id);
   if (!Number.isFinite(id)) return { content: [{ type: "text", text: "site_id must be a number." }] };
+  const ch = OUTREACH_CHANNELS.includes(String(channel)) ? String(channel) : "email";
   const subj = String(subject || "").trim();
   const text = String(body || "").trim();
-  if (!subj || !text) return { content: [{ type: "text", text: "Both subject and body are required." }] };
+  if (!text) return { content: [{ type: "text", text: "A message body is required." }] };
+  if (ch === "email" && !subj) return { content: [{ type: "text", text: "An email needs a subject." }] };
 
-  const existing = await query(
-    `SELECT id, business_name, status, email FROM forge_sites WHERE id = $1 LIMIT 1`,
-    [id],
-  );
+  const existing = await query(`SELECT id, business_name, status FROM forge_sites WHERE id = $1 LIMIT 1`, [id]);
   if (!existing.rows.length) return { content: [{ type: "text", text: `forge_sites #${id} not found.` }] };
   const site = existing.rows[0];
   if (site.status !== "built") {
@@ -489,18 +497,46 @@ async function toolSaveForgeOutreachDraft({ site_id, subject, body }) {
 
   await query(
     `UPDATE forge_sites
-     SET outreach_subject = $2, outreach_draft = $3, outreach_channel = 'email',
+     SET outreach_subject = $2, outreach_draft = $3, outreach_channel = $4,
          outreach_status = 'drafted', updated_at = now()
      WHERE id = $1`,
-    [id, subj, text],
+    [id, subj, text, ch],
   );
-  await audit("forge_outreach_drafted", `Drafted owner outreach for ${site.business_name} (#${id})`, {
+  await audit("forge_outreach_drafted", `Drafted ${ch} first-touch for ${site.business_name} (#${id})`, {
     target: site.business_name,
-    detail: { siteId: id, subject: subj, email: site.email || null },
+    detail: { siteId: id, channel: ch, subject: subj },
   });
-  return {
-    content: [{ type: "text", text: `✅ Draft saved for ${site.business_name} (#${id}). Joe reviews + sends it from /command/prospects → Built.` }],
-  };
+  const how = ch === "email"
+    ? "Joe reviews + sends it from /command/prospects → Built."
+    : `This is a ${ch} DM — Joe reviews it, then YOU send it by opening their ${ch} and messaging; afterward call mark_forge_outreach_sent(site_id, "${ch}").`;
+  return { content: [{ type: "text", text: `✅ ${ch} first-touch draft saved for ${site.business_name} (#${id}). ${how}` }] };
+}
+
+// The outreach agent sends social DMs itself (by driving Instagram/Facebook/LinkedIn),
+// so it marks those sent here. Email sends flow through Joe's approve-&-send in the UI.
+async function toolMarkForgeOutreachSent({ site_id, channel = "email", note } = {}) {
+  const id = Number(site_id);
+  if (!Number.isFinite(id)) return { content: [{ type: "text", text: "site_id must be a number." }] };
+  const ch = OUTREACH_CHANNELS.includes(String(channel)) ? String(channel) : "email";
+  const existing = await query(`SELECT id, business_name, followup_count FROM forge_sites WHERE id = $1 LIMIT 1`, [id]);
+  if (!existing.rows.length) return { content: [{ type: "text", text: `forge_sites #${id} not found.` }] };
+  const site = existing.rows[0];
+  const touch = Number(site.followup_count || 0) + 1;
+  const vals = [id, ch, touch];
+  let noteSql = "";
+  if (note && String(note).trim()) {
+    vals.push(String(note).trim());
+    noteSql = `, contact_notes = COALESCE(contact_notes || E'\\n', '') || $${vals.length}`;
+  }
+  await query(
+    `UPDATE forge_sites SET outreach_status = 'sent', outreach_channel = $2, followup_count = $3, contacted_at = now(), updated_at = now()${noteSql} WHERE id = $1`,
+    vals,
+  );
+  await audit("forge_outreach_sent", `First-touched ${site.business_name} (#${id}) via ${ch} (touch ${touch})`, {
+    target: site.business_name,
+    detail: { siteId: id, channel: ch, touch },
+  });
+  return { content: [{ type: "text", text: `✅ Marked ${site.business_name} (#${id}) first-touched via ${ch} (touch ${touch}). Now it's Joe's turn to CALL them (2nd touch).` }] };
 }
 
 async function toolListForgeNeedsContact() {
@@ -974,7 +1010,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.8.0" },
+  { name: "tbj-mcp", version: "2.9.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1079,6 +1115,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           phone: { type: "string", description: "Phone number found during research." },
           email: { type: "string", description: "Email address found during research, if any." },
           existing_website_url: { type: "string", description: "Their current site URL, if they have one (even a bad one)." },
+          owner_name: { type: "string", description: "The owner / decision-maker's name, if you can find it (from the site's about page, Google, or socials)." },
+          instagram_url: { type: "string", description: "Their Instagram profile URL, if they have one — often the best way to reach a local business." },
+          facebook_url: { type: "string", description: "Their Facebook page URL, if they have one." },
           brand_color: { type: "string", description: "A guessed brand hex color from their signage/logo/branding, if visible." },
           google_rating: { type: "string", description: "Their Google star rating, e.g. \"4.9\" (from the Google Maps listing). Omit if they have none." },
           review_count: { type: "string", description: "Their Google review count, e.g. \"79\" or \"1,100+\"." },
@@ -1154,15 +1193,29 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "save_forge_outreach_draft",
-      description: "Save a drafted outreach EMAIL for a built site (initial OR follow-up). Write a warm, personal note that (1) tells the owner their new site is live (include the live URL), (2) gives them the claim code and tells them to sign in and claim it, and (3) invites them to book a call with Joe. Sets the site's outreach_status='drafted' — Joe reviews and sends it from /command/prospects. Do NOT send email yourself.",
+      description: "Draft the FIRST-TOUCH message for a built site, on the best channel you have. Warm + personal: (1) their new site is live (include the live URL), (2) the claim code to sign in and claim it, (3) an invite to talk. For channel='email', Joe reviews and sends it. For a social DM (instagram/facebook/linkedin), Joe reviews it, then YOU send it by messaging on that platform and call mark_forge_outreach_sent afterward. This is the AI's first touch — Joe calls them as the second touch.",
       inputSchema: {
         type: "object",
         properties: {
           site_id: { type: "number", description: "The forge_sites id (from list_forge_outreach_queue)." },
-          subject: { type: "string", description: "Email subject line." },
-          body: { type: "string", description: "Email body as plain text (line breaks become paragraphs). Include the claim code, the live-site link, the sign-in/claim prompt, and the book-a-call invitation." },
+          channel: { type: "string", enum: ["email", "instagram", "facebook", "linkedin", "sms"], description: "Which channel this message is for. Default 'email'. Use a social DM channel when there's no email but a social profile." },
+          subject: { type: "string", description: "Subject line (required for email; ignored for DMs)." },
+          body: { type: "string", description: "The message. Include the claim code, the live-site link, and an invite to talk. Keep DMs shorter than emails." },
         },
-        required: ["site_id", "subject", "body"],
+        required: ["site_id", "body"],
+      },
+    },
+    {
+      name: "mark_forge_outreach_sent",
+      description: "Mark a built site as first-touched after YOU sent a social DM yourself (Instagram/Facebook/LinkedIn). Sets outreach_status='sent', records the channel + a touch, and cues Joe to CALL them next. Email sends do NOT use this — those go through Joe's approve-&-send in the UI.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          site_id: { type: "number", description: "The forge_sites id." },
+          channel: { type: "string", enum: ["instagram", "facebook", "linkedin", "sms", "email"], description: "The channel you messaged them on." },
+          note: { type: "string", description: "Optional note (what you said / their handle / anything useful for the call)." },
+        },
+        required: ["site_id", "channel"],
       },
     },
     {
@@ -1307,6 +1360,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "list_forge_queue": return toolListForgeQueue(args);
     case "list_forge_outreach_queue": return toolListForgeOutreachQueue(args);
     case "save_forge_outreach_draft": return toolSaveForgeOutreachDraft(args);
+    case "mark_forge_outreach_sent": return toolMarkForgeOutreachSent(args);
     case "list_forge_followup_due": return toolListForgeFollowupDue(args);
     case "list_forge_needs_contact": return toolListForgeNeedsContact(args);
     case "enrich_forge_contact": return toolEnrichForgeContact(args);
