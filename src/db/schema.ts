@@ -365,6 +365,10 @@ export const forgeSites = pgTable("forge_sites", {
 	facebookUrl: text("facebook_url"),
 	contactNotes: text("contact_notes"),
 	contactEnrichedAt: timestamp("contact_enriched_at", { withTimezone: true, mode: 'string' }),
+	socialStats: jsonb("social_stats"),
+	reviewQuotes: jsonb("review_quotes"),
+	callPrep: text("call_prep"),
+	callPrepAt: timestamp("call_prep_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
 	uniqueIndex("forge_sites_claim_code_key").using("btree", table.claimCode.asc().nullsLast().op("text_ops")),
 	index("forge_sites_outreach_status_idx").using("btree", table.outreachStatus.asc().nullsLast().op("text_ops")),

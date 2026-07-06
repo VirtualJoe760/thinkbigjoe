@@ -64,7 +64,7 @@ const byFollowing = (a: ForgeSiteItem, b: ForgeSiteItem) =>
 export default async function ProspectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; page?: string; v?: string; q?: string; gf?: string }>;
+  searchParams: Promise<{ view?: string; page?: string; v?: string; q?: string; gf?: string; f?: string; sort?: string }>;
 }) {
   await requireAdmin();
 
@@ -75,6 +75,8 @@ export default async function ProspectsPage({
   const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
   const vertical = VERTICALS.some((x) => x.key === sp.v) ? (sp.v as string) : "";
   const gf = sp.gf === "only" ? "only" : "";
+  const f = (["email", "phone", "social", "reviews"] as const).includes(sp.f as never) ? (sp.f as string) : "";
+  const sort = (["reviews", "rating"] as const).includes(sp.sort as never) ? (sp.sort as string) : "";
   const q = (sp.q || "").trim();
   const qLower = q.toLowerCase();
 
@@ -144,6 +146,9 @@ export default async function ProspectsPage({
     instagramUrl: r.instagramUrl || "",
     facebookUrl: r.facebookUrl || "",
     contactNotes: r.contactNotes || "",
+    socialStats: (r.socialStats as ForgeSiteItem["socialStats"]) || null,
+    reviewQuotes: (r.reviewQuotes as ForgeSiteItem["reviewQuotes"]) || [],
+    callPrep: r.callPrep || "",
   }));
 
   const siteCounts: Record<WebdevView, number> = { review: 0, queued: 0, built: 0, archive: 0 };
@@ -159,10 +164,22 @@ export default async function ProspectsPage({
       );
     }
     if (gf === "only") siteItems = siteItems.filter(hasGoogleFollowing);
+    if (f === "email") siteItems = siteItems.filter((i) => !!i.email);
+    else if (f === "phone") siteItems = siteItems.filter((i) => !!i.phone);
+    else if (f === "social") siteItems = siteItems.filter((i) => !!(i.instagramUrl || i.facebookUrl || i.linkedinUrl));
+    else if (f === "reviews") siteItems = siteItems.filter((i) => Number(i.reviewCount || 0) > 0);
+    const byReviews = (a: ForgeSiteItem, b: ForgeSiteItem) =>
+      Number(b.reviewCount || 0) - Number(a.reviewCount || 0) || Number(b.googleRating || 0) - Number(a.googleRating || 0);
+    const byRating = (a: ForgeSiteItem, b: ForgeSiteItem) =>
+      Number(b.googleRating || 0) - Number(a.googleRating || 0) || Number(b.reviewCount || 0) - Number(a.reviewCount || 0);
     siteItems.sort(
-      view === "built" || view === "archive"
-        ? (a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")
-        : byFollowing,
+      sort === "reviews"
+        ? byReviews
+        : sort === "rating"
+          ? byRating
+          : view === "built" || view === "archive"
+            ? (a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")
+            : byFollowing,
     );
   }
 
@@ -266,6 +283,10 @@ export default async function ProspectsPage({
     if (vv) params.set("v", vv);
     const gg = over.gf ?? gf;
     if (gg) params.set("gf", gg);
+    const ff = over.f ?? f;
+    if (ff) params.set("f", ff);
+    const ss = over.sort ?? sort;
+    if (ss) params.set("sort", ss);
     const qq = over.q ?? q;
     if (qq) params.set("q", qq);
     if (over.page) params.set("page", over.page);
@@ -398,28 +419,60 @@ export default async function ProspectsPage({
             <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap items-center gap-1.5">
                 <a
-                  href={qs({ gf: "", page: "" })}
+                  href={qs({ gf: "", f: "", page: "" })}
                   className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                    !gf ? "bg-brand text-white" : "bg-surface text-ink-soft hover:text-ink"
+                    !gf && !f ? "bg-brand text-white" : "bg-surface text-ink-soft hover:text-ink"
                   }`}
                 >
                   All
                 </a>
                 <a
-                  href={qs({ gf: "only", page: "" })}
+                  href={qs({ gf: gf === "only" ? "" : "only", f: "", page: "" })}
                   className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
                     gf === "only" ? "bg-brand text-white" : "bg-surface text-ink-soft hover:text-ink"
                   }`}
                 >
-                  <span className="text-amber-500">★</span> Has Google following
-                  {view === "review" && withFollowing ? (
-                    <span className="opacity-70">{withFollowing}</span>
-                  ) : null}
+                  <span className="text-amber-500">★</span> Has following
+                  {view === "review" && withFollowing ? <span className="opacity-70">{withFollowing}</span> : null}
                 </a>
+                {[
+                  { key: "phone", label: "📞 Has phone" },
+                  { key: "email", label: "✉️ Has email" },
+                  { key: "social", label: "🔗 Has social" },
+                  { key: "reviews", label: "⭐ Has reviews" },
+                ].map((chip) => (
+                  <a
+                    key={chip.key}
+                    href={qs({ f: f === chip.key ? "" : chip.key, gf: "", page: "" })}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                      f === chip.key ? "bg-brand text-white" : "bg-surface text-ink-soft hover:text-ink"
+                    }`}
+                  >
+                    {chip.label}
+                  </a>
+                ))}
+                <span className="ml-1 text-xs text-ink-soft">Sort:</span>
+                {[
+                  { key: "", label: "Following" },
+                  { key: "reviews", label: "Most reviews" },
+                  { key: "rating", label: "Top rated" },
+                ].map((s) => (
+                  <a
+                    key={s.key || "default"}
+                    href={qs({ sort: s.key, page: "" })}
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                      sort === s.key ? "bg-brand-tint text-brand" : "text-ink-soft hover:text-ink"
+                    }`}
+                  >
+                    {s.label}
+                  </a>
+                ))}
               </div>
               <form action={BASE} method="get" className="flex w-full items-center gap-2 lg:w-auto">
                 <input type="hidden" name="view" value={view} />
                 {gf && <input type="hidden" name="gf" value={gf} />}
+                {f && <input type="hidden" name="f" value={f} />}
+                {sort && <input type="hidden" name="sort" value={sort} />}
                 <input
                   name="q"
                   defaultValue={q}

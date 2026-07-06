@@ -122,6 +122,9 @@ export default async function LeadsPage() {
       instagramUrl: r.instagramUrl || "",
       facebookUrl: r.facebookUrl || "",
       contactNotes: r.contactNotes || "",
+      socialStats: (r.socialStats as ForgeSiteItem["socialStats"]) || null,
+      reviewQuotes: (r.reviewQuotes as ForgeSiteItem["reviewQuotes"]) || [],
+      callPrep: r.callPrep || "",
     }));
 
   return (
