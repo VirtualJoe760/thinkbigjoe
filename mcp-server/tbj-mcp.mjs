@@ -38,6 +38,21 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import pg from "pg";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+// Load thinkbigjoe/.env.local as an env FALLBACK so keys saved there (APIFY_API_KEY,
+// etc.) are available to this server without duplicating them into openclaw.json.
+// Values already in process.env (e.g. DATABASE_URL from the gateway) win.
+try {
+  for (const line of readFileSync(join(homedir(), "code/thinkbigjoe/.env.local"), "utf8").split("\n")) {
+    const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^"|"$/g, "");
+  }
+} catch {
+  /* .env.local not present — rely on gateway-provided env */
+}
 
 const { Pool } = pg;
 
@@ -325,6 +340,90 @@ async function toolAddProspect({
     detail: { company, vertical, source, fitScore: fit_score },
   });
   return { content: [{ type: "text", text: `✅ Added ${name} from ${company} to the review queue.` }] };
+}
+
+// ---------------------------------------------------------------------------
+// Apify — structured scraping so the prospector gets clean JSON instead of
+// reading rendered pages (far fewer tokens, more reliable). Uses the
+// run-sync-get-dataset-items endpoint (blocks until the run finishes).
+// ---------------------------------------------------------------------------
+const APIFY_TOKEN = process.env.APIFY_API_KEY;
+
+async function runApifyActor(actorSlug, input, timeoutMs = 240000) {
+  if (!APIFY_TOKEN) return { error: "APIFY_API_KEY is not set (save it in thinkbigjoe/.env.local)." };
+  try {
+    const res = await fetch(
+      `https://api.apify.com/v2/acts/${actorSlug}/run-sync-get-dataset-items?token=${APIFY_TOKEN}`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input), signal: AbortSignal.timeout(timeoutMs) },
+    );
+    if (!res.ok) return { error: `Apify ${actorSlug} → HTTP ${res.status}: ${(await res.text()).slice(0, 200)}` };
+    return { items: await res.json() };
+  } catch (err) {
+    return { error: `Apify ${actorSlug} failed: ${err?.message || err}` };
+  }
+}
+
+async function toolApifyFindBusinesses({ query, location, max = 30 } = {}) {
+  if (!query || !location) return { content: [{ type: "text", text: "Need `query` (a trade, e.g. 'plumber') and `location` (e.g. 'Denver, CO')." }] };
+  const n = Math.max(1, Math.min(120, Number(max) || 30));
+  const { items, error } = await runApifyActor("compass~crawler-google-places", {
+    searchStringsArray: [String(query)], locationQuery: String(location),
+    maxCrawledPlacesPerSearch: n, language: "en", skipClosedPlaces: true,
+  });
+  if (error) return { content: [{ type: "text", text: `❌ ${error}` }] };
+  if (!items?.length) return { content: [{ type: "text", text: `No Google Maps results for "${query}" in ${location}.` }] };
+  const lines = [`🗺️ **${items.length} businesses** — "${query}" in ${location} (Google Maps via Apify):`, ""];
+  for (const b of items) {
+    const mapsUrl = b.url || (b.placeId ? `https://www.google.com/maps/place/?q=place_id:${b.placeId}` : "");
+    lines.push(`- **${b.title}** · ${b.categoryName || "—"} · ${[b.city, b.state].filter(Boolean).join(", ")}`);
+    lines.push(`   website: ${b.website || "❌ NONE ← strong lead"} · phone: ${b.phone || "—"} · ${b.totalScore ? `${b.totalScore}★ (${b.reviewsCount || 0})` : "no rating"}`);
+    lines.push(`   address: ${b.address || "—"}${mapsUrl ? ` · maps: ${mapsUrl}` : ""}`);
+  }
+  lines.push("", `Leads = businesses with NO website (or one you open and rate ≤4). For each keeper: pull contacts (apify_extract_contacts on their site, and/or apify_find_instagram) then add_forge_prospect with owner/email/socials. Skip any with a solid modern site.`);
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolApifyFindInstagram({ search, max = 20 } = {}) {
+  if (!search) return { content: [{ type: "text", text: "Need `search` — a trade + city (e.g. 'phoenix plumber') or a hashtag." }] };
+  const n = Math.max(1, Math.min(50, Number(max) || 20));
+  const { items, error } = await runApifyActor("apify~instagram-scraper", {
+    search: String(search), searchType: "user", resultsType: "details", resultsLimit: n, addParentData: false,
+  });
+  if (error) return { content: [{ type: "text", text: `❌ ${error}` }] };
+  if (!items?.length) return { content: [{ type: "text", text: `No Instagram accounts found for "${search}".` }] };
+  const lines = [`📸 **${items.length} Instagram accounts** for "${search}":`, ""];
+  for (const p of items) {
+    const handle = p.username || p.ownerUsername;
+    if (!handle) continue;
+    const site = p.externalUrl || p.external_url || "";
+    const email = p.businessEmail || p.public_email || p.email || "";
+    const followers = p.followersCount ?? p.followers ?? "?";
+    const isBiz = p.isBusinessAccount ?? p.is_business_account;
+    lines.push(`- **@${handle}**${p.fullName ? ` (${p.fullName})` : ""}${isBiz ? " · business acct" : ""} · ${followers} followers`);
+    lines.push(`   website in bio: ${site || "❌ NONE ← lead (runs off Instagram)"} · email: ${email || "—"}${p.businessPhoneNumber ? ` · phone: ${p.businessPhoneNumber}` : ""}`);
+    if (p.biography) lines.push(`   bio: ${String(p.biography).replace(/\s+/g, " ").slice(0, 120)}`);
+  }
+  lines.push("", `PRIME leads = business accounts with NO website in the bio (or just a linktree/Facebook) — they clearly invest in their presence but have no site. For each: instagram_url = https://instagram.com/<handle>, grab the bio email, then add_forge_prospect.`);
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolApifyExtractContacts({ url } = {}) {
+  if (!url) return { content: [{ type: "text", text: "Need `url` — the business's website." }] };
+  const { items, error } = await runApifyActor("vdrmota~contact-info-scraper", { startUrls: [{ url: String(url) }], maxDepth: 2, maxRequestsPerStartUrl: 10 }, 180000);
+  if (error) return { content: [{ type: "text", text: `❌ ${error}` }] };
+  const it = items?.[0];
+  if (!it) return { content: [{ type: "text", text: `No contact info found at ${url}.` }] };
+  const g = (a) => (Array.isArray(a) ? a.filter(Boolean) : []);
+  const emails = g(it.emails), phones = g(it.phones), ig = g(it.instagrams), fb = g(it.facebooks), li = g(it.linkedIns), tw = g(it.twitters), yt = g(it.youtubes);
+  const lines = [
+    `📇 **Contacts scraped from ${url}:**`,
+    `   emails: ${emails.join(", ") || "none"}`,
+    `   phones: ${phones.join(", ") || "none"}`,
+    `   instagram: ${ig.join(", ") || "none"} · facebook: ${fb.join(", ") || "none"} · linkedin: ${li.join(", ") || "none"}`,
+  ];
+  if (tw.length || yt.length) lines.push(`   other: ${[...tw, ...yt].join(", ")}`);
+  lines.push("", `Feed what you found into enrich_forge_contact / add_forge_prospect. Sanity-check an email looks real (not a stock/placeholder) before saving.`);
+  return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
 function slugifyBusinessName(name) {
@@ -1010,7 +1109,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.9.0" },
+  { name: "tbj-mcp", version: "2.10.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1142,6 +1241,40 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description: "Filter by status. Omit to list all.",
           },
         },
+      },
+    },
+    {
+      name: "apify_find_businesses",
+      description: "Find local businesses via Apify's Google Maps Scraper — clean structured JSON (name, category, city/state, website OR none, phone, rating, reviews, maps link) instead of browsing Maps. Primary scouting source: a business with NO website is a strong lead.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "The trade/category to search, e.g. 'plumber', 'roofer', 'landscaper'." },
+          location: { type: "string", description: "City + state, e.g. 'Denver, CO'." },
+          max: { type: "number", description: "Max results (default 30, cap 120)." },
+        },
+        required: ["query", "location"],
+      },
+    },
+    {
+      name: "apify_find_instagram",
+      description: "Find business Instagram accounts via Apify's Instagram Scraper — spot local businesses that run off Instagram with NO website (prime leads). Returns handle, name, follower count, the website link in their bio (or none), and bio email/phone.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          search: { type: "string", description: "A trade + city ('phoenix plumber') or a hashtag." },
+          max: { type: "number", description: "Max accounts (default 20, cap 50)." },
+        },
+        required: ["search"],
+      },
+    },
+    {
+      name: "apify_extract_contacts",
+      description: "Scrape a business website for contact info via Apify's Contact Details Scraper — returns all emails, phones, and social profile URLs found across the site. Use during enrichment to dig an owner email + socials without reading pages yourself.",
+      inputSchema: {
+        type: "object",
+        properties: { url: { type: "string", description: "The business's website URL." } },
+        required: ["url"],
       },
     },
     {
@@ -1358,6 +1491,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "add_prospect": return toolAddProspect(args);
     case "add_forge_prospect": return toolAddForgeProspect(args);
     case "list_forge_queue": return toolListForgeQueue(args);
+    case "apify_find_businesses": return toolApifyFindBusinesses(args);
+    case "apify_find_instagram": return toolApifyFindInstagram(args);
+    case "apify_extract_contacts": return toolApifyExtractContacts(args);
     case "list_forge_outreach_queue": return toolListForgeOutreachQueue(args);
     case "save_forge_outreach_draft": return toolSaveForgeOutreachDraft(args);
     case "mark_forge_outreach_sent": return toolMarkForgeOutreachSent(args);
