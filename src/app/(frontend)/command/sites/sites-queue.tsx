@@ -333,11 +333,15 @@ function OutreachPanel({ item }: { item: ForgeSiteItem }) {
     const touches = item.followupCount || 1;
     return (
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3 text-xs text-ink-soft">
-        <span className="rounded-full bg-green-100 px-2.5 py-1 font-semibold text-green-800">✓ Sent · touch {touches}/3</span>
-        {item.email && <span>to {item.email}</span>}
-        <span className="text-ink-soft">{touches >= 3 ? "· sequence complete" : "· a follow-up auto-drafts after 3 days"}</span>
+        <span className="rounded-full bg-green-100 px-2.5 py-1 font-semibold text-green-800">✓ AI first-touch sent · {touches}/3</span>
+        {item.phone && (
+          <a href={`tel:${item.phone.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-1 rounded-full bg-green-600 px-3 py-1 font-semibold text-white hover:bg-green-700">
+            📞 Your turn — call {item.phone}
+          </a>
+        )}
+        <span className="text-ink-soft">{touches >= 3 ? "· sequence complete" : "· follow-up auto-drafts in 3 days"}</span>
         <button onClick={() => { setSent(false); setOpen(true); }} className="font-semibold text-brand hover:underline">
-          Send another now
+          Send another
         </button>
         {msg && <span className="text-green-700">{msg}</span>}
       </div>

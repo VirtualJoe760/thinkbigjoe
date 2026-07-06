@@ -137,7 +137,13 @@ If any follow-ups were scheduled, call log_activity with event_type=followup_sch
 
 2. SEARCH — GO NATIONAL: research 12–18 owner-operated local service businesses ACROSS THE USA. Each run pick 2–3 DIFFERENT US metro areas and rotate the region every run so coverage spreads nationwide — e.g. Phoenix/Sun Belt one day, then Texas (Dallas/Houston/San Antonio), the Southeast (Atlanta/Charlotte/Tampa), the Midwest (Chicago/Columbus/KC), the Northeast (Philly/Boston), the Mountain West (Denver/Salt Lake), the Pacific NW (Portland/Seattle), California, etc. Use the cities already in list_forge_queue to AVOID saturated metros and deliberately pick fresh ones. Trades: HVAC, roofing, electrical, plumbing, landscaping, garage doors, pest control, painting, and similar. Use Google Maps + Google Search; open and rate each site per your rubric. Queue ONLY businesses with no website (0) or a weak/dated/broken one (rated ≤ 4).
 
-3. QUEUE: for each qualifying business, call add_forge_prospect with business_name, niche (one line), city, phone, email if findable, existing_website_url if any (blank if none), a guessed brand_color hex from their branding, and a one-line fit_reason (why the web presence is weak — the evidence outreach will use). Also grab from the Google Maps listing: google_rating (e.g. "4.9"), review_count (e.g. "79"), google_maps_url (the listing link), and linkedin_url if they have a LinkedIn company page (often none). These let Joe vet + click through before approving.
+3. QUEUE — CAPTURE EVERY WAY TO REACH THEM (solve contact at the source): for each qualifying business, before you queue it, spend a moment to find how to reach the OWNER — this is as important as finding the business. Then call add_forge_prospect with:
+   - business_name, niche (one line), city, phone, a one-line fit_reason (why the web presence is weak), existing_website_url if any, a guessed brand_color hex.
+   - **owner_name** — the owner/decision-maker's name (from their site's about page, Google, or socials).
+   - **email** — hunt for one on their website contact/about page, Google listing, or socials.
+   - **instagram_url** and **facebook_url** — local trades live on these; usually the fastest way to message them. Plus linkedin_url if they have one.
+   - From the Google Maps listing: google_rating, review_count, google_maps_url.
+   A lead with a phone + email + Instagram is worth far more than a name alone — the more channels you capture NOW, the sooner communication can first-touch them. Don't invent anything; only record what you verify on a real page.
 
 4. LOG: finish with log_activity, event_type "forge_scout_complete", summary like "Queued N · Queue total: Z". marketing-manager reads this for the digest — you don't message Joe directly.`,
   },
@@ -174,21 +180,21 @@ If any follow-ups were scheduled, call log_activity with event_type=followup_sch
     agent: "outreach",
     schedule: "0 16 * * *",
     stagger: "5m",
-    summary: "Draft owner-outreach emails for newly-built sites (claim code + see-your-site + book-a-call).",
-    tools: ["list_forge_outreach_queue", "save_forge_outreach_draft", "log_activity"],
-    uiSurface: ["/command/prospects (Built — ready for outreach)"],
-    eventTypes: ["forge_outreach_drafted"],
-    prompt: `This is the forge-outreach run. Sites the forge has BUILT are waiting for their owner to be told.
+    summary: "First-touch newly-built sites on the best channel (email or social DM); Joe calls second.",
+    tools: ["list_forge_outreach_queue", "save_forge_outreach_draft", "mark_forge_outreach_sent", "log_activity"],
+    uiSurface: ["/command/prospects (Built — first-touch → Joe calls second)"],
+    eventTypes: ["forge_outreach_drafted", "forge_outreach_sent"],
+    prompt: `This is the forge FIRST-TOUCH run. Sites the forge BUILT are waiting to hear from us. **You do the first touch; Joe calls them as the second touch.**
 
-1. PULL: call list_forge_outreach_queue (stage "none") to get every built, unclaimed site not yet contacted. Each entry has the business, its niche/city, the LIVE-SITE URL, the owner's email, and the CLAIM CODE, plus the sign-in/claim and book-a-call links.
+1. PULL: call list_forge_outreach_queue (stage "none") — each built, unclaimed site with its live-site URL, claim code, and EVERY channel we have (email, phone, Instagram, Facebook, LinkedIn).
 
-2. DRAFT (one per site that HAS an email): write a short, warm, personal email FROM JOE. It must:
-   - Tell them their new website is LIVE and reference it (the live-site link is added as a button automatically).
-   - Invite them to sign in and CLAIM it — the claim code + claim link are appended automatically, so reference the code naturally ("your claim code is below").
-   - Offer a quick call — the book-a-call button is appended automatically.
-   Keep it 3–5 short sentences, genuine and non-pushy, matched to the trade's voice. Personalize on real signal (business name, niche, town) — never invent facts. Then call save_forge_outreach_draft(site_id, subject, body). This saves a DRAFT ONLY — Joe reviews and sends every one himself. NEVER send email yourself.
+2. FIRST-TOUCH each site on the BEST channel available:
+   - Has an EMAIL → save_forge_outreach_draft(site_id, "email", subject, body): a short warm note FROM JOE — their new site is LIVE (link auto-appended), the CLAIM CODE to sign in and claim it (auto-appended, reference it naturally), and an invite to book a quick call (button auto-appended). 3–5 sentences. Joe reviews + sends.
+   - No email but a SOCIAL (Instagram/Facebook/LinkedIn) → save_forge_outreach_draft(site_id, channel, "", body): a short friendly DM — site's live, here's how to claim it, happy to chat. Joe reviews it, then YOU open their profile and send the DM, and afterward call mark_forge_outreach_sent(site_id, channel).
+   - No email or social → leave it; Joe calls the phone from the contact card.
+   Genuine and non-pushy, matched to the trade. Personalize on real signal — NEVER invent contact info.
 
-3. SKIP sites with no email (note them for marketing-manager to enrich). Finish with log_activity, event_type "forge_outreach_drafted", summary like "Drafted N owner emails · M built sites had no email". marketing-manager reads this for the digest — you don't message Joe directly.`,
+3. LOG: finish with log_activity, event_type "forge_outreach_drafted", summary like "First-touched N sites · M email drafts · K social DMs sent · P phone-only left for Joe". marketing-manager reads this for the digest — you don't message Joe directly.`,
   },
 
   {
