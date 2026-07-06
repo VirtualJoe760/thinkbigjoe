@@ -14,9 +14,10 @@ type EditChanges = {
   color?: string;
   background?: string;
   image?: { name?: string; dataUrl?: string };
+  variant?: string;
   note?: string;
 };
-type Edit = { selector?: string; tag?: string; text?: string; changes?: EditChanges; note?: string };
+type Edit = { selector?: string; tag?: string; text?: string; section?: string; changes?: EditChanges; note?: string };
 
 /** Receives the batch of click-to-edit requests from editor.js, stores them as
  *  markdown for the forge to apply. Called same-origin from the injected editor. */
@@ -50,6 +51,16 @@ export async function POST(req: Request) {
   let imageCount = 0;
   edits.forEach((e, i) => {
     const c = e.changes || {};
+    // Section / layout change (forge swaps a @webdev/ui variant prop or builds it).
+    if (e.section || e.tag === "section") {
+      lines.push(`${i + 1}. **Section: ${e.text || e.section}**`);
+      if (c.variant) lines.push(`   - Switch layout to variant **"${c.variant}"** (the @webdev/ui \`variant\` prop in app/page.tsx)`);
+      const snote = c.note || e.note;
+      if (snote) lines.push(`   - Requested change: ${snote}`);
+      if (e.selector) lines.push(`   - Section element: \`${e.selector}\``);
+      lines.push(``);
+      return;
+    }
     lines.push(`${i + 1}. **${e.tag || "element"}**${e.text ? ` — “${e.text}”` : ""}`);
     if (c.newText) lines.push(`   - New text: “${c.newText}”`);
     if (c.color) lines.push(`   - Text color → ${c.color}`);
