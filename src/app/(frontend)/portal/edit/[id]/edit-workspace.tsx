@@ -48,7 +48,7 @@ export function EditWorkspace({
       </header>
 
       {tab === "studio" ? (
-        <ImageStudio />
+        <ImageStudio siteId={siteId} />
       ) : liveUrl ? (
         <iframe
           src={`/api/site-proxy/${siteId}`}
