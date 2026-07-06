@@ -319,6 +319,7 @@ export const forgeSites = pgTable("forge_sites", {
 	outreachChannel: text("outreach_channel").default('email'),
 	contactedAt: timestamp("contacted_at", { withTimezone: true, mode: 'string' }),
 	outreachNotes: text("outreach_notes"),
+	followupCount: integer("followup_count").default(0).notNull(),
 }, (table) => [
 	uniqueIndex("forge_sites_claim_code_key").using("btree", table.claimCode.asc().nullsLast().op("text_ops")),
 	index("forge_sites_outreach_status_idx").using("btree", table.outreachStatus.asc().nullsLast().op("text_ops")),

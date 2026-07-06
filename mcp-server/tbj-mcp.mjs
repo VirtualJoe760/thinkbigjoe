@@ -503,6 +503,36 @@ async function toolSaveForgeOutreachDraft({ site_id, subject, body }) {
   };
 }
 
+async function toolListForgeFollowupDue() {
+  // Sites that got an initial email, aren't claimed, and are overdue for a follow-up
+  // (>3 days since the last touch, fewer than 3 emails total). Include the prior
+  // subject so the agent writes a NEW angle instead of repeating itself.
+  const res = await query(
+    `SELECT id, business_name, niche, city, email, live_url, claim_code, followup_count, contacted_at, outreach_subject
+     FROM forge_sites
+     WHERE status = 'built' AND claimed_by_user_id IS NULL AND email IS NOT NULL
+       AND outreach_status = 'sent' AND followup_count >= 1 AND followup_count < 3
+       AND contacted_at < now() - interval '3 days'
+     ORDER BY contacted_at ASC
+     LIMIT 50`,
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: "No sites are due for a follow-up right now." }] };
+  }
+  const lines = [`🔁 **${res.rows.length} site(s) due for a follow-up:**`, "", `book-a-call link: ${APP_SITE_URL}/book-appointment`, ""];
+  for (const r of res.rows) {
+    const nextTouch = Number(r.followup_count) + 1;
+    lines.push(`**#${r.id} ${r.business_name}** · ${r.niche || "—"} · ${r.city || "—"} — next is TOUCH ${nextTouch} of 3`);
+    lines.push(`   live site: ${r.live_url || "(none)"} · claim code: ${r.claim_code}`);
+    lines.push(`   last emailed: ${r.contacted_at} → ${r.email}${r.outreach_subject ? ` · prior subject: "${r.outreach_subject}"` : ""}`);
+    lines.push("");
+  }
+  lines.push(
+    `For each, write a SHORT follow-up with a NEW angle — don't repeat the prior email. Touch 2 = a gentle nudge with a fresh benefit; touch 3 = a brief, friendly "last note" break-up. The live-site link, claim code and book-a-call button are appended automatically. Call save_forge_outreach_draft(site_id, subject, body). Joe reviews + sends. Never go past touch 3.`,
+  );
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
 async function toolUpdateProspect({
   prospect_id, photo_url, email, phone, website_url, google_my_business_url, source,
   website_status, website_rating, website_notes, sales_opportunities,
@@ -875,7 +905,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.6.0" },
+  { name: "tbj-mcp", version: "2.7.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1026,8 +1056,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "list_forge_followup_due",
+      description: "List built sites that got an initial outreach email, haven't claimed or replied, and are overdue for a FOLLOW-UP (>3 days since the last touch, under 3 emails total). Returns which touch is next and the prior subject so you can write a fresh angle. Draft each with save_forge_outreach_draft; Joe reviews + sends. Stop after touch 3.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
       name: "save_forge_outreach_draft",
-      description: "Save a drafted outreach EMAIL for a built site. Write a warm, personal note that (1) tells the owner their new site is live (include the live URL), (2) gives them the claim code and tells them to sign in and claim it, and (3) invites them to book a call with Joe. Sets the site's outreach_status='drafted' — Joe reviews and sends it from /command/prospects. Do NOT send email yourself.",
+      description: "Save a drafted outreach EMAIL for a built site (initial OR follow-up). Write a warm, personal note that (1) tells the owner their new site is live (include the live URL), (2) gives them the claim code and tells them to sign in and claim it, and (3) invites them to book a call with Joe. Sets the site's outreach_status='drafted' — Joe reviews and sends it from /command/prospects. Do NOT send email yourself.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1180,6 +1215,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "list_forge_queue": return toolListForgeQueue(args);
     case "list_forge_outreach_queue": return toolListForgeOutreachQueue(args);
     case "save_forge_outreach_draft": return toolSaveForgeOutreachDraft(args);
+    case "list_forge_followup_due": return toolListForgeFollowupDue(args);
     case "list_forge_blacklist": return toolListForgeBlacklist(args);
     case "update_prospect": return toolUpdateProspect(args);
     case "list_approved_for_outreach": return toolListApprovedForOutreach();

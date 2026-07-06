@@ -35,6 +35,7 @@ export type ForgeSiteItem = {
   outreachSubject: string;
   outreachDraft: string;
   contactedAt: string;
+  followupCount: number;
 };
 
 const US_STATES = new Set([
@@ -311,24 +312,33 @@ function OutreachPanel({ item }: { item: ForgeSiteItem }) {
   const hasEmail = Boolean(item.email);
 
   if (sent) {
+    const touches = item.followupCount || 1;
     return (
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3 text-xs text-ink-soft">
-        <span className="rounded-full bg-green-100 px-2.5 py-1 font-semibold text-green-800">✓ Outreach sent</span>
+        <span className="rounded-full bg-green-100 px-2.5 py-1 font-semibold text-green-800">✓ Sent · touch {touches}/3</span>
         {item.email && <span>to {item.email}</span>}
+        <span className="text-ink-soft">{touches >= 3 ? "· sequence complete" : "· a follow-up auto-drafts after 3 days"}</span>
         <button onClick={() => { setSent(false); setOpen(true); }} className="font-semibold text-brand hover:underline">
-          Resend / edit
+          Send another now
         </button>
         {msg && <span className="text-green-700">{msg}</span>}
       </div>
     );
   }
+  const isFollowup = (item.followupCount || 0) >= 1;
 
   return (
     <div className="mt-3 border-t border-line pt-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs">
           <span className={`rounded-full px-2.5 py-1 font-semibold ${OUTREACH_PILL[status] || OUTREACH_PILL.none}`}>
-            {status === "drafted" ? "draft ready" : status === "none" ? "needs outreach" : status}
+            {status === "drafted"
+              ? isFollowup
+                ? `follow-up #${(item.followupCount || 0) + 1} ready`
+                : "draft ready"
+              : status === "none"
+                ? "needs outreach"
+                : status}
           </span>
           {!hasEmail && <span className="text-red-600">No owner email — can&apos;t send.</span>}
         </div>

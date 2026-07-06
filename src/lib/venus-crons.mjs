@@ -135,7 +135,7 @@ If any follow-ups were scheduled, call log_activity with event_type=followup_sch
 
 1. DEDUP + BLACKLIST: call list_forge_queue (no filter) AND list_forge_blacklist. Skip any business already queued (by name + city) AND any business on the blacklist — Joe denied those, so never research or re-add them (match by name+city or their website domain). add_forge_prospect also hard-blocks blacklisted businesses, but don't waste a crawl on one.
 
-2. SEARCH: research 8–12 owner-operated local service businesses in the Scottsdale / Phoenix metro (your default focus unless Joe or marketing-manager gave you a different area). Trades: HVAC, roofing, electrical, plumbing, landscaping, garage doors, pest control, painting, and similar. Use Google Maps + Google Search; open and rate each site per your rubric. Queue ONLY businesses with no website (0) or a weak/dated/broken one (rated ≤ 4).
+2. SEARCH — GO NATIONAL: research 12–18 owner-operated local service businesses ACROSS THE USA. Each run pick 2–3 DIFFERENT US metro areas and rotate the region every run so coverage spreads nationwide — e.g. Phoenix/Sun Belt one day, then Texas (Dallas/Houston/San Antonio), the Southeast (Atlanta/Charlotte/Tampa), the Midwest (Chicago/Columbus/KC), the Northeast (Philly/Boston), the Mountain West (Denver/Salt Lake), the Pacific NW (Portland/Seattle), California, etc. Use the cities already in list_forge_queue to AVOID saturated metros and deliberately pick fresh ones. Trades: HVAC, roofing, electrical, plumbing, landscaping, garage doors, pest control, painting, and similar. Use Google Maps + Google Search; open and rate each site per your rubric. Queue ONLY businesses with no website (0) or a weak/dated/broken one (rated ≤ 4).
 
 3. QUEUE: for each qualifying business, call add_forge_prospect with business_name, niche (one line), city, phone, email if findable, existing_website_url if any (blank if none), a guessed brand_color hex from their branding, and a one-line fit_reason (why the web presence is weak — the evidence outreach will use). Also grab from the Google Maps listing: google_rating (e.g. "4.9"), review_count (e.g. "79"), google_maps_url (the listing link), and linkedin_url if they have a LinkedIn company page (often none). These let Joe vet + click through before approving.
 
@@ -163,6 +163,28 @@ If any follow-ups were scheduled, call log_activity with event_type=followup_sch
    Keep it 3–5 short sentences, genuine and non-pushy, matched to the trade's voice. Personalize on real signal (business name, niche, town) — never invent facts. Then call save_forge_outreach_draft(site_id, subject, body). This saves a DRAFT ONLY — Joe reviews and sends every one himself. NEVER send email yourself.
 
 3. SKIP sites with no email (note them for marketing-manager to enrich). Finish with log_activity, event_type "forge_outreach_drafted", summary like "Drafted N owner emails · M built sites had no email". marketing-manager reads this for the digest — you don't message Joe directly.`,
+  },
+
+  {
+    name: "TBJ Forge Follow-up",
+    id: "97e8158f-5445-48a1-b276-72e777893ac9",
+    agent: "outreach",
+    schedule: "0 17 * * *",
+    stagger: "5m",
+    summary: "Draft follow-up emails for built sites the owner hasn't claimed or replied to.",
+    tools: ["list_forge_followup_due", "save_forge_outreach_draft", "log_activity"],
+    uiSurface: ["/command/prospects (Built — follow-up draft → Approve & send)"],
+    eventTypes: ["forge_outreach_drafted"],
+    prompt: `This is the forge follow-up run. Owners who got an initial email but haven't claimed their site or replied are due for a nudge.
+
+1. PULL: call list_forge_followup_due — built, unclaimed sites >3 days since their last email, under 3 emails total. Each shows the business, live-site URL, claim code, which TOUCH is next, and the prior subject.
+
+2. DRAFT one follow-up per site with a NEW angle — never repeat the prior email:
+   - TOUCH 2: a short, warm nudge that adds a fresh benefit ("it's ready whenever you are — takes 2 minutes to claim", a specific thing the new site does better). Reference that their site is still live.
+   - TOUCH 3: a brief, friendly "last note" break-up — no guilt, leave the door open, one line that they can still claim it or book a call anytime.
+   The live-site link, claim code, and book-a-call button are appended automatically. Keep it 2–4 sentences, matched to the trade. Call save_forge_outreach_draft(site_id, subject, body). DRAFT ONLY — Joe reviews and sends. NEVER send yourself, and NEVER go past touch 3.
+
+3. Finish with log_activity, event_type "forge_outreach_drafted", summary like "Drafted N follow-ups (touches 2–3)". marketing-manager reads this for the digest — you don't message Joe directly.`,
   },
 
   {
