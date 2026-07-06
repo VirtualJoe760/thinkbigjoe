@@ -24,22 +24,25 @@ export const VENUS_CRONS = [
     schedule: "0 4 * * *",
     stagger: "5m",
     summary: "Find local service businesses with no/bad website for the site-building forge.",
-    tools: ["add_forge_prospect", "list_forge_queue", "list_forge_blacklist", "log_activity"],
+    tools: ["apify_find_businesses", "apify_find_instagram", "apify_extract_contacts", "add_forge_prospect", "list_forge_queue", "list_forge_blacklist", "log_activity"],
     uiSurface: ["/command/sites"],
     eventTypes: ["forge_scout_complete", "forge_prospect_added"],
     prompt: `This is your daily scouting run. Follow your sourcing loop (AGENTS.md) to find local service businesses that need a website.
 
 1. DEDUP + BLACKLIST: call list_forge_queue (no filter) AND list_forge_blacklist. Skip any business already queued (by name + city) AND any business on the blacklist — Joe denied those, so never research or re-add them (match by name+city or their website domain). add_forge_prospect also hard-blocks blacklisted businesses, but don't waste a crawl on one.
 
-2. SEARCH — GO WIDE, GO NATIONAL: research **25–40** owner-operated local service businesses ACROSS THE USA this run (cast a wide net — volume matters, as long as each one genuinely has a weak/no web presence). Each run pick **4–6 DIFFERENT US metros** and rotate the region every run so coverage spreads nationwide — Sun Belt (Phoenix/Vegas/Tucson) → Texas (Dallas/Houston/San Antonio/Austin) → Southeast (Atlanta/Charlotte/Tampa/Nashville) → Midwest (Chicago/Columbus/KC/Indianapolis) → Northeast (Philly/Boston/Pittsburgh) → Mountain West (Denver/Salt Lake/Boise) → Pacific NW (Portland/Seattle/Spokane) → California (Sacramento/Fresno/San Diego). Use the cities already in list_forge_queue to AVOID saturated metros and deliberately pick fresh ones. Widen the TRADES too: HVAC, roofing, electrical, plumbing, landscaping, garage doors, pest control, painting, concrete/masonry, fencing, tree service, pressure washing, pool service, handyman, appliance repair, auto detailing, cleaning services, movers, locksmiths, and similar owner-run trades. Use Google Maps + Google Search; open and rate each site per your rubric. Queue ONLY businesses with no website (0) or a weak/dated/broken one (rated ≤ 4).
+2. SEARCH — GO WIDE, GO NATIONAL (use Apify, not the browser — it's faster + far cheaper): research **25–40** owner-operated local service businesses ACROSS THE USA this run. Each run pick **4–6 DIFFERENT US metros** and rotate the region every run so coverage spreads nationwide — Sun Belt (Phoenix/Vegas/Tucson) → Texas (Dallas/Houston/San Antonio/Austin) → Southeast (Atlanta/Charlotte/Tampa/Nashville) → Midwest (Chicago/Columbus/KC/Indianapolis) → Northeast (Philly/Boston/Pittsburgh) → Mountain West (Denver/Salt Lake/Boise) → Pacific NW (Portland/Seattle/Spokane) → California (Sacramento/Fresno/San Diego). Widen the TRADES too: HVAC, roofing, electrical, plumbing, landscaping, garage doors, pest control, painting, concrete/masonry, fencing, tree service, pressure washing, pool service, handyman, appliance repair, auto detailing, cleaning services, movers, locksmiths, and similar owner-run trades.
+   - For each trade × metro, call **apify_find_businesses(query, location, max)** — it returns businesses with their website (or NONE), phone, rating, reviews, and maps link as clean data. A business with **NO website is an immediate strong lead**; for ones that DO list a site, open it and rate per your rubric.
+   - ALSO call **apify_find_instagram("<trade> <city>")** to catch businesses that run off a **business Instagram with no website** — those are prime leads (they invest in their presence but have no site).
+   - Use the cities already in list_forge_queue to AVOID saturated metros. Queue ONLY businesses with no website (0) or a weak/dated/broken one (rated ≤ 4).
 
-3. QUEUE — CAPTURE EVERY WAY TO REACH THEM (solve contact at the source): for each qualifying business, before you queue it, spend a moment to find how to reach the OWNER — this is as important as finding the business. Then call add_forge_prospect with:
+3. QUEUE — CAPTURE EVERY WAY TO REACH THEM (solve contact at the source): for each qualifying business, before you queue it, pull its contacts. If it has a website, call **apify_extract_contacts(website_url)** — one call returns all emails, phones, and social URLs on the site. If it's IG-native (from apify_find_instagram), use the handle + bio email. Then call add_forge_prospect with:
    - business_name, niche (one line), city, phone, a one-line fit_reason (why the web presence is weak), existing_website_url if any, a guessed brand_color hex.
-   - **owner_name** — the owner/decision-maker's name (from their site's about page, Google, or socials).
-   - **email** — hunt for one on their website contact/about page, Google listing, or socials.
-   - **instagram_url** and **facebook_url** — local trades live on these; usually the fastest way to message them. Plus linkedin_url if they have one.
-   - From the Google Maps listing: google_rating, review_count, google_maps_url.
-   A lead with a phone + email + Instagram is worth far more than a name alone — the more channels you capture NOW, the sooner communication can first-touch them. Don't invent anything; only record what you verify on a real page.
+   - **owner_name** — the owner/decision-maker's name (from the site, Google, or socials).
+   - **email** — from apify_extract_contacts, the Google listing, or the IG bio.
+   - **instagram_url** and **facebook_url** (local trades live on these), plus linkedin_url if present.
+   - From apify_find_businesses: google_rating, review_count, google_maps_url.
+   A lead with a phone + email + Instagram is worth far more than a name alone — capture every channel. Only record contacts that are real (not stock/placeholder).
 
 4. LOG: finish with log_activity, event_type "forge_scout_complete", summary like "Queued N · Queue total: Z". marketing-manager reads this for the digest — you don't message Joe directly.`,
   },
@@ -51,21 +54,18 @@ export const VENUS_CRONS = [
     schedule: "0 5 * * *",
     stagger: "5m",
     summary: "Find owner names, emails, and socials for forge sites missing a way to reach them.",
-    tools: ["list_forge_needs_contact", "enrich_forge_contact", "log_activity"],
+    tools: ["list_forge_needs_contact", "apify_extract_contacts", "apify_find_instagram", "enrich_forge_contact", "log_activity"],
     uiSurface: ["/command/prospects (contact cards)"],
     eventTypes: ["forge_contact_enriched"],
     prompt: `This is your contact-enrichment run. Lots of forge sites have a phone but no EMAIL or OWNER name — Joe needs a real way to reach these owners (to call and email them).
 
 1. PULL: call list_forge_needs_contact — sites missing an email or owner (BUILT ones first, they're ready for outreach/calls).
 
-2. HUNT — CHECK EVERY SOURCE (be exhaustive; don't stop at the first miss). Work down this list until you've got an email + owner + at least one social:
-   - **Their website**: contact page, about/"meet the team" page, the FOOTER (emails often live there), booking page, and the privacy/terms page (frequently lists a real email). Check any mailto: links.
-   - **Google**: their Google Business Profile / Maps listing (phone, site, sometimes email/messaging), then plain Google searches — "[business] owner", "[business] email", "[owner name] [city]".
-   - **Socials**: Instagram (bio + the "Email" contact button), Facebook (About → contact info + page email + Messenger), LinkedIn (company page AND the owner's profile), plus Nextdoor, YouTube, TikTok, X if present.
-   - **Directories & review sites**: Yelp, the **BBB** (Better Business Bureau — usually names the owner/principal + contact), Angi, HomeAdvisor, Thumbtack, Houzz, Yellow Pages, Manta, Bizapedia, and the local Chamber of Commerce.
-   - **Registries**: the state Secretary of State business registry (owner / registered agent name), and county/city business licenses.
-   - **Domain**: a WHOIS lookup on their website domain (registrant name/email, if not privacy-protected).
-   Capture: the OWNER / decision-maker's name, a real EMAIL, social profile URLs (Instagram/Facebook/LinkedIn), and a short note on the BEST way to reach them (which number, which channel, gatekeeper, hours). NEVER invent contact info — only record what you actually verify on a real page.
+2. HUNT — start with Apify (fast + cheap), then fill gaps by hand:
+   - **If they have a website** → call **apify_extract_contacts(their site URL)** FIRST. One call returns every email, phone, and social URL on the site (this is how we found real owner emails already).
+   - **If they're IG-native / no site** → call **apify_find_instagram("<business name> <city>")** to pull the handle + bio email/phone.
+   - **Then fill any remaining gaps by hand** — be exhaustive, don't stop at the first miss: Google Business Profile + searches ("[biz] owner/email"); Facebook About + Messenger, LinkedIn (company + owner), Nextdoor; directories — Yelp, **BBB** (names the owner/principal), Angi, HomeAdvisor, Thumbtack, Yellow Pages, Manta, local Chamber; the state Secretary of State registry (owner/registered agent); and WHOIS on their domain.
+   Capture: the OWNER / decision-maker's name, a real EMAIL, social profile URLs (Instagram/Facebook/LinkedIn), and a short note on the BEST way to reach them. NEVER invent contact info — only record what you actually verify.
 
 3. SAVE: call enrich_forge_contact(site_id, owner_name, email, phone, instagram_url, facebook_url, linkedin_url, notes) with ONLY the fields you found. It gap-fills, so it won't overwrite what's already there.
 
