@@ -52,6 +52,10 @@ export default async function SitesPage() {
     claimCode: r.claimCode || "",
     claimed: Boolean(r.claimedByUserId),
     createdAt: r.createdAt,
+    outreachStatus: r.outreachStatus || "none",
+    outreachSubject: r.outreachSubject || "",
+    outreachDraft: r.outreachDraft || "",
+    contactedAt: r.contactedAt || "",
   }));
 
   const needsReview = all.filter((i) => i.status === "discovered");

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 
-import { approveForgeSite, denyForgeSite } from "../actions";
+import { approveForgeSite, denyForgeSite, sendForgeOutreach, skipForgeOutreach } from "../actions";
 
 export type ForgeSiteItem = {
   id: string;
@@ -31,6 +31,10 @@ export type ForgeSiteItem = {
   claimCode: string;
   claimed: boolean;
   createdAt: string;
+  outreachStatus: string;
+  outreachSubject: string;
+  outreachDraft: string;
+  contactedAt: string;
 };
 
 const US_STATES = new Set([
@@ -254,25 +258,136 @@ function DiscoveredRow({ item }: { item: ForgeSiteItem }) {
 }
 
 function SimpleRow({ item }: { item: ForgeSiteItem }) {
+  const showOutreach = item.status === "built" && !item.claimed;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-line bg-background p-4">
-      <div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="font-semibold text-ink">{item.businessName}</span>
-          <Rating item={item} />
+    <div className="rounded-2xl border border-line bg-background p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="font-semibold text-ink">{item.businessName}</span>
+            <Rating item={item} />
+          </div>
+          <div className="text-sm text-ink-soft">{item.niche} · {cityState(item)}</div>
         </div>
-        <div className="text-sm text-ink-soft">{item.niche} · {cityState(item)}</div>
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <ExternalLinks item={item} />
+          {item.liveUrl && (
+            <a href={item.liveUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-brand underline">
+              View live site
+            </a>
+          )}
+          {item.claimCode && <ClaimCode item={item} />}
+          <StatusPill status={item.status} />
+        </div>
       </div>
-      <div className="flex flex-wrap items-center gap-3 text-xs">
-        <ExternalLinks item={item} />
-        {item.liveUrl && (
-          <a href={item.liveUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-brand underline">
-            View live site
-          </a>
-        )}
-        {item.claimCode && <ClaimCode item={item} />}
-        <StatusPill status={item.status} />
+      {showOutreach && <OutreachPanel item={item} />}
+    </div>
+  );
+}
+
+const OUTREACH_PILL: Record<string, string> = {
+  none: "bg-amber-100 text-amber-800",
+  drafted: "bg-blue-100 text-blue-800",
+  sent: "bg-green-100 text-green-800",
+  replied: "bg-violet-100 text-violet-800",
+  scheduled: "bg-green-100 text-green-800",
+  skipped: "bg-surface text-ink-soft",
+};
+
+function OutreachPanel({ item }: { item: ForgeSiteItem }) {
+  const status = item.outreachStatus || "none";
+  const [open, setOpen] = useState(status === "drafted");
+  const [subject, setSubject] = useState(
+    item.outreachSubject || `Your new website is ready, ${item.businessName}`,
+  );
+  const [body, setBody] = useState(
+    item.outreachDraft ||
+      `Hi ${item.businessName} team,\n\nI'm Joe with ThinkBigJoe. I built your business a modern website — it's live and ready to see.\n\nTake a look, and if you like it, use the claim code below to sign in and make it yours. Happy to hop on a quick call to walk you through it or tweak anything.\n\n— Joe`,
+  );
+  const [pending, start] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [sent, setSent] = useState(status === "sent");
+
+  const hasEmail = Boolean(item.email);
+
+  if (sent) {
+    return (
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3 text-xs text-ink-soft">
+        <span className="rounded-full bg-green-100 px-2.5 py-1 font-semibold text-green-800">✓ Outreach sent</span>
+        {item.email && <span>to {item.email}</span>}
+        <button onClick={() => { setSent(false); setOpen(true); }} className="font-semibold text-brand hover:underline">
+          Resend / edit
+        </button>
+        {msg && <span className="text-green-700">{msg}</span>}
       </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 border-t border-line pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs">
+          <span className={`rounded-full px-2.5 py-1 font-semibold ${OUTREACH_PILL[status] || OUTREACH_PILL.none}`}>
+            {status === "drafted" ? "draft ready" : status === "none" ? "needs outreach" : status}
+          </span>
+          {!hasEmail && <span className="text-red-600">No owner email — can&apos;t send.</span>}
+        </div>
+        <div className="flex items-center gap-3 text-xs">
+          {!open && hasEmail && (
+            <button onClick={() => setOpen(true)} className="font-semibold text-brand hover:underline">
+              {status === "drafted" ? "Review draft" : "Write outreach"}
+            </button>
+          )}
+          {status !== "skipped" && (
+            <button
+              disabled={pending}
+              onClick={() => start(async () => { await skipForgeOutreach(item.id); setMsg("Skipped."); })}
+              className="text-ink-soft hover:text-ink disabled:opacity-50"
+            >
+              Skip
+            </button>
+          )}
+        </div>
+      </div>
+
+      {open && hasEmail && (
+        <div className="mt-3 space-y-2">
+          <p className="text-xs text-ink-soft">
+            To {item.email}. The claim code, a link to their live site, and a “book a call” button are added
+            automatically — just write the note.
+          </p>
+          <input
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm focus:border-brand focus:outline-none"
+          />
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={6}
+            className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm focus:border-brand focus:outline-none"
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  const r = await sendForgeOutreach(item.id, subject, body);
+                  setMsg(r.message);
+                  if (r.ok) setSent(true);
+                })
+              }
+              className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-60"
+            >
+              {pending ? "Sending…" : "Approve & send"}
+            </button>
+            <button onClick={() => setOpen(false)} className="rounded-full border border-line px-4 py-2 text-sm font-semibold hover:bg-surface">
+              Close
+            </button>
+            {msg && <span className="text-xs text-ink-soft">{msg}</span>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

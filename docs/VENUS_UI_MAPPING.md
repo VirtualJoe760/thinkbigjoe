@@ -153,6 +153,15 @@ minutes and should require his explicit approval before that happens; a babysitt
 10-minute subprocess is also the wrong shape for a cron. Venus's crons are all bounded, fast,
 tool-calling turns — the forge poller is boring, reliable, unattended infrastructure instead.
 
+**Built → outreach handoff.** Once a site is `built` (and unclaimed), the **"TBJ Forge Outreach"**
+cron has the **outreach** agent pull it with `list_forge_outreach_queue` and draft the owner email
+with `save_forge_outreach_draft` (sets `forge_sites.outreach_status='drafted'`, `audit()`s
+`forge_outreach_drafted`). Joe reviews each draft in `/command/prospects` → **Built** and clicks
+**Approve & send** (`sendForgeOutreach()` server action → SMTP via `sendForgeOutreachEmail`, which
+appends the live-site link, the **claim code**, and a **book-a-call** button). Sending flips
+`outreach_status='sent'` + `contacted_at`. The agent only drafts — Joe's approve-&-send is the human
+gate on outbound email; the owner's two doors are *sign in & claim the site* or *book a call with Joe*.
+
 ---
 
 ### `/command/automation` — Automation settings
@@ -172,8 +181,8 @@ aren't being sent.
 | Reported summaries | `activity_log` (no `auto` flag) | `log_activity` | every cron calls this at the end |
 
 **Verified vs reported.** Every state-changing MCP tool (`mark_sent`, `save_inbound_reply`,
-`save_reply_draft`, `handle_reply`, `add_prospect`, `add_forge_prospect`, `update_prospect`,
-`schedule_followup`, `mark_followup_sent`, `book_appointment`) calls `audit()` as a side effect of
+`save_reply_draft`, `handle_reply`, `add_prospect`, `add_forge_prospect`, `save_forge_outreach_draft`,
+`update_prospect`, `schedule_followup`, `mark_followup_sent`, `book_appointment`) calls `audit()` as a side effect of
 its real DB write. `actor` is normally `'venus'`; `/api/forge/register` is the one exception — it
 logs with `actor: 'forge'` because that event is reported by deterministic infra (the build
 poller), not an LLM decision.
@@ -198,6 +207,7 @@ and the action's `event_type` should be listed in the owning cron's `eventTypes`
 | TBJ Follow-up Drip (weekdays 10am) | `list_due_followups`, `mark_followup_sent`, `log_activity` | `/command` (no dedicated surface yet) |
 | TBJ Follow-up Scheduler (Sunday 3am) | `list_connected_without_followups`, `list_incomplete_followup_sequences`, `schedule_followup`, `log_activity` | `/command` (no dedicated surface yet) |
 | TBJ Forge Prospect Scout (4am daily) | `add_forge_prospect`, `list_forge_queue`, `log_activity` | `/command/sites` (Needs your review) |
+| TBJ Forge Outreach (4pm daily) | `list_forge_outreach_queue`, `save_forge_outreach_draft`, `log_activity` | `/command/prospects` (Built — draft → Approve & send) |
 | *(not a Venus cron)* `factory/forge-poll.mjs` on Joe's Mac | n/a — plain poller, not an MCP tool | `/command/sites` (Queued to build → Built) |
 
 ---
