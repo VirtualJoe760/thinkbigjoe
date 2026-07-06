@@ -328,15 +328,19 @@
       (on ? "background:#2f6bff;color:#fff;" : "background:transparent;color:#cfd2d8;") + '">' + label + "</button>";
   }
   function renderBar() {
+    var canUndo = edits.length > 0;
     bar.innerHTML =
       '<span style="display:inline-flex;background:#2a2b31;border-radius:999px;padding:2px;">' +
       modeBtn("__tbj-m-el", "Elements", mode === "element") + modeBtn("__tbj-m-sec", "Sections", mode === "section") + "</span>" +
-      (edits.length ? '<button id="__tbj-undo" style="background:#33343a;color:#fff;border:0;border-radius:999px;padding:7px 12px;font-size:13px;cursor:pointer;">↶ Undo</button>' : "") +
+      // Undo lives right next to the mode toggle, always visible (dimmed when empty).
+      '<button id="__tbj-undo"' + (canUndo ? "" : " disabled") +
+      ' style="background:#33343a;color:#fff;border:0;border-radius:999px;padding:7px 12px;font-size:13px;' +
+      "cursor:" + (canUndo ? "pointer" : "default") + ";opacity:" + (canUndo ? "1" : ".4") + ';">↶ Undo</button>' +
       '<span style="background:#2f6bff;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;">' + edits.length + "</span>" +
-      (edits.length ? '<button id="__tbj-send" style="background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:8px 16px;font-weight:600;font-size:13px;cursor:pointer;">Send ' + edits.length + " edit" + (edits.length > 1 ? "s" : "") + " →</button>" : "");
+      (canUndo ? '<button id="__tbj-send" style="background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:8px 16px;font-weight:600;font-size:13px;cursor:pointer;">Send ' + edits.length + " edit" + (edits.length > 1 ? "s" : "") + " →</button>" : "");
     bar.querySelector("#__tbj-m-el").onclick = function () { mode = "element"; closePanel(); hl.style.display = "none"; renderBar(); };
     bar.querySelector("#__tbj-m-sec").onclick = function () { mode = "section"; closePanel(); hl.style.display = "none"; renderBar(); };
-    var u = bar.querySelector("#__tbj-undo"); if (u) u.onclick = undo;
+    var u = bar.querySelector("#__tbj-undo"); if (u && canUndo) u.onclick = undo;
     var s = bar.querySelector("#__tbj-send"); if (s) s.onclick = submit;
   }
   function submit() {
