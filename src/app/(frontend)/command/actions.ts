@@ -96,6 +96,7 @@ export async function denyForgeSite(id: string, reason?: string) {
   }
   revalidatePath("/command/sites");
   revalidatePath("/command/prospects");
+  revalidatePath("/command/leads");
 }
 
 /**
@@ -147,6 +148,7 @@ export async function sendForgeOutreach(
     metadata: { auto: true, target: site.slug, detail: { siteId: site.id, email: site.email, subject: subj, touch } },
   });
   revalidatePath("/command/prospects");
+  revalidatePath("/command/leads");
   return { ok: true, message: `Sent to ${site.email}.` };
 }
 
@@ -158,6 +160,7 @@ export async function skipForgeOutreach(id: string) {
     .set({ outreachStatus: "skipped", updatedAt: now() })
     .where(eq(forgeSites.id, Number(id)));
   revalidatePath("/command/prospects");
+  revalidatePath("/command/leads");
 }
 
 export async function markSent(id: string, prospectId: string) {

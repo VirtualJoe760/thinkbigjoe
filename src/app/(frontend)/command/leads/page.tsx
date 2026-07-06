@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 
-import { db, leads, prospects, replyDrafts } from "@/db";
+import { db, leads, prospects, replyDrafts, forgeSites } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
+import { SitesQueue, type ForgeSiteItem } from "../sites/sites-queue";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -39,8 +40,10 @@ function draftStatusPill(status: string) {
 export default async function LeadsPage() {
   await requireAdmin();
 
-  // Inbound form leads + LinkedIn replied prospects (in parallel).
-  const [formLeads, repliedProspects] = await Promise.all([
+  // Web-dev leads (built, unclaimed businesses — the ones to call), inbound form
+  // leads, and LinkedIn replied prospects (in parallel).
+  const [webDevRows, formLeads, repliedProspects] = await Promise.all([
+    db.select().from(forgeSites).where(eq(forgeSites.status, "built")).orderBy(desc(forgeSites.builtAt)),
     db.select().from(leads).orderBy(desc(leads.createdAt)).limit(200),
     db
       .select({
@@ -80,9 +83,71 @@ export default async function LeadsPage() {
 
   const awaitingCount = Object.values(draftsByProspect).filter((d) => d.status === "awaiting").length;
 
+  // Built businesses we haven't converted yet — callable leads.
+  const webDevLeads: ForgeSiteItem[] = webDevRows
+    .filter((r) => !r.claimedByUserId)
+    .map((r) => ({
+      id: String(r.id),
+      slug: r.slug,
+      businessName: r.businessName,
+      niche: r.niche || "",
+      city: r.city || "",
+      serviceArea: r.serviceArea || "",
+      phone: r.phone || "",
+      email: r.email || "",
+      existingWebsiteUrl: r.existingWebsiteUrl || "",
+      brandColor: r.brandColor || "",
+      theme: r.theme || "",
+      googleRating: r.googleRating || "",
+      reviewCount: r.reviewCount || "",
+      googleMapsUrl: r.googleMapsUrl || "",
+      linkedinUrl: r.linkedinUrl || "",
+      status: r.status,
+      fitReason: r.fitReason || "",
+      source: r.source || "",
+      notes: r.notes || "",
+      liveUrl: r.liveUrl || "",
+      screenshotUrl: r.screenshotUrl || "",
+      buildStatus: r.buildStatus || "",
+      deniedReason: r.deniedReason || "",
+      claimCode: r.claimCode || "",
+      claimed: Boolean(r.claimedByUserId),
+      createdAt: r.createdAt,
+      outreachStatus: r.outreachStatus || "none",
+      outreachSubject: r.outreachSubject || "",
+      outreachDraft: r.outreachDraft || "",
+      contactedAt: r.contactedAt || "",
+      followupCount: r.followupCount || 0,
+      ownerName: r.ownerName || "",
+      instagramUrl: r.instagramUrl || "",
+      facebookUrl: r.facebookUrl || "",
+      contactNotes: r.contactNotes || "",
+    }));
+
   return (
     <div className="px-6 py-8">
       <div className="mx-auto w-full max-w-4xl">
+
+        {/* ── Web-dev leads (built businesses to call) ── */}
+        <section className="mb-10">
+          <div className="mb-1 flex items-center gap-3">
+            <h2 className="text-xl font-extrabold tracking-tight">Web-dev leads — ready to call</h2>
+            <span className="rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-semibold text-green-700">
+              {webDevLeads.length}
+            </span>
+          </div>
+          <p className="mb-4 text-sm text-ink-soft">
+            Businesses we built a site for and haven&apos;t converted yet. Tap 📞 to call, or send the AI first-touch —
+            enriched with owner, email, and socials.
+          </p>
+          {webDevLeads.length === 0 ? (
+            <p className="rounded-2xl border border-line bg-background p-6 text-sm text-ink-soft">
+              None to call yet — built sites show up here once the forge finishes them.
+            </p>
+          ) : (
+            <SitesQueue items={webDevLeads} />
+          )}
+        </section>
 
         {/* ── LinkedIn replies ── */}
         {repliedProspects.length > 0 && (
