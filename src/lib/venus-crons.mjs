@@ -22,6 +22,9 @@
 //     table, shown on /command/prospects). scripts/lead-engine.mjs. When the Apify
 //     credit is spent it no-ops and the agent scout cron below (browser fallback) carries
 //     the goal. These are infra, not cognitive work — so they live in launchd, not here.
+//   • enrich-engine (com.thinkbigjoe.enrichengine) — every 4h, fills email/socials for
+//     no-website leads: Google-searches "<name> <city>" → finds the Facebook page + Yelp,
+//     scrapes the FB page for email/Messenger, gap-fills forge_sites. scripts/enrich-engine.mjs.
 // ---------------------------------------------------------------------------
 
 export const VENUS_CRONS = [
