@@ -369,9 +369,21 @@ export const forgeSites = pgTable("forge_sites", {
 	reviewQuotes: jsonb("review_quotes"),
 	callPrep: text("call_prep"),
 	callPrepAt: timestamp("call_prep_at", { withTimezone: true, mode: 'string' }),
+	photoUrl: text("photo_url"),
 }, (table) => [
 	uniqueIndex("forge_sites_claim_code_key").using("btree", table.claimCode.asc().nullsLast().op("text_ops")),
 	index("forge_sites_outreach_status_idx").using("btree", table.outreachStatus.asc().nullsLast().op("text_ops")),
 	index("forge_sites_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
 	unique("forge_sites_slug_key").on(table.slug),
 ]);
+
+export const jobRequests = pgTable("job_requests", {
+	id: serial().primaryKey().notNull(),
+	kind: text().notNull(),
+	status: text().default('pending').notNull(),
+	requestedBy: text("requested_by"),
+	note: text(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	startedAt: timestamp("started_at", { withTimezone: true, mode: 'string' }),
+	finishedAt: timestamp("finished_at", { withTimezone: true, mode: 'string' }),
+});

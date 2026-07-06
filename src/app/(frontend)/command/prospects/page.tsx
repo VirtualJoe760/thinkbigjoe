@@ -149,6 +149,7 @@ export default async function ProspectsPage({
     socialStats: (r.socialStats as ForgeSiteItem["socialStats"]) || null,
     reviewQuotes: (r.reviewQuotes as ForgeSiteItem["reviewQuotes"]) || [],
     callPrep: r.callPrep || "",
+    photoUrl: r.photoUrl || "",
   }));
 
   const siteCounts: Record<WebdevView, number> = { review: 0, queued: 0, built: 0, archive: 0 };
@@ -304,6 +305,9 @@ export default async function ProspectsPage({
             </a>
           ) : (
             <div className="flex items-center gap-4">
+              <a href="/command/leads" className="inline-flex items-center gap-1 rounded-full bg-green-600 px-3 py-1 text-xs font-semibold text-white hover:bg-green-700">
+                📞 Call room →
+              </a>
               <a href="/api/forge/export" className="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1 text-xs font-semibold text-ink hover:bg-surface">
                 ⬇ Export CSV
               </a>
