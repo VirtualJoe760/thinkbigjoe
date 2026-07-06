@@ -206,7 +206,8 @@ and the action's `event_type` should be listed in the owning cron's `eventTypes`
 | TBJ LinkedIn Inbox Check (every 30m) | `save_inbound_reply`, `save_reply_draft`, `list_connected_without_followups`, `schedule_followup`, `log_activity` | `/command/leads` LinkedIn replies, `/command/[id]` conversation thread |
 | TBJ Follow-up Drip (weekdays 10am) | `list_due_followups`, `mark_followup_sent`, `log_activity` | `/command` (no dedicated surface yet) |
 | TBJ Follow-up Scheduler (Sunday 3am) | `list_connected_without_followups`, `list_incomplete_followup_sequences`, `schedule_followup`, `log_activity` | `/command` (no dedicated surface yet) |
-| TBJ Forge Prospect Scout (4am daily) | `add_forge_prospect`, `list_forge_queue`, `log_activity` | `/command/sites` (Needs your review) |
+| TBJ Forge Prospect Scout (4am daily) | `add_forge_prospect`, `list_forge_queue`, `list_forge_blacklist`, `log_activity` | `/command/prospects` (Needs review) |
+| TBJ Forge Contact Enrichment (5am daily) | `list_forge_needs_contact`, `enrich_forge_contact`, `log_activity` | `/command/prospects` (contact cards + CSV export) |
 | TBJ Forge Outreach (4pm daily) | `list_forge_outreach_queue`, `save_forge_outreach_draft`, `log_activity` | `/command/prospects` (Built — draft → Approve & send) |
 | TBJ Forge Follow-up (5pm daily) | `list_forge_followup_due`, `save_forge_outreach_draft`, `log_activity` | `/command/prospects` (Built — follow-up touch 2–3 → Approve & send) |
 | *(not a Venus cron)* `factory/forge-poll.mjs` on Joe's Mac | n/a — plain poller, not an MCP tool | `/command/sites` (Queued to build → Built) |

@@ -36,6 +36,10 @@ export type ForgeSiteItem = {
   outreachDraft: string;
   contactedAt: string;
   followupCount: number;
+  ownerName: string;
+  instagramUrl: string;
+  facebookUrl: string;
+  contactNotes: string;
 };
 
 const US_STATES = new Set([
@@ -102,26 +106,44 @@ function mapsSearchUrl(item: ForgeSiteItem) {
   return item.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${mapsQuery(item)}`;
 }
 
-function ExternalLinks({ item }: { item: ForgeSiteItem }) {
-  const links: Array<{ label: string; href: string }> = [
-    { label: "Google", href: mapsSearchUrl(item) },
-  ];
-  if (item.linkedinUrl) links.push({ label: "LinkedIn", href: item.linkedinUrl });
-  if (item.existingWebsiteUrl) links.push({ label: "Existing site", href: item.existingWebsiteUrl });
+/** The one-glance contact card: owner + click-to-call + click-to-email + socials,
+ *  so Joe can start dialing straight from the lead. */
+function ContactCard({ item }: { item: ForgeSiteItem }) {
+  const socials: Array<{ label: string; href: string }> = [
+    { label: "Maps", href: mapsSearchUrl(item) },
+    item.instagramUrl && { label: "Instagram", href: item.instagramUrl },
+    item.facebookUrl && { label: "Facebook", href: item.facebookUrl },
+    item.linkedinUrl && { label: "LinkedIn", href: item.linkedinUrl },
+    item.existingWebsiteUrl && { label: "Site", href: item.existingWebsiteUrl },
+  ].filter(Boolean) as Array<{ label: string; href: string }>;
   return (
-    <>
-      {links.map((l) => (
-        <a
-          key={l.label}
-          href={l.href}
-          target="_blank"
-          rel="noreferrer"
-          className="font-medium text-brand underline underline-offset-2"
-        >
-          {l.label} ↗
-        </a>
-      ))}
-    </>
+    <div className="mt-2 rounded-xl border border-line bg-surface px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        {item.ownerName && <span className="text-sm font-semibold text-ink">{item.ownerName}</span>}
+        {item.phone ? (
+          <a href={`tel:${item.phone.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-1 rounded-full bg-green-600 px-3 py-1 text-xs font-semibold text-white hover:bg-green-700">
+            📞 Call {item.phone}
+          </a>
+        ) : (
+          <span className="rounded-full bg-background px-2.5 py-1 text-xs font-medium text-ink-soft">no phone</span>
+        )}
+        {item.email ? (
+          <a href={`mailto:${item.email}`} className="inline-flex items-center gap-1 rounded-full border border-brand px-3 py-1 text-xs font-semibold text-brand hover:bg-brand-tint">
+            ✉️ {item.email}
+          </a>
+        ) : (
+          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">no email — enriching</span>
+        )}
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        {socials.map((s) => (
+          <a key={s.label} href={s.href} target="_blank" rel="noreferrer" className="font-medium text-brand underline underline-offset-2">
+            {s.label} ↗
+          </a>
+        ))}
+      </div>
+      {item.contactNotes && <p className="mt-1.5 text-xs text-ink-soft">{item.contactNotes}</p>}
+    </div>
   );
 }
 
@@ -200,12 +222,8 @@ function DiscoveredRow({ item }: { item: ForgeSiteItem }) {
             <StatusPill status={item.status} />
           </div>
           {item.fitReason && <p className="mt-2 text-sm text-ink-soft">{item.fitReason}</p>}
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-soft">
-            {item.phone && <span>{item.phone}</span>}
-            {item.email && <span>{item.email}</span>}
-            <ExternalLinks item={item} />
-            {item.source && <span>found via {item.source}</span>}
-          </div>
+          <ContactCard item={item} />
+          {item.source && <p className="mt-1.5 text-xs text-ink-soft">found via {item.source}</p>}
           <div className="mt-3 flex flex-wrap items-center gap-2">
         {denying ? (
           <>
@@ -271,7 +289,6 @@ function SimpleRow({ item }: { item: ForgeSiteItem }) {
           <div className="text-sm text-ink-soft">{item.niche} · {cityState(item)}</div>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs">
-          <ExternalLinks item={item} />
           {item.liveUrl && (
             <a href={item.liveUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-brand underline">
               View live site
@@ -281,6 +298,7 @@ function SimpleRow({ item }: { item: ForgeSiteItem }) {
           <StatusPill status={item.status} />
         </div>
       </div>
+      <ContactCard item={item} />
       {showOutreach && <OutreachPanel item={item} />}
     </div>
   );
