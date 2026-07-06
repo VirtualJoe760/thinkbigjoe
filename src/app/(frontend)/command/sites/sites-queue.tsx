@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 
-import { approveForgeSite, denyForgeSite, sendForgeOutreach, skipForgeOutreach } from "../actions";
+import { approveForgeSite, denyForgeSite, sendForgeOutreach, skipForgeOutreach, approveForMarketing, unapproveMarketing, requestForgeRevision, requestForgeRebuild } from "../actions";
 
 export type ForgeSiteItem = {
   id: string;
@@ -44,6 +44,8 @@ export type ForgeSiteItem = {
   reviewQuotes: Array<{ stars?: number; name?: string; text?: string }>;
   callPrep: string;
   photoUrl: string;
+  marketingApprovedAt: string;
+  revisionNote: string;
 };
 
 const fmtNum = (n?: number) => (n == null ? "" : n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
@@ -336,6 +338,85 @@ function DiscoveredRow({ item }: { item: ForgeSiteItem }) {
   );
 }
 
+/** Built-site controls: review tools (edit / studio / AI revision) + the marketing gate.
+ *  A built site is NOT a lead until "Approve for marketing" is clicked. */
+function BuiltActions({ item }: { item: ForgeSiteItem }) {
+  const [revising, setRevising] = useState(false);
+  const [prompt, setPrompt] = useState("");
+  const [pending, start] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+  const approved = !!item.marketingApprovedAt;
+
+  const send = (fn: () => Promise<{ ok: boolean; message: string }>) => {
+    setMsg(null);
+    start(async () => {
+      const r = await fn();
+      setMsg(r.message);
+      if (r.ok) { setRevising(false); setPrompt(""); }
+    });
+  };
+
+  return (
+    <div className="mt-3 rounded-xl border border-line bg-surface p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <a href={`/portal/edit/${item.id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border border-line bg-background px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface">
+          ✏️ Edit site
+        </a>
+        <a href={`/portal/edit/${item.id}?tab=studio`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border border-line bg-background px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface">
+          🎨 Image studio
+        </a>
+        <button onClick={() => setRevising((v) => !v)} className="inline-flex items-center gap-1 rounded-full border border-line bg-background px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface">
+          🛠 Ask forge to revise
+        </button>
+        <button
+          onClick={() => { if (confirm("Rebuild this site from scratch with a completely different design? The current build is replaced.")) send(() => requestForgeRebuild(item.id)); }}
+          disabled={pending}
+          className="inline-flex items-center gap-1 rounded-full border border-line bg-background px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface disabled:opacity-50"
+        >
+          🎲 Rebuild differently
+        </button>
+        <span className="flex-1" />
+        {approved ? (
+          <span className="inline-flex items-center gap-2">
+            <span className="rounded-full bg-green-100 px-3 py-1.5 text-xs font-semibold text-green-700">✓ Approved for marketing — it&apos;s a lead</span>
+            <button onClick={() => send(() => unapproveMarketing(item.id).then(() => ({ ok: true, message: "Pulled back to review." })))} disabled={pending} className="text-xs font-medium text-ink-soft hover:text-ink disabled:opacity-50">
+              undo
+            </button>
+          </span>
+        ) : (
+          <button onClick={() => send(() => approveForMarketing(item.id))} disabled={pending} className="inline-flex items-center gap-1 rounded-full bg-green-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-green-700 disabled:opacity-50">
+            ✓ Approve for marketing →
+          </button>
+        )}
+      </div>
+
+      {item.revisionNote && !approved && (
+        <p className="mt-2 text-xs text-amber-700">🛠 Revision in progress: &ldquo;{item.revisionNote}&rdquo; — the forge is rebuilding it.</p>
+      )}
+
+      {revising && (
+        <div className="mt-3">
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            rows={2}
+            placeholder='Tell the forge what to change, e.g. "change the hero to an image carousel" or "make the services a 3-column grid"'
+            className="w-full rounded-lg border border-line bg-background px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <button onClick={() => send(() => requestForgeRevision(item.id, prompt))} disabled={pending || prompt.trim().length < 4} className="rounded-full bg-ink px-4 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50">
+              {pending ? "Sending…" : "Send to forge"}
+            </button>
+            <button onClick={() => { setRevising(false); setPrompt(""); }} className="text-xs font-medium text-ink-soft hover:text-ink">Cancel</button>
+            <span className="text-xs text-ink-soft">rebuilds the site with your change (a few min)</span>
+          </div>
+        </div>
+      )}
+      {msg && <p className="mt-2 text-xs font-medium text-brand">{msg}</p>}
+    </div>
+  );
+}
+
 function SimpleRow({ item }: { item: ForgeSiteItem }) {
   const showOutreach = item.status === "built" && !item.claimed;
   return (
@@ -358,31 +439,10 @@ function SimpleRow({ item }: { item: ForgeSiteItem }) {
           <StatusPill status={item.status} />
         </div>
       </div>
-      {(item.status === "built" || item.status === "building") && (
-        // Admin tools: open the site editor / image studio to make quick fixes
-        // (e.g. resize a logo) before this site goes out to marketing.
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <a
-            href={`/portal/edit/${item.id}`}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface"
-          >
-            ✏️ Edit site
-          </a>
-          <a
-            href={`/portal/edit/${item.id}?tab=studio`}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface"
-          >
-            🎨 Image studio
-          </a>
-          <span className="text-xs text-ink-soft">review &amp; adjust before marketing</span>
-        </div>
-      )}
+      {item.status === "built" && <BuiltActions item={item} />}
       <ContactCard item={item} />
-      {showOutreach && <OutreachPanel item={item} />}
+      {/* Outreach only after the site is approved for marketing (it's a lead then). */}
+      {showOutreach && item.marketingApprovedAt && <OutreachPanel item={item} />}
     </div>
   );
 }

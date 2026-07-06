@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 
 import { db, leads, prospects, replyDrafts, forgeSites } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
@@ -44,7 +44,8 @@ export default async function LeadsPage() {
   // Web-dev leads (built, unclaimed businesses — the ones to call), inbound form
   // leads, and LinkedIn replied prospects (in parallel).
   const [webDevRows, formLeads, repliedProspects] = await Promise.all([
-    db.select().from(forgeSites).where(eq(forgeSites.status, "built")).orderBy(desc(forgeSites.builtAt)),
+    // Only sites APPROVED FOR MARKETING are leads — built-but-unapproved stay in prospecting review.
+    db.select().from(forgeSites).where(and(eq(forgeSites.status, "built"), isNotNull(forgeSites.marketingApprovedAt))).orderBy(desc(forgeSites.marketingApprovedAt)),
     db.select().from(leads).orderBy(desc(leads.createdAt)).limit(200),
     db
       .select({
@@ -127,6 +128,8 @@ export default async function LeadsPage() {
       reviewQuotes: (r.reviewQuotes as ForgeSiteItem["reviewQuotes"]) || [],
       callPrep: r.callPrep || "",
       photoUrl: r.photoUrl || "",
+      marketingApprovedAt: r.marketingApprovedAt || "",
+      revisionNote: r.revisionNote || "",
     }));
 
   return (

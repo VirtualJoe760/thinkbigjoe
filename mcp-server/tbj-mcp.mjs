@@ -542,6 +542,7 @@ async function toolListForgeOutreachQueue({ status } = {}) {
             google_rating, review_count, instagram_url, facebook_url, linkedin_url
      FROM forge_sites
      WHERE status = 'built' AND claim_code IS NOT NULL AND claimed_by_user_id IS NULL
+       AND marketing_approved_at IS NOT NULL   -- only leads Joe approved for marketing
        AND outreach_status = $1
      ORDER BY built_at DESC NULLS LAST, created_at DESC
      LIMIT 50`,
@@ -1169,7 +1170,7 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.12.0" },
+  { name: "tbj-mcp", version: "2.13.0" },
   { capabilities: { tools: {} } },
 );
 
