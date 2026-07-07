@@ -89,6 +89,7 @@ bulk runs — they all write into the same table the (much more expensive) forge
 | `scripts/enrich-engine.mjs` | `com.thinkbigjoe.enrichengine` | Apify-based contact enrichment (Google Search → Facebook page → email/Messenger) for leads missing email/socials. *(Currently the free `prospector` agent cron does this instead — see the cron table below — to save Apify budget; this script is kept for a manual "turbo" fill.)* |
 | `scripts/callprep-engine.mjs` | `com.thinkbigjoe.callprepengine` | Apify-based review-quote + follower-count + talking-points generation. Same note as above — the free agent cron is primary now. |
 | `scripts/trigger-poll.mjs` | `com.thinkbigjoe.triggerpoll` | Drains `job_requests` (the "Find leads now"/"Enrich now" buttons) — runs `lead-engine.mjs` or triggers the enrichment cron on demand. |
+| `scripts/preview-engine.mjs` | `com.thinkbigjoe.previewengine` | Batch-generates the cheap pre-sale **showroom previews** (Gemini hero copy + claim code + 14-day window) for contactable, un-previewed prospects, via `POST /api/forge/preview`. NO forge build. |
 
 **Check what's actually running:** `launchctl list | grep thinkbigjoe` — a `-` in the PID column
 means loaded-but-idle (fires on its next schedule tick), no line at all means unloaded. After the
@@ -96,6 +97,23 @@ means loaded-but-idle (fires on its next schedule tick), no line at all means un
 unloaded pending review — **verify current state before assuming any engine is live.**
 
 ---
+
+## Showroom / sell-first preview flow
+
+Sell the vision cheaply, build only on commitment. A prospect gets a **personalized preview**
+(no forge build) that they **claim** to trigger the real build. The three layers:
+
+| Layer | Where | What |
+|---|---|---|
+| **UI** | `/s/[slug]` (public) + `portal` TemplatePicker + claim "building" state | The personalized preview page (Gemini copy, real reviews, brand color, "reserved for N days") with a claim-&-build CTA; owner can switch template + sees a build-in-progress banner. |
+| **MCP tool** | `generate_forge_preview` (tbj-mcp) | Venus/agents mint a preview on demand → `POST /api/forge/preview`. |
+| **Schedule** | `scripts/preview-engine.mjs` (launchd) | Batch-generates previews for contactable prospects. |
+
+**The trigger inversion:** the claim code is minted at **preview** time (not build time), and
+`claimSite()` sets `status='approved'` when an unbuilt preview is claimed — so **claiming IS the
+build trigger** (forge-poll picks it up). `chooseTemplate()` re-queues with a `preferred_template`.
+Generation logic lives once in `src/lib/forge-preview.ts` (`generatePreview`); the API route, MCP
+tool, and cron are all thin callers. Previews cost ~$0 and expire after 14 days (`preview_expires_at`).
 
 ## Venus crons (agent-driven — see manifest for exact prompts)
 
