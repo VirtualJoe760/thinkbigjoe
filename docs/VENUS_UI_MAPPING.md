@@ -100,6 +100,9 @@ unloaded pending review — **verify current state before assuming any engine is
 
 ## Showroom / sell-first preview flow
 
+> Full engine doc: **[SHOWROOM.md](SHOWROOM.md)** — the end-to-end funnel, generation lib, preview
+> page, `preview_engine` waves, schema, and economics. This section is just the UI↔tool↔cron map.
+
 Sell the vision cheaply, build only on commitment. A prospect gets a **personalized preview**
 (no forge build) that they **claim** to trigger the real build. The three layers:
 
