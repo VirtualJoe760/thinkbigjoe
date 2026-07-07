@@ -397,3 +397,12 @@ export const forgeSites = pgTable("forge_sites", {
 	index("forge_sites_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
 	unique("forge_sites_slug_key").on(table.slug),
 ]);
+
+export const previewEngine = pgTable("preview_engine", {
+	id: serial().primaryKey().notNull(),
+	dailyBudget: integer("daily_budget").default(30).notNull(),
+	enabled: boolean().default(true).notNull(),
+	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
+	lastRunSummary: text("last_run_summary"),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+});
