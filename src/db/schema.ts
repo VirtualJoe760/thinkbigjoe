@@ -415,3 +415,12 @@ export const outreachEngine = pgTable("outreach_engine", {
 	lastRunSummary: text("last_run_summary"),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });
+
+export const forgeEngine = pgTable("forge_engine", {
+	id: serial().primaryKey().notNull(),
+	enabled: boolean().default(false).notNull(),
+	avgBuildMinutes: integer("avg_build_minutes").default(12).notNull(),
+	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
+	lastRunSummary: text("last_run_summary"),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+});

@@ -5,7 +5,7 @@ import { eq, inArray } from "drizzle-orm";
 
 import { and, sql } from "drizzle-orm";
 
-import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine, jobRequests, outreachEngine, previewEngine } from "@/db";
+import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine, jobRequests, outreachEngine, previewEngine, forgeEngine } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
 import { sendForgeOutreachEmail } from "@/lib/email";
 
@@ -23,6 +23,19 @@ export async function updateShowroomEngines(input: {
   const b = Math.max(0, Math.min(1000, Math.round(input.dailyBudget || 0)));
   await db.update(outreachEngine).set({ dailyGoal: g, enabled: input.outreachEnabled, updatedAt: now() }).where(eq(outreachEngine.id, 1));
   await db.update(previewEngine).set({ dailyBudget: b, enabled: input.previewEnabled, updatedAt: now() }).where(eq(previewEngine.id, 1));
+  revalidatePath("/command/prospects");
+}
+
+/** Flip the build engine (forge) on or off. The launchd poller reads this each tick and only builds when on. */
+export async function toggleForge(enabled: boolean) {
+  await assertAdmin();
+  await db.update(forgeEngine).set({ enabled, updatedAt: now() }).where(eq(forgeEngine.id, 1));
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "forge_engine_toggled",
+    summary: `Build engine ${enabled ? "turned ON" : "turned OFF"}`,
+    metadata: { detail: { enabled } },
+  });
   revalidatePath("/command/prospects");
 }
 const slugify = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
