@@ -4,19 +4,24 @@ import { useState } from "react";
 import Link from "next/link";
 
 import { ImageStudio } from "./image-studio";
+import { TemplateGallery } from "./template-gallery";
+
+type Tab = "site" | "studio" | "design";
 
 export function EditWorkspace({
   siteId,
   liveUrl,
   businessName,
+  currentTemplate,
   initialTab = "site",
 }: {
   siteId: number;
   liveUrl: string | null;
   businessName: string;
-  initialTab?: "site" | "studio";
+  currentTemplate: string | null;
+  initialTab?: Tab;
 }) {
-  const [tab, setTab] = useState<"site" | "studio">(initialTab);
+  const [tab, setTab] = useState<Tab>(initialTab);
 
   return (
     <div className="flex h-screen flex-col">
@@ -39,6 +44,12 @@ export function EditWorkspace({
           >
             🎨 Studio
           </button>
+          <button
+            onClick={() => setTab("design")}
+            className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${tab === "design" ? "bg-ink text-white" : "text-ink-soft hover:text-ink"}`}
+          >
+            🖼 Design
+          </button>
         </div>
 
         <Link
@@ -49,7 +60,9 @@ export function EditWorkspace({
         </Link>
       </header>
 
-      {tab === "studio" ? (
+      {tab === "design" ? (
+        <TemplateGallery siteId={siteId} current={currentTemplate} />
+      ) : tab === "studio" ? (
         <ImageStudio siteId={siteId} />
       ) : liveUrl ? (
         <iframe

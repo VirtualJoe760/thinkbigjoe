@@ -189,12 +189,62 @@ export default async function SitePreview({ params }: { params: Promise<{ slug: 
         </section>
       ) : null}
 
-      {/* service area */}
-      {(site.serviceArea || site.city) ? (
-        <section className="pb-4 text-center text-neutral-500">
-          <p className="mx-auto max-w-3xl px-6 text-sm">Proudly serving {site.serviceArea || site.city} and the surrounding area.</p>
-        </section>
-      ) : null}
+      {/* what you can do — claim / edit / customize */}
+      <section className="py-16">
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="text-center">
+            <p className="text-sm font-semibold uppercase tracking-wide" style={{ color: brand }}>Your site, your way</p>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight">Claim it today — then make it yours</h2>
+            <p className="mx-auto mt-3 max-w-2xl text-neutral-600">
+              This is a free preview we built for {site.businessName}. Claim it with your code and it&apos;s yours to run and change anytime.
+            </p>
+          </div>
+          <div className="mt-10 grid gap-6 text-left md:grid-cols-3">
+            {[
+              { t: "Claim it free", d: "Create your account, enter your code, and we build & launch the full site for you." },
+              { t: "Edit anything", d: "Change your text and swap images anytime in your own image studio — no tech skills needed." },
+              { t: "Make it yours", d: "Pick a different design template with one click, or ask us for a fully custom build." },
+            ].map((c, i) => (
+              <div key={i} className="rounded-2xl border border-neutral-200 p-6">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold text-white" style={{ background: brand }}>{i + 1}</span>
+                <h3 className="mt-3 text-lg font-semibold">{c.t}</h3>
+                <p className="mt-1.5 text-neutral-600">{c.d}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* contact */}
+      <section className="border-t border-neutral-100 bg-neutral-50 py-16">
+        <div className="mx-auto grid max-w-6xl gap-10 px-6 md:grid-cols-2">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">Get in touch</h2>
+            <p className="mt-3 text-neutral-600">Questions, or ready to book? {site.businessName} is here to help.</p>
+            <div className="mt-6 space-y-3 font-medium text-neutral-700">
+              {site.phone ? (
+                <p>
+                  <a href={`tel:${site.phone.replace(/[^0-9+]/g, "")}`} className="hover:underline">📞 {site.phone}</a>
+                </p>
+              ) : null}
+              {site.serviceArea || site.city ? <p>📍 Serving {site.serviceArea || site.city} and the surrounding area</p> : null}
+              <p>🕐 Fast, friendly response — usually same day</p>
+            </div>
+            <Link href="/portal/claim" className="mt-6 inline-block rounded-full px-6 py-3 font-semibold text-white" style={{ background: brand }}>
+              Request your free quote →
+            </Link>
+          </div>
+          <div className="rounded-3xl border border-neutral-200 bg-white p-6">
+            <div className="space-y-3">
+              <div className="rounded-xl border border-neutral-200 px-4 py-3 text-neutral-400">Your name</div>
+              <div className="rounded-xl border border-neutral-200 px-4 py-3 text-neutral-400">Phone number</div>
+              <div className="rounded-xl border border-neutral-200 px-4 py-6 text-neutral-400">How can we help?</div>
+              <div className="rounded-full px-4 py-3 text-center font-semibold text-white" style={{ background: brand }}>Send message</div>
+            </div>
+            <p className="mt-3 text-center text-xs text-neutral-400">Claim your site to turn this contact form on.</p>
+          </div>
+        </div>
+      </section>
 
       {/* claim CTA */}
       <section className="px-6 py-20 text-center text-white" style={{ background: brand }}>

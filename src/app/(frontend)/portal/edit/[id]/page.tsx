@@ -36,7 +36,8 @@ export default async function EditSitePage({
       siteId={siteId}
       liveUrl={site.liveUrl}
       businessName={site.businessName}
-      initialTab={tab === "studio" ? "studio" : "site"}
+      currentTemplate={site.preferredTemplate}
+      initialTab={tab === "studio" ? "studio" : tab === "design" ? "design" : "site"}
     />
   );
 }

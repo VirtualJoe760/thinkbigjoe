@@ -56,7 +56,11 @@ Claiming *is* the build trigger.
   re-queues a rebuild. Template list in `src/lib/forge-templates.ts`.
 
 **Portal UI** — `portal/page.tsx` (a "building your site" banner + the `TemplatePicker`),
-`portal/claim/claim-form.tsx` (a building state on claim).
+`portal/claim/claim-form.tsx` (a building state on claim), and a **"Design" tab** in
+`portal/edit/[id]` (`template-gallery.tsx`) — a reviewable gallery of the templates (previews in
+`public/templates/`) where an owner picks a design → `chooseTemplate` re-queues a rebuild, plus a
+"want something custom?" prompt. The preview page also explains claim / edit / swap-design /
+custom-build and has a contact section.
 
 **The preview engine (paced waves)** — `scripts/preview-engine.mjs` + `com.thinkbigjoe.previewengine`
 - Generates previews in **daily waves**, warmest-first, capped by a config budget. Config lives in
