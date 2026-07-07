@@ -16,6 +16,9 @@ export type PreviewContent = {
   eyebrow: string;
   headline: string;
   subcopy: string;
+  services: { name: string; blurb: string }[];
+  features: string[];
+  stats: { value: string; label: string }[];
   heroUrl: string | null;
   model: string;
 };
@@ -31,9 +34,9 @@ function titleCase(s: string) {
 type SiteRow = typeof forgeSites.$inferSelect;
 
 /** Ask Gemini for tailored hero copy. Returns null on any failure (caller falls back). */
-async function geminiCopy(
-  site: SiteRow,
-): Promise<{ eyebrow: string; headline: string; subcopy: string } | null> {
+type GeminiCopy = Pick<PreviewContent, "eyebrow" | "headline" | "subcopy" | "services" | "features" | "stats">;
+
+async function geminiCopy(site: SiteRow): Promise<GeminiCopy | null> {
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
   if (!key) return null;
 
@@ -45,9 +48,9 @@ async function geminiCopy(
     rating: site.googleRating,
     reviews: site.reviewCount,
   };
-  const prompt = `You are a senior website copywriter for local service businesses. Write homepage hero copy for "${site.businessName}". Return STRICT JSON, no markdown, with exactly:
-{"eyebrow":"<niche · city, <= 6 words>","headline":"<benefit-driven hero headline, <= 9 words, no company name>","subcopy":"<1-2 warm sentences mentioning the service area or a differentiator, <= 240 chars>"}
-Business facts: ${JSON.stringify(facts)}
+  const prompt = `You are a senior website copywriter for local service businesses. Write homepage copy for "${site.businessName}". Return STRICT JSON, no markdown, with exactly these keys:
+{"eyebrow":"<niche · city, <= 6 words>","headline":"<benefit-driven hero headline, <= 9 words, no company name>","subcopy":"<1-2 warm sentences mentioning the service area or a differentiator, <= 240 chars>","services":[{"name":"<service, 1-3 words>","blurb":"<one concrete sentence, <= 90 chars>"}],"features":["<short trust/benefit phrase, <= 5 words>"],"stats":[{"value":"<short, e.g. 15+ yrs, 4.9★, 24/7>","label":"<1-2 words>"}]}
+Give 3-4 services REAL to this specific trade, 3 features, and 3 stats (use the rating/reviews facts where they fit). Business facts: ${JSON.stringify(facts)}
 Output ONLY the JSON object.`;
 
   try {
@@ -66,10 +69,20 @@ Output ONLY the JSON object.`;
     const cleaned = text.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
     const parsed = JSON.parse(cleaned);
     if (!parsed?.headline) return null;
+    const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
     return {
       eyebrow: String(parsed.eyebrow || "").slice(0, 60),
       headline: String(parsed.headline).slice(0, 90),
       subcopy: String(parsed.subcopy || "").slice(0, 280),
+      services: arr<{ name?: string; blurb?: string }>(parsed.services)
+        .slice(0, 4)
+        .map((s) => ({ name: String(s?.name || "").slice(0, 40), blurb: String(s?.blurb || "").slice(0, 120) }))
+        .filter((s) => s.name),
+      features: arr<string>(parsed.features).slice(0, 4).map((f) => String(f || "").slice(0, 40)).filter(Boolean),
+      stats: arr<{ value?: string; label?: string }>(parsed.stats)
+        .slice(0, 3)
+        .map((s) => ({ value: String(s?.value || "").slice(0, 16), label: String(s?.label || "").slice(0, 20) }))
+        .filter((s) => s.value),
     };
   } catch {
     return null;
@@ -87,12 +100,30 @@ export async function generatePreview(siteId: number): Promise<GenPreviewResult>
   const nicheLabel = site.niche ? titleCase(site.niche.split(/[—-]/)[0].trim()) : "Local service";
   const place = site.city || site.serviceArea || "your area";
 
+  const nl = nicheLabel.toLowerCase();
   const content: PreviewContent = {
     eyebrow: copy?.eyebrow || `${nicheLabel} · ${place}`,
     headline: copy?.headline || `${nicheLabel} in ${place}, done right.`,
     subcopy:
       copy?.subcopy ||
       `${site.businessName} — ${site.serviceArea ? `proudly serving ${site.serviceArea}` : "trusted, local, and reliable"}. Get a fast, no-pressure quote today.`,
+    services: copy?.services?.length
+      ? copy.services
+      : [
+          { name: "Repairs", blurb: `Fast, reliable ${nl} repairs done right the first time.` },
+          { name: "Installations", blurb: "Quality installs built to last, with upfront pricing." },
+          { name: "Maintenance", blurb: "Keep everything running smoothly with regular service." },
+        ],
+    features: copy?.features?.length
+      ? copy.features
+      : ["Licensed & insured", "Upfront pricing", "Local & family-owned", "Satisfaction guaranteed"],
+    stats: copy?.stats?.length
+      ? copy.stats
+      : [
+          { value: site.googleRating ? `${site.googleRating}★` : "5★", label: "Rated" },
+          { value: site.reviewCount || "100+", label: "Reviews" },
+          { value: "Same-day", label: "Service" },
+        ],
     heroUrl: site.photoUrl || null,
     model: copy ? MODEL : "fallback",
   };
