@@ -11,6 +11,7 @@ import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
 import { PLANS, type PlanKey } from "@/lib/plans";
 import { SiteBilling } from "./site-billing";
+import { TemplatePicker } from "./template-picker";
 
 export const metadata: Metadata = {
   title: "Portal",
@@ -62,6 +63,8 @@ export default async function PortalPage() {
       id: forgeSites.id,
       businessName: forgeSites.businessName,
       liveUrl: forgeSites.liveUrl,
+      status: forgeSites.status,
+      preferredTemplate: forgeSites.preferredTemplate,
       plan: forgeSites.plan,
       oneTimePaid: forgeSites.oneTimePaid,
       domainCredits: forgeSites.domainCredits,
@@ -131,6 +134,15 @@ export default async function PortalPage() {
                     </span>
                   )}
                 </div>
+
+                {(site.status === "approved" || site.status === "building") && (
+                  <div className="mt-3 flex items-center gap-2 rounded-xl border border-brand/40 bg-brand-tint px-4 py-3 text-sm text-brand">
+                    <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-brand" />
+                    We&apos;re building your site now — it&apos;ll appear here shortly.
+                  </div>
+                )}
+
+                <TemplatePicker siteId={site.id} current={site.preferredTemplate} />
 
                 {site.oneTimePaid ? (
                   <>

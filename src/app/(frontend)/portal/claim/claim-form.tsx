@@ -55,12 +55,18 @@ export function ClaimForm() {
     return (
       <div className="rounded-2xl border border-brand bg-brand-tint p-8">
         <p className="text-sm font-semibold tracking-wide text-brand uppercase">
-          Site claimed
+          {state.building ? "Building your site" : "Site claimed"}
         </p>
         <h2 className="mt-2 text-2xl font-bold tracking-tight">
           {state.site.businessName} is yours.
         </h2>
         <p className="mt-2 text-ink-soft">{state.message}</p>
+        {state.building && (
+          <div className="mt-4 flex items-center gap-2 rounded-xl border border-brand/40 bg-background px-4 py-3 text-sm text-brand">
+            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-brand" />
+            Your site is being built now — track it in your portal.
+          </div>
+        )}
         <VerifyIdentityButton siteId={state.site.id} />
         <div className="mt-6 flex flex-wrap gap-3">
           {state.site.liveUrl && (

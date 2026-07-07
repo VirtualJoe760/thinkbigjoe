@@ -1166,11 +1166,44 @@ async function toolBookAppointment({ name, email, start_time, end_time, phone, c
   }
 }
 
+async function toolGenerateForgePreview({ site_id, slug }) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) {
+    return { content: [{ type: "text", text: "❌ CRON_SECRET is not set in environment." }] };
+  }
+  if (!site_id && !slug) {
+    return { content: [{ type: "text", text: "❌ Provide site_id or slug." }] };
+  }
+  try {
+    const resp = await fetch(`${APP_SITE_URL}/api/forge/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${secret}` },
+      body: JSON.stringify(site_id ? { siteId: site_id } : { slug }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.ok) {
+      return { content: [{ type: "text", text: `❌ Preview generation failed (${resp.status}): ${data?.error || "unknown error"}` }] };
+    }
+    await audit("forge_preview_generated", `Generated preview for ${slug || "site " + site_id}`, {
+      target: slug || String(site_id),
+      detail: { claimCode: data.claimCode, usedGemini: data.usedGemini },
+    });
+    return {
+      content: [{
+        type: "text",
+        text: `✅ Preview ready — claim code ${data.claimCode}. Send the preview link /s/<slug> in outreach; when the owner claims it, the real site build kicks off.`,
+      }],
+    };
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Preview request failed: ${err?.message || String(err)}` }] };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.13.0" },
+  { name: "tbj-mcp", version: "2.14.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1288,6 +1321,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           source: { type: "string", description: "How this business was found. Defaults to 'venus_forge_scout'." },
         },
         required: ["business_name", "niche", "city", "fit_reason"],
+      },
+    },
+    {
+      name: "generate_forge_preview",
+      description: "Generate the cheap pre-sale 'showroom' preview for a prospect (Gemini hero copy + a claim code + a 14-day reserved window). NO site is built — this is the personalized page you send in outreach so the owner can claim it, which then triggers the real build. Pass site_id (preferred) or slug.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          site_id: { type: "number", description: "forge_sites.id of the prospect to generate a preview for." },
+          slug: { type: "string", description: "The prospect's slug (alternative to site_id)." },
+        },
       },
     },
     {
@@ -1587,6 +1631,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "check_outreach_window": return toolCheckOutreachWindow();
     case "add_prospect": return toolAddProspect(args);
     case "add_forge_prospect": return toolAddForgeProspect(args);
+    case "generate_forge_preview": return toolGenerateForgePreview(args);
     case "list_forge_queue": return toolListForgeQueue(args);
     case "apify_find_businesses": return toolApifyFindBusinesses(args);
     case "apify_find_instagram": return toolApifyFindInstagram(args);
