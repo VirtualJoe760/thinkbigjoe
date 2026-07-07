@@ -136,6 +136,27 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
 
 3. Finish with log_activity, event_type "forge_outreach_drafted", summary like "Drafted N follow-ups (touches 2–3)". marketing-manager reads this for the digest — you don't message Joe directly.`,
   },
+
+  {
+    name: "TBJ Marketing Manager",
+    id: "c7e4a1b8-2f63-4d90-a5c1-8b9e0d2f3a4c",
+    agent: "marketing-manager",
+    schedule: "30 15 * * *",
+    stagger: "5m",
+    summary: "Run the showroom funnel: read the numbers, keep preview supply ahead of the outreach goal, chase expiring previews, digest to Joe.",
+    tools: ["forge_funnel_stats", "set_preview_budget", "list_expiring_previews", "log_activity"],
+    uiSurface: ["/command/prospects (funnel digest)"],
+    eventTypes: ["marketing_digest", "preview_budget_set"],
+    prompt: `You run the SHOWROOM funnel — turn free previews into claimed, built, paid sites. Keep it flowing and paced; never let warm inventory go stale. You observe + tune the dials; the outreach agent does the actual drafting.
+
+1. READ: call forge_funnel_stats — stage counts (discovered → preview → sent → claimed → built → paid), conversion rates, today's numbers vs the goal, the dials, and anything expiring.
+
+2. KEEP SUPPLY AHEAD OF DEMAND: the preview wave budget should be ~1.5× the outreach goal so the outreach agent always has fresh inventory but nothing piles up to expire. If it's off, call set_preview_budget to fix it (e.g. goal 15 → budget ~23). Don't wildly over-mint.
+
+3. CHASE EXPIRING PREVIEWS: call list_expiring_previews — any sent-but-unclaimed preview near its 14-day expiry is warm inventory about to be lost. Flag them so the outreach agent does a final-push follow-up.
+
+4. DIGEST: finish with log_activity, event_type "marketing_digest", summary like "Funnel: P previews · S sent · C claimed · K calls booked. sent→claimed X%. Budget→N. E expiring — flagged." This is Joe's daily read on the whole machine.`,
+  },
 ];
 
 export default VENUS_CRONS;

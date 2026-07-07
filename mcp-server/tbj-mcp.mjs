@@ -1266,11 +1266,82 @@ async function toolGenerateForgePreview({ site_id, slug }) {
   }
 }
 
+async function toolForgeFunnelStats() {
+  const q = async (s, p = []) => Number((await query(s, p)).rows[0].n);
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const ds = dayStart.toISOString();
+  const discovered = await q("SELECT count(*) n FROM forge_sites WHERE status='discovered'");
+  const withPreview = await q("SELECT count(*) n FROM forge_sites WHERE preview IS NOT NULL");
+  const sent = await q("SELECT count(*) n FROM forge_sites WHERE outreach_status='sent'");
+  const claimed = await q("SELECT count(*) n FROM forge_sites WHERE claimed_by_user_id IS NOT NULL");
+  const built = await q("SELECT count(*) n FROM forge_sites WHERE status='built'");
+  const paid = await q("SELECT count(*) n FROM forge_sites WHERE one_time_paid=true");
+  const draftedToday = await q("SELECT count(*) n FROM activity_log WHERE event_type='forge_outreach_drafted' AND created_at>=$1", [ds]);
+  const genToday = await q("SELECT count(*) n FROM forge_sites WHERE preview_generated_at>=$1", [ds]);
+  const expiring = await q("SELECT count(*) n FROM forge_sites WHERE preview IS NOT NULL AND claimed_by_user_id IS NULL AND outreach_status='sent' AND preview_expires_at IS NOT NULL AND preview_expires_at < now()+interval '3 days'");
+  const oe = (await query("SELECT daily_goal,enabled FROM outreach_engine WHERE id=1")).rows[0] || {};
+  const pe = (await query("SELECT daily_budget,enabled FROM preview_engine WHERE id=1")).rows[0] || {};
+  const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+  const text = [
+    `📊 **Forge funnel**`,
+    ``,
+    `discovered ${discovered} → preview ${withPreview} → sent ${sent} → claimed ${claimed} → built ${built} → paid ${paid}`,
+    `conversion: sent→claimed ${pct(claimed, sent)}% · claimed→built ${pct(built, claimed)}% · built→paid ${pct(paid, built)}%`,
+    `today: ${genToday} previews generated · ${draftedToday}/${oe.daily_goal ?? "?"} outreach drafted`,
+    `dials: outreach goal ${oe.daily_goal ?? "?"} (${oe.enabled ? "on" : "OFF"}) · preview budget ${pe.daily_budget ?? "?"} (${pe.enabled ? "on" : "OFF"})`,
+    expiring ? `⚠️ ${expiring} preview(s) expiring within 3 days — chase them (list_expiring_previews).` : `no previews expiring soon.`,
+  ].join("\n");
+  return { content: [{ type: "text", text }] };
+}
+
+async function toolSetOutreachGoal({ daily_goal, enabled } = {}) {
+  const sets = [];
+  const vals = [];
+  if (daily_goal != null) { vals.push(Math.max(0, Math.min(500, Number(daily_goal) || 0))); sets.push(`daily_goal=$${vals.length}`); }
+  if (enabled != null) { vals.push(Boolean(enabled)); sets.push(`enabled=$${vals.length}`); }
+  if (!sets.length) return { content: [{ type: "text", text: "Nothing to set — pass daily_goal and/or enabled." }] };
+  await query(`UPDATE outreach_engine SET ${sets.join(", ")}, updated_at=now() WHERE id=1`, vals);
+  const r = (await query("SELECT daily_goal,enabled FROM outreach_engine WHERE id=1")).rows[0];
+  await audit("outreach_goal_set", `Outreach goal → ${r.daily_goal}/day (${r.enabled ? "on" : "off"})`, { detail: r });
+  return { content: [{ type: "text", text: `✅ Outreach goal: ${r.daily_goal}/day, ${r.enabled ? "enabled" : "paused"}.` }] };
+}
+
+async function toolSetPreviewBudget({ daily_budget, enabled } = {}) {
+  const sets = [];
+  const vals = [];
+  if (daily_budget != null) { vals.push(Math.max(0, Math.min(1000, Number(daily_budget) || 0))); sets.push(`daily_budget=$${vals.length}`); }
+  if (enabled != null) { vals.push(Boolean(enabled)); sets.push(`enabled=$${vals.length}`); }
+  if (!sets.length) return { content: [{ type: "text", text: "Nothing to set — pass daily_budget and/or enabled." }] };
+  await query(`UPDATE preview_engine SET ${sets.join(", ")}, updated_at=now() WHERE id=1`, vals);
+  const r = (await query("SELECT daily_budget,enabled FROM preview_engine WHERE id=1")).rows[0];
+  await audit("preview_budget_set", `Preview budget → ${r.daily_budget}/day (${r.enabled ? "on" : "off"})`, { detail: r });
+  return { content: [{ type: "text", text: `✅ Preview wave budget: ${r.daily_budget}/day, ${r.enabled ? "enabled" : "paused"}.` }] };
+}
+
+async function toolListExpiringPreviews() {
+  const res = await query(
+    `SELECT id, slug, business_name, email, claim_code, preview_expires_at,
+            ceil(extract(epoch from (preview_expires_at - now()))/86400) AS days_left
+     FROM forge_sites
+     WHERE preview IS NOT NULL AND claimed_by_user_id IS NULL AND outreach_status='sent'
+       AND preview_expires_at IS NOT NULL AND preview_expires_at < now() + interval '4 days'
+     ORDER BY preview_expires_at ASC LIMIT 50`,
+  );
+  if (!res.rows.length) return { content: [{ type: "text", text: "No previews expiring in the next 4 days. Nothing to chase." }] };
+  const lines = [`⏳ **${res.rows.length} preview(s) expiring soon** (sent, unclaimed) — final-push follow-up:`, ""];
+  for (const r of res.rows) {
+    lines.push(`#${r.id} ${r.business_name} · ${Math.max(0, Number(r.days_left))}d left · code ${r.claim_code}${r.email ? ` · ${r.email}` : ""} · ${APP_SITE_URL}/s/${r.slug}`);
+  }
+  lines.push("", "For each: draft a last-chance follow-up (save_forge_outreach_draft), or regenerate the preview (generate_forge_preview) to reset the 14-day clock.");
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
 // ---------------------------------------------------------------------------
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.16.0" },
+  { name: "tbj-mcp", version: "2.17.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1542,6 +1613,26 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "forge_funnel_stats",
+      description: "The showroom funnel at a glance: stage counts (discovered → preview → sent → claimed → built → paid), conversion rates, today's generated/drafted vs the goal, the current dials, and how many previews are expiring soon. Call at the start of the marketing-manager run.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "set_outreach_goal",
+      description: "Set the daily OUTREACH goal (first-touches/day — the pacing + token dial) and/or enable/pause outreach. Raise to scale sends, lower to protect deliverability or token budget.",
+      inputSchema: { type: "object", properties: { daily_goal: { type: "number", description: "First-touch drafts per day (0-500)." }, enabled: { type: "boolean", description: "Turn outreach drafting on/off." } } },
+    },
+    {
+      name: "set_preview_budget",
+      description: "Set the daily PREVIEW wave budget (how many previews generated/day — keep ~1.5× the outreach goal so inventory stays ahead) and/or enable/pause preview generation.",
+      inputSchema: { type: "object", properties: { daily_budget: { type: "number", description: "Previews to generate per day (0-1000)." }, enabled: { type: "boolean", description: "Turn preview generation on/off." } } },
+    },
+    {
+      name: "list_expiring_previews",
+      description: "List previews that were SENT but not yet claimed and expire within ~4 days — the warm inventory to chase with a final-push follow-up (or regenerate to reset the 14-day clock) before it's lost.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
       name: "list_forge_followup_due",
       description: "List built sites that got an initial outreach email, haven't claimed or replied, and are overdue for a FOLLOW-UP (>3 days since the last touch, under 3 emails total). Returns which touch is next and the prior subject so you can write a fresh angle. Draft each with save_forge_outreach_draft; Joe reviews + sends. Stop after touch 3.",
       inputSchema: { type: "object", properties: {} },
@@ -1719,6 +1810,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "apify_extract_contacts": return toolApifyExtractContacts(args);
     case "list_forge_outreach_queue": return toolListForgeOutreachQueue(args);
     case "list_forge_preview_outreach": return toolListForgePreviewOutreach(args);
+    case "forge_funnel_stats": return toolForgeFunnelStats();
+    case "set_outreach_goal": return toolSetOutreachGoal(args);
+    case "set_preview_budget": return toolSetPreviewBudget(args);
+    case "list_expiring_previews": return toolListExpiringPreviews();
     case "save_forge_outreach_draft": return toolSaveForgeOutreachDraft(args);
     case "mark_forge_outreach_sent": return toolMarkForgeOutreachSent(args);
     case "list_forge_followup_due": return toolListForgeFollowupDue(args);
