@@ -31,10 +31,14 @@ Claiming *is* the build trigger.
 ## The pieces (what's built) ✅
 
 **Preview generation** — `src/lib/forge-preview.ts` (`generatePreview(siteId)`)
-- Gemini 2.5 Flash writes tailored hero copy (eyebrow / headline / subcopy); the hero image reuses
-  the already-scraped business photo (no image gen). Mints the claim code (`generateClaimCode`),
-  sets a **14-day** `preview_expires_at`, stores it all in the `forge_sites.preview` jsonb, and
-  audits. Fallback-safe (templated copy if Gemini fails). Needs `GEMINI_API_KEY`.
+- One Gemini 2.5 Flash call writes the full content — eyebrow / headline / subcopy **plus services
+  (3–4, trade-real), features, and stats**. Mints the claim code (`generateClaimCode`), sets a
+  **14-day** `preview_expires_at`, stores it all in the `forge_sites.preview` jsonb, audits.
+  Fallback-safe (templated copy if Gemini fails). Needs `GEMINI_API_KEY`.
+- **Assets so it never looks empty** (`src/lib/preview-assets.ts`): a **monogram logo** (business
+  initials on the brand color) when the company has no logo, and a **niche-matched placeholder hero
+  image** from a shared set in `public/preview-stock/` (generated once via
+  `scripts/gen-preview-stock.mjs`, reused by every preview for free — no per-preview image cost).
 
 **Trigger API** — `src/app/api/forge/preview/route.ts` (`POST`, `Bearer CRON_SECRET`)
 - The single entry point (`{siteId}` or `{slug}`); the MCP tool, the engine, and manual calls all
