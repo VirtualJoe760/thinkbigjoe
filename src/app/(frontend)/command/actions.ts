@@ -5,11 +5,26 @@ import { eq, inArray } from "drizzle-orm";
 
 import { and, sql } from "drizzle-orm";
 
-import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine, jobRequests } from "@/db";
+import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine, jobRequests, outreachEngine, previewEngine } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
 import { sendForgeOutreachEmail } from "@/lib/email";
 
 const now = () => new Date().toISOString();
+
+/** Set the showroom pacing dials — the daily outreach goal (token cap) + preview wave budget + on/off. */
+export async function updateShowroomEngines(input: {
+  dailyGoal: number;
+  dailyBudget: number;
+  outreachEnabled: boolean;
+  previewEnabled: boolean;
+}) {
+  await assertAdmin();
+  const g = Math.max(0, Math.min(500, Math.round(input.dailyGoal || 0)));
+  const b = Math.max(0, Math.min(1000, Math.round(input.dailyBudget || 0)));
+  await db.update(outreachEngine).set({ dailyGoal: g, enabled: input.outreachEnabled, updatedAt: now() }).where(eq(outreachEngine.id, 1));
+  await db.update(previewEngine).set({ dailyBudget: b, enabled: input.previewEnabled, updatedAt: now() }).where(eq(previewEngine.id, 1));
+  revalidatePath("/command/prospects");
+}
 const slugify = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 const hostOf = (u: string) => {
   try {

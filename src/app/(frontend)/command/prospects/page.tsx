@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { desc, eq, sql } from "drizzle-orm";
 
-import { db, outreach, prospects, forgeSites, leadEngine } from "@/db";
+import { db, outreach, prospects, forgeSites, leadEngine, outreachEngine, previewEngine } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { parseProspectRecon } from "@/lib/prospect-recon";
 import { ReviewQueue, type QueueItem } from "../review-queue";
 import { SitesQueue, type ForgeSiteItem } from "../sites/sites-queue";
 import { LeadEnginePanel, type LeadEngineStats } from "./lead-engine-panel";
+import { ShowroomPanel, type ShowroomStats } from "./showroom-panel";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -105,6 +106,44 @@ export default async function ProspectsPage({
       spendUsd: Number(engineCfg.spendUsd),
       lastRunSummary: engineCfg.lastRunSummary,
       lastRunAt: engineCfg.lastRunAt,
+    };
+  }
+
+  // Showroom engine stats — the sell-first funnel + pacing dials.
+  const [oeCfg, peCfg] = await Promise.all([
+    db.select().from(outreachEngine).where(eq(outreachEngine.id, 1)).limit(1).then((r) => r[0]),
+    db.select().from(previewEngine).where(eq(previewEngine.id, 1)).limit(1).then((r) => r[0]),
+  ]);
+  let showroomStats: ShowroomStats | null = null;
+  if (oeCfg && peCfg) {
+    const sc = async (q: ReturnType<typeof sql>): Promise<number> => {
+      const res = (await db.execute(q)) as unknown as { rows?: { n: number }[] } | { n: number }[];
+      const list = Array.isArray(res) ? res : res.rows || [];
+      return Number(list[0]?.n ?? 0);
+    };
+    const [discovered, withPreview, sent, claimed, built, paid, draftedToday, generatedToday] = await Promise.all([
+      sc(sql`SELECT count(*)::int AS n FROM forge_sites WHERE status='discovered'`),
+      sc(sql`SELECT count(*)::int AS n FROM forge_sites WHERE preview IS NOT NULL`),
+      sc(sql`SELECT count(*)::int AS n FROM forge_sites WHERE outreach_status='sent'`),
+      sc(sql`SELECT count(*)::int AS n FROM forge_sites WHERE claimed_by_user_id IS NOT NULL`),
+      sc(sql`SELECT count(*)::int AS n FROM forge_sites WHERE status='built'`),
+      sc(sql`SELECT count(*)::int AS n FROM forge_sites WHERE one_time_paid = true`),
+      sc(sql`SELECT count(*)::int AS n FROM activity_log WHERE event_type='forge_outreach_drafted' AND created_at >= date_trunc('day', now())`),
+      sc(sql`SELECT count(*)::int AS n FROM forge_sites WHERE preview_generated_at >= date_trunc('day', now())`),
+    ]);
+    showroomStats = {
+      outreachGoal: oeCfg.dailyGoal,
+      outreachEnabled: oeCfg.enabled,
+      previewBudget: peCfg.dailyBudget,
+      previewEnabled: peCfg.enabled,
+      discovered,
+      withPreview,
+      sent,
+      claimed,
+      built,
+      paid,
+      draftedToday,
+      generatedToday,
     };
   }
 
@@ -322,6 +361,12 @@ export default async function ProspectsPage({
             </div>
           )}
         </div>
+
+        {!isLinkedIn && showroomStats && (
+          <div className="mt-6">
+            <ShowroomPanel stats={showroomStats} />
+          </div>
+        )}
 
         {!isLinkedIn && engineStats && (
           <div className="mt-6">
