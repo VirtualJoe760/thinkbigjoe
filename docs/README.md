@@ -74,6 +74,7 @@ from this app's own Vercel project).
 |---|---|
 | [`AGENTS.md`](../AGENTS.md) *(repo root)* | Always — the entry point. Points here, states the full-stack shipping rule, and the docs-freshness protocol. |
 | [`OPENCLAW.md`](OPENCLAW.md) | You're touching an agent's behavior/personality, adding or editing a cron, debugging why an agent "isn't doing anything," or need to know which model an agent should run on. |
+| [`AGENT_PLAYBOOK.md`](AGENT_PLAYBOOK.md) | The step-by-step how-to for the agent org: **update an agent, give it a tool, add a new one, restart the gateway, the cron→agent gotcha, model/quota rules, and scaling to per-client sales agents.** OPENCLAW.md is the concepts; this is the procedures. |
 | [`MCP_TOOLS.md`](MCP_TOOLS.md) | You need to understand how Claude Code, OpenClaw's agents, and this app relate through the MCP server — or you're adding a new MCP tool. |
 | [`FORGE.md`](FORGE.md) | You're touching site-building: a template, the queue/poller, deploy behavior, or anything that could trigger a `claude -p` build. **Read before any bulk `forge_sites` status change.** Includes the architecture map + exact env-var wiring between this repo and the forge repo. |
 | [`VENUS_UI_MAPPING.md`](VENUS_UI_MAPPING.md) | You're building or changing a `/command/**` or `/portal/**` surface, and need to know which MCP tool/cron/engine is supposed to feed it (or vice versa — a UI surface exists and you need to find its data source). |

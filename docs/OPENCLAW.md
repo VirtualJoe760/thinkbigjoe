@@ -5,6 +5,10 @@ deploy target). It runs a **gateway** process that hosts a roster of named agent
 its own persona files, its own scheduled crons, and its own model. This doc is the field guide —
 read it before touching an agent, a cron, or the gateway.
 
+**Need the step-by-step how-to** (update an agent, give it a tool, add a new one, the restart +
+cron gotchas, scaling to per-client agents)? See the **[Agent playbook](AGENT_PLAYBOOK.md)** — this
+doc is the *concepts*, the playbook is the *procedures*.
+
 ---
 
 ## The roster (role-named, not human-named)
