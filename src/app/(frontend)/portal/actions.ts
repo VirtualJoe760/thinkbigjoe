@@ -7,6 +7,7 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 import { db, forgeSites, rebuildRequests, activityLog } from "@/db";
 import { auth } from "@/lib/auth";
 import { normalizeClaimCode } from "@/lib/claim-code";
+import { isForgeTemplate } from "@/lib/forge-templates";
 import { notifyTelegram } from "@/lib/telegram";
 import { stripe, ensureStripeCustomer } from "@/lib/stripe";
 import { buildPriceId, isPlanKey, planPriceId } from "@/lib/plans";
@@ -21,6 +22,7 @@ export type ClaimState = {
   ok: boolean;
   message: string;
   site?: { id: number; businessName: string; liveUrl: string | null };
+  building?: boolean; // true when the claim just triggered the forge to build the site
 };
 
 /**
@@ -58,16 +60,91 @@ export async function claimSite(
     return { ok: true, message: `You've already claimed ${site.businessName}.`, site: found };
   }
 
+  // Sell-first flow: the owner may be claiming a PREVIEW that hasn't been built yet.
+  // Claiming is the build trigger — queue it for the forge (status='approved', which
+  // forge-poll picks up). If the site is already built, just link it (old behavior).
+  const alreadyBuilt = site.status === "built" || !!site.liveUrl;
+  const nowIso = new Date().toISOString();
+
   await db
     .update(forgeSites)
-    .set({ claimedByUserId: session.user.id, claimedAt: new Date().toISOString() })
+    .set({
+      claimedByUserId: session.user.id,
+      claimedAt: nowIso,
+      ...(alreadyBuilt ? {} : { status: "approved", approvedAt: nowIso }),
+    })
     .where(eq(forgeSites.id, site.id));
+
+  await db.insert(activityLog).values({
+    actor: "portal",
+    eventType: alreadyBuilt ? "site_claimed" : "site_claimed_build_queued",
+    summary: `${site.businessName} (${site.slug}) claimed${alreadyBuilt ? "" : " — build queued"}`,
+    metadata: { target: site.slug, detail: { siteId: site.id, userId: session.user.id } },
+  });
 
   revalidatePath("/portal");
   return {
     ok: true,
-    message: `Success — ${site.businessName} is now linked to your account.`,
+    building: !alreadyBuilt,
+    message: alreadyBuilt
+      ? `Success — ${site.businessName} is now linked to your account.`
+      : `${site.businessName} is claimed — we're building your site now. It'll appear in your portal shortly.`,
     site: found,
+  };
+}
+
+export type TemplateChoiceState = { ok: boolean; message: string };
+
+/**
+ * Let a claimed owner pick a different design template for their site. Sets
+ * preferred_template and re-queues the site (status='approved') so the forge
+ * rebuilds it on that template. The forge niche-matches by default; this overrides.
+ */
+export async function chooseTemplate(
+  siteId: number,
+  template: string,
+): Promise<TemplateChoiceState> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return { ok: false, message: "Please sign in." };
+
+  if (!isForgeTemplate(template)) {
+    return { ok: false, message: "That isn't a template we offer." };
+  }
+
+  const [site] = await db
+    .select()
+    .from(forgeSites)
+    .where(eq(forgeSites.id, siteId))
+    .limit(1);
+
+  if (!site || site.claimedByUserId !== session.user.id) {
+    return { ok: false, message: "We couldn't find that site on your account." };
+  }
+  if (site.preferredTemplate === template && site.status !== "built") {
+    return { ok: true, message: "That design is already being built." };
+  }
+
+  await db
+    .update(forgeSites)
+    .set({
+      preferredTemplate: template,
+      status: "approved",
+      approvedAt: new Date().toISOString(),
+      revisionNote: null, // a template switch is a clean rebuild, not a tweak
+    })
+    .where(eq(forgeSites.id, siteId));
+
+  await db.insert(activityLog).values({
+    actor: "portal",
+    eventType: "forge_template_chosen",
+    summary: `${site.businessName} (${site.slug}) — owner chose ${template} template`,
+    metadata: { target: site.slug, detail: { siteId, template, userId: session.user.id } },
+  });
+
+  revalidatePath("/portal");
+  return {
+    ok: true,
+    message: `Rebuilding ${site.businessName} with the ${template.replace(/-/g, " ")} design — check back shortly.`,
   };
 }
 

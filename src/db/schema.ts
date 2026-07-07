@@ -387,6 +387,10 @@ export const forgeSites = pgTable("forge_sites", {
 	revisionRequestedAt: timestamp("revision_requested_at", { withTimezone: true, mode: 'string' }),
 	idVerifiedAt: timestamp("id_verified_at", { withTimezone: true, mode: 'string' }),
 	idVerificationSession: text("id_verification_session"),
+	preview: jsonb(),
+	previewGeneratedAt: timestamp("preview_generated_at", { withTimezone: true, mode: 'string' }),
+	previewScrapedAt: timestamp("preview_scraped_at", { withTimezone: true, mode: 'string' }),
+	previewExpiresAt: timestamp("preview_expires_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
 	uniqueIndex("forge_sites_claim_code_key").using("btree", table.claimCode.asc().nullsLast().op("text_ops")),
 	index("forge_sites_outreach_status_idx").using("btree", table.outreachStatus.asc().nullsLast().op("text_ops")),
