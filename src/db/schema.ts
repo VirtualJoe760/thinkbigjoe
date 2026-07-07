@@ -406,3 +406,12 @@ export const previewEngine = pgTable("preview_engine", {
 	lastRunSummary: text("last_run_summary"),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });
+
+export const outreachEngine = pgTable("outreach_engine", {
+	id: serial().primaryKey().notNull(),
+	dailyGoal: integer("daily_goal").default(15).notNull(),
+	enabled: boolean().default(true).notNull(),
+	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
+	lastRunSummary: text("last_run_summary"),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+});

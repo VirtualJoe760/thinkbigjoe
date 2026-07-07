@@ -581,6 +581,24 @@ const OUTREACH_CHANNELS = ["email", "instagram", "facebook", "linkedin", "sms"];
 
 async function toolListForgePreviewOutreach({ status } = {}) {
   const stage = status || "none";
+  // GOAL-AWARE PACING: the outreach engine sets a daily first-touch GOAL so token spend is flat.
+  // Only hand back up to (daily_goal - drafted today) so the agent never over-drafts in a run.
+  const cfg = (await query(`SELECT daily_goal, enabled FROM outreach_engine WHERE id = 1`)).rows[0] || { daily_goal: 15, enabled: true };
+  if (!cfg.enabled) {
+    return { content: [{ type: "text", text: "Outreach is paused (outreach_engine.enabled=false). Nothing to draft." }] };
+  }
+  const goal = Number(cfg.daily_goal) || 15;
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const draftedToday = Number(
+    (await query(`SELECT count(*) n FROM activity_log WHERE event_type = 'forge_outreach_drafted' AND created_at >= $1`, [dayStart.toISOString()])).rows[0].n,
+  );
+  const remaining = Math.max(0, goal - draftedToday);
+  if (remaining === 0) {
+    return { content: [{ type: "text", text: `Today's outreach goal met — ${draftedToday}/${goal} first-touches drafted. Rest until tomorrow.` }] };
+  }
+  const limit = Math.min(remaining, 50);
+
   // SHOWROOM outreach: prospects with a personalized PREVIEW ready (not yet built/claimed).
   // The message invites the owner to CLAIM the preview — which triggers the real build.
   const res = await query(
@@ -591,14 +609,14 @@ async function toolListForgePreviewOutreach({ status } = {}) {
        AND status = 'discovered'
        AND outreach_status = $1
      ORDER BY (marketing_approved_at IS NOT NULL) DESC, NULLIF(review_count,'')::int DESC NULLS LAST, preview_generated_at DESC NULLS LAST
-     LIMIT 50`,
-    [stage],
+     LIMIT $2`,
+    [stage, limit],
   );
   if (!res.rows.length) {
     return { content: [{ type: "text", text: `No preview-ready prospects with outreach_status='${stage}'. Generate previews first (preview-engine / generate_forge_preview).` }] };
   }
   const lines = [
-    `🖼️ **${res.rows.length} preview(s) ready for FIRST-TOUCH** (stage=${stage}):`,
+    `🖼️ **${res.rows.length} preview(s) to first-touch now** — today's goal ${draftedToday}/${goal}, ${remaining} left (stage=${stage}):`,
     "",
     `The pitch: you built them a free preview — invite them to CLAIM it (claiming triggers the real build).`,
     `  • book a call with Joe: ${APP_SITE_URL}/book-appointment`,
@@ -1252,7 +1270,7 @@ async function toolGenerateForgePreview({ site_id, slug }) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.15.0" },
+  { name: "tbj-mcp", version: "2.16.0" },
   { capabilities: { tools: {} } },
 );
 
