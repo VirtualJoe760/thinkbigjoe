@@ -579,6 +579,50 @@ async function toolListForgeOutreachQueue({ status } = {}) {
 
 const OUTREACH_CHANNELS = ["email", "instagram", "facebook", "linkedin", "sms"];
 
+async function toolListForgePreviewOutreach({ status } = {}) {
+  const stage = status || "none";
+  // SHOWROOM outreach: prospects with a personalized PREVIEW ready (not yet built/claimed).
+  // The message invites the owner to CLAIM the preview — which triggers the real build.
+  const res = await query(
+    `SELECT id, slug, business_name, niche, city, service_area, owner_name, email, phone, claim_code,
+            google_rating, review_count, instagram_url, facebook_url, linkedin_url, preview_expires_at
+     FROM forge_sites
+     WHERE preview IS NOT NULL AND claim_code IS NOT NULL AND claimed_by_user_id IS NULL
+       AND status = 'discovered'
+       AND outreach_status = $1
+     ORDER BY (marketing_approved_at IS NOT NULL) DESC, NULLIF(review_count,'')::int DESC NULLS LAST, preview_generated_at DESC NULLS LAST
+     LIMIT 50`,
+    [stage],
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: `No preview-ready prospects with outreach_status='${stage}'. Generate previews first (preview-engine / generate_forge_preview).` }] };
+  }
+  const lines = [
+    `🖼️ **${res.rows.length} preview(s) ready for FIRST-TOUCH** (stage=${stage}):`,
+    "",
+    `The pitch: you built them a free preview — invite them to CLAIM it (claiming triggers the real build).`,
+    `  • book a call with Joe: ${APP_SITE_URL}/book-appointment`,
+    "",
+  ];
+  for (const r of res.rows) {
+    const rating = r.google_rating ? ` · ${r.google_rating}★${r.review_count ? ` (${r.review_count})` : ""}` : "";
+    const socials = [r.instagram_url && `IG:${r.instagram_url}`, r.facebook_url && `FB:${r.facebook_url}`, r.linkedin_url && `LinkedIn:${r.linkedin_url}`].filter(Boolean);
+    const days = r.preview_expires_at ? Math.max(0, Math.ceil((new Date(r.preview_expires_at) - Date.now()) / 86400000)) : null;
+    lines.push(`**#${r.id} ${r.business_name}**${r.owner_name ? ` · owner ${r.owner_name}` : ""} · ${r.niche || "—"} · ${r.city || r.service_area || "—"}${rating}`);
+    lines.push(`   preview: ${APP_SITE_URL}/s/${r.slug} · claim code: ${r.claim_code}${days !== null ? ` · reserved ${days}d` : ""}`);
+    lines.push(`   channels → email: ${r.email || "(none)"}${r.phone ? ` · phone: ${r.phone}` : ""}${socials.length ? ` · ${socials.join(" · ")}` : ""}`);
+    lines.push("");
+  }
+  lines.push(
+    `For each, message the owner on the BEST channel:\n` +
+      `  • Has an EMAIL → save_forge_outreach_draft(site_id, "email", subject, body): a short warm note — you built them a preview (link it), they can CLAIM it with the code to have you build & launch the full site, offer to chat. Joe reviews + sends.\n` +
+      `  • No email but a SOCIAL → save_forge_outreach_draft(site_id, channel, "", body): a short DM with the preview link + claim invite. Joe reviews, you send it, then mark_forge_outreach_sent(site_id, channel).\n` +
+      `  • No email/social → leave it for Joe to call (phone on his card).\n` +
+      `Keep it warm and specific to their trade. Never invent contact info.`,
+  );
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
 async function toolSaveForgeOutreachDraft({ site_id, subject, body, channel = "email" }) {
   const id = Number(site_id);
   if (!Number.isFinite(id)) return { content: [{ type: "text", text: "site_id must be a number." }] };
@@ -588,11 +632,12 @@ async function toolSaveForgeOutreachDraft({ site_id, subject, body, channel = "e
   if (!text) return { content: [{ type: "text", text: "A message body is required." }] };
   if (ch === "email" && !subj) return { content: [{ type: "text", text: "An email needs a subject." }] };
 
-  const existing = await query(`SELECT id, business_name, status FROM forge_sites WHERE id = $1 LIMIT 1`, [id]);
+  const existing = await query(`SELECT id, business_name, status, (preview IS NOT NULL) AS has_preview FROM forge_sites WHERE id = $1 LIMIT 1`, [id]);
   if (!existing.rows.length) return { content: [{ type: "text", text: `forge_sites #${id} not found.` }] };
   const site = existing.rows[0];
-  if (site.status !== "built") {
-    return { content: [{ type: "text", text: `#${id} (${site.business_name}) isn't built yet (status=${site.status}) — nothing to send.` }] };
+  // Draftable once there's something to link: a built site (live URL) OR a showroom preview.
+  if (site.status !== "built" && !site.has_preview) {
+    return { content: [{ type: "text", text: `#${id} (${site.business_name}) has no built site and no preview yet (status=${site.status}) — generate a preview first.` }] };
   }
 
   await query(
@@ -773,11 +818,13 @@ async function toolListForgeFollowupDue() {
   // (>3 days since the last touch, fewer than 3 emails total). Include the prior
   // subject so the agent writes a NEW angle instead of repeating itself.
   const res = await query(
-    `SELECT id, business_name, niche, city, email, live_url, claim_code, followup_count, contacted_at, outreach_subject
+    `SELECT id, slug, business_name, niche, city, email, live_url, claim_code, followup_count, contacted_at, outreach_subject, preview_expires_at
      FROM forge_sites
-     WHERE status = 'built' AND claimed_by_user_id IS NULL AND email IS NOT NULL
+     WHERE (status = 'built' OR (status = 'discovered' AND preview IS NOT NULL))
+       AND claimed_by_user_id IS NULL AND email IS NOT NULL
        AND outreach_status = 'sent' AND followup_count >= 1 AND followup_count < 3
        AND contacted_at < now() - interval '3 days'
+       AND (preview_expires_at IS NULL OR preview_expires_at > now())
      ORDER BY contacted_at ASC
      LIMIT 50`,
   );
@@ -787,8 +834,10 @@ async function toolListForgeFollowupDue() {
   const lines = [`🔁 **${res.rows.length} site(s) due for a follow-up:**`, "", `book-a-call link: ${APP_SITE_URL}/book-appointment`, ""];
   for (const r of res.rows) {
     const nextTouch = Number(r.followup_count) + 1;
+    const link = r.live_url || `${APP_SITE_URL}/s/${r.slug}`;
+    const days = r.preview_expires_at ? Math.max(0, Math.ceil((new Date(r.preview_expires_at) - Date.now()) / 86400000)) : null;
     lines.push(`**#${r.id} ${r.business_name}** · ${r.niche || "—"} · ${r.city || "—"} — next is TOUCH ${nextTouch} of 3`);
-    lines.push(`   live site: ${r.live_url || "(none)"} · claim code: ${r.claim_code}`);
+    lines.push(`   ${r.live_url ? "live site" : "preview"}: ${link} · claim code: ${r.claim_code}${days !== null ? ` · reserved ${days}d` : ""}`);
     lines.push(`   last emailed: ${r.contacted_at} → ${r.email}${r.outreach_subject ? ` · prior subject: "${r.outreach_subject}"` : ""}`);
     lines.push("");
   }
@@ -1203,7 +1252,7 @@ async function toolGenerateForgePreview({ site_id, slug }) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.14.0" },
+  { name: "tbj-mcp", version: "2.15.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1461,6 +1510,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "list_forge_preview_outreach",
+      description: "SHOWROOM (sell-first) outreach queue. Lists prospects that have a personalized PREVIEW ready (not yet built or claimed) — each with its preview URL (/s/<slug>), CLAIM CODE, reserved-days, contact email/phone, and socials. The pitch is: you built them a free preview, invite them to CLAIM it — claiming triggers the real build. Call this at the start of the forge-outreach job, then write each message with save_forge_outreach_draft.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
+            enum: ["none", "drafted", "sent", "replied", "scheduled"],
+            description: "Which outreach stage to list. Default 'none' = preview-ready prospects not yet drafted.",
+          },
+        },
+      },
+    },
+    {
       name: "list_forge_followup_due",
       description: "List built sites that got an initial outreach email, haven't claimed or replied, and are overdue for a FOLLOW-UP (>3 days since the last touch, under 3 emails total). Returns which touch is next and the prior subject so you can write a fresh angle. Draft each with save_forge_outreach_draft; Joe reviews + sends. Stop after touch 3.",
       inputSchema: { type: "object", properties: {} },
@@ -1637,6 +1700,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "apify_find_instagram": return toolApifyFindInstagram(args);
     case "apify_extract_contacts": return toolApifyExtractContacts(args);
     case "list_forge_outreach_queue": return toolListForgeOutreachQueue(args);
+    case "list_forge_preview_outreach": return toolListForgePreviewOutreach(args);
     case "save_forge_outreach_draft": return toolSaveForgeOutreachDraft(args);
     case "mark_forge_outreach_sent": return toolMarkForgeOutreachSent(args);
     case "list_forge_followup_due": return toolListForgeFollowupDue(args);

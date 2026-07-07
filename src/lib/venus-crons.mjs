@@ -98,21 +98,21 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
     agent: "outreach",
     schedule: "0 16 * * *",
     stagger: "5m",
-    summary: "First-touch newly-built sites on the best channel (email or social DM); Joe calls second.",
-    tools: ["list_forge_outreach_queue", "save_forge_outreach_draft", "mark_forge_outreach_sent", "log_activity"],
-    uiSurface: ["/command/prospects (Built — first-touch → Joe calls second)"],
+    summary: "First-touch preview-ready prospects — invite them to CLAIM their free preview (claiming builds the site); Joe calls second.",
+    tools: ["list_forge_preview_outreach", "save_forge_outreach_draft", "mark_forge_outreach_sent", "log_activity"],
+    uiSurface: ["/command/prospects (preview first-touch → Joe calls second)"],
     eventTypes: ["forge_outreach_drafted", "forge_outreach_sent"],
-    prompt: `This is the forge FIRST-TOUCH run. Sites the forge BUILT are waiting to hear from us. **You do the first touch; Joe calls them as the second touch.**
+    prompt: `This is the forge FIRST-TOUCH run (SHOWROOM / sell-first). Each prospect already has a free personalized PREVIEW of a new website waiting. **Your job: invite them to CLAIM it — claiming is what triggers us to build & launch the real site.** You do the first touch; Joe calls them as the second touch.
 
-1. PULL: call list_forge_outreach_queue (stage "none") — each built, unclaimed site with its live-site URL, claim code, and EVERY channel we have (email, phone, Instagram, Facebook, LinkedIn).
+1. PULL: call list_forge_preview_outreach (stage "none") — each preview-ready prospect with its PREVIEW URL (/s/<slug>), CLAIM CODE, reserved-days, and EVERY channel we have (email, phone, Instagram, Facebook, LinkedIn).
 
-2. FIRST-TOUCH each site on the BEST channel available:
-   - Has an EMAIL → save_forge_outreach_draft(site_id, "email", subject, body): a short warm note FROM JOE — their new site is LIVE (link auto-appended), the CLAIM CODE to sign in and claim it (auto-appended, reference it naturally), and an invite to book a quick call (button auto-appended). 3–5 sentences. Joe reviews + sends.
-   - No email but a SOCIAL (Instagram/Facebook/LinkedIn) → save_forge_outreach_draft(site_id, channel, "", body): a short friendly DM — site's live, here's how to claim it, happy to chat. Joe reviews it, then YOU open their profile and send the DM, and afterward call mark_forge_outreach_sent(site_id, channel).
+2. FIRST-TOUCH each on the BEST channel available:
+   - Has an EMAIL → save_forge_outreach_draft(site_id, "email", subject, body): a short warm note FROM JOE — "I built you a preview of a new site for <business>: <preview link>. If you like it, claim it with code <code> and we'll build & launch the full thing (free to look, reserved for you for a couple weeks)." 3–5 sentences, reference a real detail (their reviews, a service). Joe reviews + sends.
+   - No email but a SOCIAL (Instagram/Facebook/LinkedIn) → save_forge_outreach_draft(site_id, channel, "", body): a short friendly DM with the preview link + claim invite. Joe reviews it, then YOU open their profile and send the DM, and afterward call mark_forge_outreach_sent(site_id, channel).
    - No email or social → leave it; Joe calls the phone from the contact card.
-   Genuine and non-pushy, matched to the trade. Personalize on real signal — NEVER invent contact info.
+   Genuine and non-pushy, matched to the trade. ALWAYS include the preview link + claim code. NEVER invent contact info.
 
-3. LOG: finish with log_activity, event_type "forge_outreach_drafted", summary like "First-touched N sites · M email drafts · K social DMs sent · P phone-only left for Joe". marketing-manager reads this for the digest — you don't message Joe directly.`,
+3. LOG: finish with log_activity, event_type "forge_outreach_drafted", summary like "First-touched N previews · M email drafts · K social DMs sent · P phone-only left for Joe". marketing-manager reads this for the digest — you don't message Joe directly.`,
   },
 
   {
@@ -125,14 +125,14 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
     tools: ["list_forge_followup_due", "save_forge_outreach_draft", "log_activity"],
     uiSurface: ["/command/prospects (Built — follow-up draft → Approve & send)"],
     eventTypes: ["forge_outreach_drafted"],
-    prompt: `This is the forge follow-up run. Owners who got an initial email but haven't claimed their site or replied are due for a nudge.
+    prompt: `This is the forge follow-up run. Owners who got a first touch but haven't claimed their preview (or site) or replied are due for a nudge.
 
-1. PULL: call list_forge_followup_due — built, unclaimed sites >3 days since their last email, under 3 emails total. Each shows the business, live-site URL, claim code, which TOUCH is next, and the prior subject.
+1. PULL: call list_forge_followup_due — unclaimed prospects >3 days since their last email, under 3 emails total. Each shows the business, its link (a PREVIEW /s/<slug> if not yet built, else the live site), claim code + reserved-days, which TOUCH is next, and the prior subject.
 
-2. DRAFT one follow-up per site with a NEW angle — never repeat the prior email:
-   - TOUCH 2: a short, warm nudge that adds a fresh benefit ("it's ready whenever you are — takes 2 minutes to claim", a specific thing the new site does better). Reference that their site is still live.
+2. DRAFT one follow-up per prospect with a NEW angle — never repeat the prior email:
+   - TOUCH 2: a short, warm nudge with a fresh benefit ("your preview's still reserved — takes 2 minutes to claim and we build the real thing", a specific thing the site does better). Re-share the link.
    - TOUCH 3: a brief, friendly "last note" break-up — no guilt, leave the door open, one line that they can still claim it or book a call anytime.
-   The live-site link, claim code, and book-a-call button are appended automatically. Keep it 2–4 sentences, matched to the trade. Call save_forge_outreach_draft(site_id, subject, body). DRAFT ONLY — Joe reviews and sends. NEVER send yourself, and NEVER go past touch 3.
+   Include the link + claim code. Keep it 2–4 sentences, matched to the trade. Call save_forge_outreach_draft(site_id, subject, body). DRAFT ONLY — Joe reviews and sends. NEVER send yourself, and NEVER go past touch 3.
 
 3. Finish with log_activity, event_type "forge_outreach_drafted", summary like "Drafted N follow-ups (touches 2–3)". marketing-manager reads this for the digest — you don't message Joe directly.`,
   },

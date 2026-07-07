@@ -121,8 +121,8 @@ tool, and cron are all thin callers. Previews cost ~$0 and expire after 14 days 
 |---|---|---|---|---|
 | TBJ Forge Prospect Scout | prospector | 3×/day | `apify_find_businesses`, `apify_find_instagram`, `add_forge_prospect`, `list_forge_blacklist` | Prospecting → Needs review |
 | TBJ Forge Contact Enrichment | prospector | 3×/day | `list_forge_needs_contact`, `enrich_forge_contact`, `list_forge_needs_callprep`, `save_forge_callprep` | Contact cards + Call-prep card (Leads) — **free browser research, explicitly told NOT to use paid Apify tools**, to keep ongoing spend to the cheap "finding" step only |
-| TBJ Forge Outreach | outreach | daily | `list_forge_outreach_queue` (gated on `marketing_approved_at`), `save_forge_outreach_draft`, `mark_forge_outreach_sent` | Prospecting → Built (draft → Approve & send) |
-| TBJ Forge Follow-up | outreach | daily | `list_forge_followup_due`, `save_forge_outreach_draft` | Same — touches 2–3 |
+| TBJ Forge Outreach | outreach | daily | `list_forge_preview_outreach` (prospects with a **preview** ready), `save_forge_outreach_draft`, `mark_forge_outreach_sent` | Prospecting → first-touch (draft → Approve & send). Pitch = "claim your preview" → claiming builds the site. |
+| TBJ Forge Follow-up | outreach | daily | `list_forge_followup_due` (now preview-aware), `save_forge_outreach_draft` | Same — touches 2–3, re-shares the preview link |
 
 Full prompts, exact schedules, and the "ship full-stack" checklist for adding a cron live in
 `src/lib/venus-crons.mjs` itself (the file header) and [OPENCLAW.md](OPENCLAW.md).
