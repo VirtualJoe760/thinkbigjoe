@@ -39,6 +39,9 @@ export async function POST(req: Request) {
   const email = typeof args.email === "string" ? args.email.trim() : "";
   const startTime = typeof args.start_time === "string" ? args.start_time : "";
   const notes = typeof args.notes === "string" ? args.notes.trim() : undefined;
+  const reason = typeof args.reason === "string" ? args.reason.trim() : undefined;
+  const isAgentic = args.type === "agentic";
+  const callLabel = isAgentic ? "Agentic Strategy Call" : "Strategy Call";
   const phone =
     (typeof args.phone === "string" && args.phone.trim()) || callerPhone(body) || undefined;
 
@@ -64,11 +67,13 @@ export async function POST(req: Request) {
     }
 
     const description = [
-      `Strategy call booked by the ThinkBigJoe phone assistant.`,
+      `${callLabel} booked by the ThinkBigJoe phone assistant.`,
       ``,
       `Name: ${name}`,
       `Email: ${email}`,
       phone ? `Phone: ${phone}` : null,
+      reason ? `Reason: ${reason}` : null,
+      isAgentic ? `Type: AGENTIC ($999 tier) — bespoke OpenClaw agent scoping.` : null,
       notes ? `` : null,
       notes ? `Notes:\n${notes}` : null,
     ]
@@ -76,7 +81,7 @@ export async function POST(req: Request) {
       .join("\n");
 
     const event = await createEvent({
-      summary: `Strategy Call — ${name}`,
+      summary: `${callLabel} — ${name}`,
       description,
       start: { dateTime: start.toISOString(), timeZone: BOOKING_TIMEZONE },
       end: { dateTime: end.toISOString(), timeZone: BOOKING_TIMEZONE },
@@ -111,7 +116,7 @@ export async function POST(req: Request) {
         name,
         email,
         phone: phone ?? null,
-        notes: notes ?? "Booked via ThinkBigJoe phone assistant",
+        notes: [reason, notes].filter(Boolean).join(" — ") || "Booked via ThinkBigJoe phone assistant",
         status: "booked",
         bookedSlot: start.toISOString(),
         source: "booking-page",
@@ -120,7 +125,7 @@ export async function POST(req: Request) {
 
     const label = spokenLabel(start.toISOString());
     notifyTelegram(
-      `📞 <b>New strategy call booked</b> (via phone assistant)\n${name}${phone ? ` · ${phone}` : ""}\n${label}`,
+      `📞 <b>New ${isAgentic ? "AGENTIC " : ""}strategy call booked</b> (via phone assistant)\n${name}${phone ? ` · ${phone}` : ""}\n${label}${reason ? `\nReason: ${reason}` : ""}`,
     ).catch(() => {});
     await db
       .insert(activityLog)

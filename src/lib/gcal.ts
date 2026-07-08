@@ -25,7 +25,13 @@ export const MIN_NOTICE_MS = 60 * 60 * 1000; // 1 hour
  * stays protected for build work. Full-day availability used to live here
  * (Mon–Sat 9–5) if it's ever needed again.
  */
-const BUSINESS_HOURS: Array<{ open: [number, number]; close: [number, number] } | null> = [
+export type DayHours = { open: [number, number]; close: [number, number] };
+
+/** Agentic ($999) strategy calls use a wider weekday window (9am–5pm Pacific). Passed as an
+ *  override to getAvailableSlots; weekends stay closed regardless (BUSINESS_HOURS gates the day). */
+export const AGENTIC_HOURS: DayHours = { open: [9, 0], close: [17, 0] };
+
+const BUSINESS_HOURS: Array<DayHours | null> = [
   null, //                    Sunday — closed
   { open: [11, 0], close: [13, 0] }, // Monday
   { open: [11, 0], close: [13, 0] }, // Tuesday
@@ -237,9 +243,11 @@ function weekdayInZone(dateStr: string): number {
 export async function getAvailableSlots(
   dateStr: string, // YYYY-MM-DD
   durationMinutes: number = SLOT_DURATION_MIN,
+  hoursOverride?: DayHours, // widen the weekday window (e.g. AGENTIC_HOURS); weekends still closed
 ): Promise<TimeSlot[]> {
-  const hours = BUSINESS_HOURS[weekdayInZone(dateStr)];
-  if (!hours) return [];
+  const dayHours = BUSINESS_HOURS[weekdayInZone(dateStr)];
+  if (!dayHours) return []; // weekend / closed day — override never opens a closed day
+  const hours = hoursOverride ?? dayHours;
 
   const openTime = zonedTimeToUtc(dateStr, hours.open[0], hours.open[1]);
   const closeTime = zonedTimeToUtc(dateStr, hours.close[0], hours.close[1]);

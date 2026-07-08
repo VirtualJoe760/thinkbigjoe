@@ -4,6 +4,7 @@ import { isCalendarConfigured } from "@/lib/gcal";
 import {
   getSlotsForDate,
   getUpcomingSlots,
+  hoursForType,
   parseRetellArgs,
   voiceAuthed,
 } from "@/lib/voice-booking";
@@ -32,14 +33,16 @@ export async function POST(req: Request) {
   }
   const args = parseRetellArgs(body);
   const date = typeof args.date === "string" ? args.date.trim() : "";
+  const hours = hoursForType(typeof args.type === "string" ? args.type : undefined);
+  const windowText = hours ? "9 AM and 5 PM" : "11 AM and 1 PM";
 
   try {
-    const slots = date ? await getSlotsForDate(date) : await getUpcomingSlots(5);
+    const slots = date ? await getSlotsForDate(date, hours) : await getUpcomingSlots(5, hours);
     if (slots.length === 0) {
       return NextResponse.json({
         slots: [],
         message: date
-          ? `There are no open times on that day. We book Monday through Friday between 11 AM and 1 PM Pacific — want me to check another day?`
+          ? `There are no open times on that day. We book Monday through Friday between ${windowText} Pacific — want me to check another day?`
           : `I don't see any open times in the next few weeks. Please try again later.`,
       });
     }

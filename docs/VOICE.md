@@ -47,20 +47,23 @@ code/account → walk claim → point to portal plans → set up voice / book Jo
 
 ## The call flow (TBJ's own front desk)
 
-Most callers are local owners who got our outreach ("we built you a website — here's the link
-and a claim code"). The agent is a **claim concierge**, not a generic switchboard:
+The agent is **Ivy**, Joe's assistant (persona name in `ASSISTANT_NAME`, `agent-config.mjs`). Most
+callers are local owners who got our outreach — Ivy is a **claim concierge**, not a switchboard:
 
-1. **Open** — "Are you calling about the website we built for your business?"
-2. **Confirm their code** — the caller reads a site **claim code** (`TBJ-XXXX-XXXX`) or their
-   6-digit **account number** (`100001`); the agent calls `verify_code` to confirm it and name
-   the business.
-3. **Walk the claim** — create a free account → `/portal/claim` → enter the claim code.
-4. **Plans** — the agent does **not** quote prices on the phone; it points them to the **Plan
-   options** listed in `/portal/account`. The Complete/agentic tier is set up personally with Joe.
-5. **AI receptionist setup** — comes with the Website + Voice plan; our team activates it once
-   they're on that plan.
-6. **Close** — reads the caller: book 15 min with Joe (`check_availability` → `book_appointment`),
-   or reassure them the portal is easy to self-serve.
+1. **Identify** — on connect, `identify_caller` matches the caller's phone to a lead so Ivy can greet
+   them by business name and steer by **stage** (preview / built / claimed / live).
+2. **Confirm a code** — the caller reads a **claim code** (`TBJ-XXXX-XXXX`) or **account number**
+   (`100001`) → `verify_code` confirms it + names the business.
+3. **Walk the claim** — create a free account → `/portal/claim` → enter the claim code (claiming a
+   preview triggers the build).
+4. **Plans** — Ivy does **not** quote prices on the phone; points them to the **Plan options** on
+   `/portal/account`.
+5. **Agentic ($999)** — don't sell it on the call: point them to **thinkbigjoe.com** to learn how the
+   AI agent sales pipelines make money + register, and/or book an **agentic** strategy call.
+6. **AI receptionist setup** — comes with the Website + Voice plan; our team activates it once on plan.
+7. **Escalate** — anything Ivy can't do (billing, tech, complaint, wants a human) → `create_support_ticket`
+   (message to Joe) or book Joe.
+8. **Close** — reads the caller: book Joe (`check_availability` → `book_appointment`) or reassure DIY.
 
 Never takes payment on the call — plans are chosen/paid in the portal or set up with Joe.
 
@@ -68,12 +71,22 @@ Never takes payment on the call — plans are chosen/paid in the portal or set u
 
 | Tool | Route | Does |
 |---|---|---|
-| `verify_code` | `POST /api/voice/verify` | Confirms a claim code **or** account number; returns the business it belongs to. Read-only. |
-| `check_availability` | `POST /api/voice/availability` | Real open strategy-call slots (Google Calendar). Never invent times. |
-| `book_appointment` | `POST /api/voice/book` | Books the call into Google Calendar (Meet) + records the lead. |
+| `identify_caller` | `POST /api/voice/identify` | Matches the caller's phone → business + pipeline stage. Read-only; returns **no** claim code (that stays in their email). |
+| `verify_code` | `POST /api/voice/verify` | Confirms a claim code **or** account number; returns the business. Read-only. |
+| `check_availability` | `POST /api/voice/availability` | Open slots. `type: "regular"` (11–1) or `"agentic"` (9–5). Never invent times. |
+| `book_appointment` | `POST /api/voice/book` | Books into Google Calendar (Meet) + records the lead. Takes `type` + a `reason` (tagged on the invite so Joe's prepared). |
+| `create_support_ticket` | `POST /api/voice/support` | Takes a message → emails Joe + logs `support_ticket` + Telegram. The interim support queue. |
 
-Booking runs on `src/lib/gcal.ts` (Mon–Fri, 11 AM–1 PM Pacific, 30-min slots). All three routes
-are bearer-gated by `RETELL_WEBHOOK_SECRET`.
+Booking runs on `src/lib/gcal.ts` — **regular** calls Mon–Fri 11 AM–1 PM Pacific, **agentic** calls
+Mon–Fri 9 AM–5 PM Pacific (`AGENTIC_HOURS`), 30-min slots. Weekends always closed. All routes are
+bearer-gated by `RETELL_WEBHOOK_SECRET`.
+
+## Support queue (interim → dashboard ticket system later)
+
+`create_support_ticket` currently emails **joe@thinkbigjoe.com** (`SUPPORT_EMAIL` env overrides) and
+logs a `support_ticket` activity row + Telegram ping. **Planned:** a `support@thinkbigjoe.com` mailbox
+a support agent watches, and a **ticket system in the command dashboard** (view/assign/respond) —
+deferred behind other priorities. When built, point tickets there instead of Joe's inbox.
 
 ## Selling voice as a service (per-client)
 
@@ -108,10 +121,13 @@ Live agent as of this writing: `agent_fc091c7bd9f23c9760ed6fa559` / `llm_2be0665
 
 ## Status
 
-- ✅ Agent + LLM created on Retell (prototype); booking webhooks live; `verify_code` route added.
-- ✅ Live agent updated to the claim-concierge flow (account# / claim-code lookup, portal plans,
-  book Joe) via `update-tbj-agent.mjs` — verified on Retell.
+- ✅ Agent + LLM on Retell; all 5 webhooks live (identify, verify, availability, book, support).
+- ✅ "Ivy" persona + full flow: caller-ID greet → claim → portal plans → agentic (website + 9–5 call)
+  → support ticket / book Joe. Applied to the live agent via `update-tbj-agent.mjs`.
 - ✅ Live number +1 (480) 764-2121 bound to the receptionist — calling it hits the new flow.
+- ⏳ Dashboard ticket system + `support@` mailbox — deferred (tickets email Joe meanwhile).
+- ↪ Possible upgrade: Retell inbound dynamic-variables webhook to greet by name in the *first*
+  utterance (today `identify_caller` personalizes from turn 2).
 - ⏳ Automated per-client provisioning + agent activation on plan purchase — not built (billing is
   on; each client number is a PAYG cost).
 - ⏳ **Texting** — the SMS agent exists (`agent_e56a619c…`) but the number isn't A2P-10DLC

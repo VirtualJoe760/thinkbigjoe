@@ -1,5 +1,11 @@
 // Shared helpers for the Retell voice-agent booking webhooks (/api/voice/*).
-import { BOOKING_TIMEZONE, ADVANCE_BOOKING_DAYS, getAvailableSlots } from "@/lib/gcal";
+import { BOOKING_TIMEZONE, ADVANCE_BOOKING_DAYS, getAvailableSlots, AGENTIC_HOURS, type DayHours } from "@/lib/gcal";
+
+/** Booking types the receptionist can create. "agentic" ($999) uses the wider 9–5 weekday window. */
+export type CallType = "regular" | "agentic";
+export function hoursForType(type?: string): DayHours | undefined {
+  return type === "agentic" ? AGENTIC_HOURS : undefined;
+}
 
 export type SpokenSlot = { label: string; start: string; end: string };
 
@@ -30,12 +36,12 @@ function dateStrInZone(d: Date): string {
  * The next `limit` open slots across upcoming business days (Retell can offer these to the caller).
  * Scans forward up to the advance-booking window.
  */
-export async function getUpcomingSlots(limit = 5): Promise<SpokenSlot[]> {
+export async function getUpcomingSlots(limit = 5, hoursOverride?: DayHours): Promise<SpokenSlot[]> {
   const out: SpokenSlot[] = [];
   const now = Date.now();
   for (let i = 0; i <= ADVANCE_BOOKING_DAYS && out.length < limit; i++) {
     const dateStr = dateStrInZone(new Date(now + i * 24 * 60 * 60 * 1000));
-    const slots = await getAvailableSlots(dateStr);
+    const slots = await getAvailableSlots(dateStr, undefined, hoursOverride);
     for (const s of slots) {
       out.push({ label: spokenLabel(s.start), start: s.start, end: s.end });
       if (out.length >= limit) break;
@@ -45,8 +51,8 @@ export async function getUpcomingSlots(limit = 5): Promise<SpokenSlot[]> {
 }
 
 /** Open slots for one specific date (YYYY-MM-DD), formatted for speech. */
-export async function getSlotsForDate(dateStr: string): Promise<SpokenSlot[]> {
-  const slots = await getAvailableSlots(dateStr);
+export async function getSlotsForDate(dateStr: string, hoursOverride?: DayHours): Promise<SpokenSlot[]> {
+  const slots = await getAvailableSlots(dateStr, undefined, hoursOverride);
   return slots.map((s) => ({ label: spokenLabel(s.start), start: s.start, end: s.end }));
 }
 
