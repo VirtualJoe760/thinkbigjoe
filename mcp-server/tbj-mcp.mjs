@@ -1295,6 +1295,38 @@ async function toolForgeFunnelStats() {
   return { content: [{ type: "text", text }] };
 }
 
+async function toolForgeDigest() {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return { content: [{ type: "text", text: "❌ CRON_SECRET is not set in environment." }] };
+  try {
+    const resp = await fetch(`${APP_SITE_URL}/api/forge/digest`, { headers: { Authorization: `Bearer ${secret}` } });
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { content: [{ type: "text", text: `❌ Digest failed (${resp.status}): ${d?.error || "unknown"}` }] };
+    const { config: c, budget: b, throughput: t, buildQueue: bq, editQueue: eq } = d;
+    const onoff = (v) => (v ? "on" : "OFF");
+    const warn = b.pct >= 90 ? " ⚠️ OVER 90%" : b.pct >= 75 ? " ⚠️ 75%+" : "";
+    const text = [
+      `⚙️ **Forge digest** — ${c.masterEnabled ? "running" : "STOPPED"}`,
+      ``,
+      `spend: ${b.weekRunsUsed}/${b.weeklyRunBudget} runs this week (${b.pct}%, ${b.remaining} left)${warn}`,
+      `switches: builds ${onoff(c.buildsEnabled)} · edits ${onoff(c.editsEnabled)} · idle-templates ${onoff(c.idleTemplatesEnabled)}`,
+      ``,
+      `queues: ${bq.total} build (${bq.building} building) · ${eq.total} edit`,
+      `24h: ${t.built24h} built · ${t.edits24h} edited · ${t.outreachSent24h} outreach · ${t.previews24h} previews`,
+      `7d:  ${t.built7d} built · ${t.edits7d} edited · ${t.outreachSent7d} outreach · ${t.templates7d} templates`,
+    ];
+    if (bq.total) {
+      text.push(``, `queue: ${bq.items.slice(0, 6).map((q) => q.businessName + (q.status === "building" ? ` (▶ ${q.elapsedMin}m)` : "")).join(", ")}`);
+    }
+    if (eq.total) {
+      text.push(`edits waiting: ${eq.items.slice(0, 6).map((e) => e.businessName).join(", ")}`);
+    }
+    return { content: [{ type: "text", text: text.join("\n") }] };
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Digest request failed: ${err?.message || String(err)}` }] };
+  }
+}
+
 async function toolSetOutreachGoal({ daily_goal, enabled } = {}) {
   const sets = [];
   const vals = [];
@@ -1341,7 +1373,7 @@ async function toolListExpiringPreviews() {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.17.0" },
+  { name: "tbj-mcp", version: "2.18.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1618,6 +1650,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: { type: "object", properties: {} },
     },
     {
+      name: "forge_digest",
+      description: "The forge ops digest — instantly answers 'where are we at with the forge, usage, and spend?'. Returns master + per-capability switch states (builds/edits/idle-templates), the weekly RUN-budget used vs remaining (with 75/90% warnings), build + edit queue depth, and throughput (built/edited/outreach/previews over 24h + 7d).",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
       name: "set_outreach_goal",
       description: "Set the daily OUTREACH goal (first-touches/day — the pacing + token dial) and/or enable/pause outreach. Raise to scale sends, lower to protect deliverability or token budget.",
       inputSchema: { type: "object", properties: { daily_goal: { type: "number", description: "First-touch drafts per day (0-500)." }, enabled: { type: "boolean", description: "Turn outreach drafting on/off." } } },
@@ -1811,6 +1848,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "list_forge_outreach_queue": return toolListForgeOutreachQueue(args);
     case "list_forge_preview_outreach": return toolListForgePreviewOutreach(args);
     case "forge_funnel_stats": return toolForgeFunnelStats();
+    case "forge_digest": return toolForgeDigest();
     case "set_outreach_goal": return toolSetOutreachGoal(args);
     case "set_preview_budget": return toolSetPreviewBudget(args);
     case "list_expiring_previews": return toolListExpiringPreviews();
