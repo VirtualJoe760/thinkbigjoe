@@ -180,6 +180,33 @@ export async function denyForgeSite(id: string, reason?: string) {
 }
 
 /**
+ * Delete a forge site from the UI. SOFT delete — sets status='deleted' so it disappears from every
+ * view (review/queued/built/archive all filter by specific statuses) but the row + its live
+ * deployment are recoverable. Unlike Deny, it does NOT blacklist (a demo/test/mistake, not a real
+ * business we're rejecting). Logged to the audit trail.
+ */
+export async function deleteForgeSite(id: string): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  const [site] = await db.select({ businessName: forgeSites.businessName, status: forgeSites.status })
+    .from(forgeSites).where(eq(forgeSites.id, Number(id))).limit(1);
+  if (!site) return { ok: false, message: "Site not found." };
+  await db.update(forgeSites)
+    .set({ status: "deleted", updatedAt: now() })
+    .where(eq(forgeSites.id, Number(id)));
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "forge_site_deleted",
+    summary: `Deleted site — ${site.businessName}`,
+    metadata: { detail: { siteId: Number(id), prevStatus: site.status } },
+  });
+  revalidatePath("/command/prospects");
+  revalidatePath("/command/sites");
+  revalidatePath("/command/leads");
+  revalidatePath("/command/engine");
+  return { ok: true, message: `Deleted "${site.businessName}".` };
+}
+
+/**
  * Send the owner-outreach email for a built site (Joe's approve-&-send gate).
  * Uses the possibly-edited subject/body from the review UI, emails the owner the
  * claim code + see-your-site + book-a-call CTAs, then marks the site contacted.

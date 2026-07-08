@@ -13,7 +13,7 @@ export const enumProspectsLifecycle = pgEnum("enum_prospects_lifecycle", ['prosp
 export const enumProspectsStatus = pgEnum("enum_prospects_status", ['new', 'qualified', 'note_ready', 'connected', 'diagnostic_sent', 'replied', 'invited', 'prepped', 'meeting', 'won', 'lost', 'disqualified'])
 export const enumProspectsTemperature = pgEnum("enum_prospects_temperature", ['cold', 'warm', 'hot'])
 export const enumProspectsVertical = pgEnum("enum_prospects_vertical", ['insurance', 'mortgage', 'wealth', 'msp', 'law', 'other'])
-export const forgeSiteStatus = pgEnum("forge_site_status", ['discovered', 'approved', 'denied', 'building', 'built', 'build_failed'])
+export const forgeSiteStatus = pgEnum("forge_site_status", ['discovered', 'approved', 'denied', 'building', 'built', 'build_failed', 'deleted'])
 
 
 export const automationSettings = pgTable("automation_settings", {

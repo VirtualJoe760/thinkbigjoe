@@ -25,6 +25,7 @@ const FORGE_ICONS: Record<string, string> = {
   forge_revision_requested: "🛠️",
   forge_engine_toggled: "🔌",
   forge_cache_cleared: "🧹",
+  forge_site_deleted: "🗑️",
   forge_preview_generated: "🖼️",
   forge_prospect_added: "➕",
   forge_contact_enriched: "✨",

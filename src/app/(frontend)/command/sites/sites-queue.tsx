@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 
-import { approveForgeSite, denyForgeSite, sendForgeOutreach, skipForgeOutreach, approveForMarketing, unapproveMarketing, requestForgeRevision, requestForgeRebuild } from "../actions";
+import { approveForgeSite, denyForgeSite, deleteForgeSite, sendForgeOutreach, skipForgeOutreach, approveForMarketing, unapproveMarketing, requestForgeRevision, requestForgeRebuild } from "../actions";
 
 export type ForgeSiteItem = {
   id: string;
@@ -374,6 +374,13 @@ function BuiltActions({ item }: { item: ForgeSiteItem }) {
           className="inline-flex items-center gap-1 rounded-full border border-line bg-background px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface disabled:opacity-50"
         >
           🎲 Rebuild differently
+        </button>
+        <button
+          onClick={() => { if (confirm(`Delete "${item.businessName}"? It's removed from every view (recoverable in the DB). Use this for demos/tests/mistakes — for a real business you're rejecting, use Deny instead.`)) send(() => deleteForgeSite(item.id)); }}
+          disabled={pending}
+          className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-background px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+        >
+          🗑 Delete
         </button>
         <span className="flex-1" />
         {approved ? (

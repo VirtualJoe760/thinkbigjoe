@@ -176,7 +176,9 @@ export default async function ProspectsPage({
   }
 
   // --- Web-dev leads (the forge queue) — always loaded; this is the primary surface. ---
-  const forgeRows = await db.select().from(forgeSites).orderBy(desc(forgeSites.createdAt));
+  // Exclude soft-deleted sites so they vanish from every view (bucketOf would otherwise
+  // fall them through to "archive"). Recoverable in the DB by flipping status back.
+  const forgeRows = await db.select().from(forgeSites).where(sql`status != 'deleted'`).orderBy(desc(forgeSites.createdAt));
   const forgeItems: ForgeSiteItem[] = forgeRows.map((r) => ({
     id: String(r.id),
     slug: r.slug,
