@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 
 import { db, leads, prospects, replyDrafts, forgeSites } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { type ForgeSiteItem } from "../sites/sites-queue";
-import { LeadCallCard } from "./lead-call-card";
+import { LeadsTable, type AttemptStat } from "./leads-table";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -132,6 +132,32 @@ export default async function LeadsPage() {
       revisionNote: r.revisionNote || "",
     }));
 
+  // Reach-out attempts per lead: manual call/text/email clicks (lead_contact_attempt) + the
+  // auto owner-outreach email (forge_outreach_sent). Keyed by site id → counts + last-tried.
+  const attemptRes = await db.execute(sql`
+    SELECT (metadata->'detail'->>'siteId') AS site,
+           (metadata->'detail'->>'channel') AS ch,
+           count(*)::int AS n, max(created_at) AS last_at
+    FROM activity_log
+    WHERE event_type IN ('lead_contact_attempt','forge_outreach_sent')
+      AND metadata->'detail'->>'siteId' IS NOT NULL
+    GROUP BY site, ch`);
+  const attemptRows = (Array.isArray(attemptRes) ? attemptRes : (attemptRes as { rows?: unknown }).rows ?? []) as Record<string, unknown>[];
+  const attempts: Record<string, AttemptStat> = {};
+  for (const r of attemptRows) {
+    const site = String(r.site);
+    const ch = String(r.ch || "email");
+    const n = Number(r.n) || 0;
+    const at = r.last_at ? new Date(r.last_at as string).toISOString() : null;
+    const cur = attempts[site] || { call: 0, text: 0, email: 0, total: 0, lastAt: null };
+    if (ch === "call") cur.call += n;
+    else if (ch === "text") cur.text += n;
+    else cur.email += n; // email + any auto-outreach send
+    cur.total += n;
+    if (at && (!cur.lastAt || at > cur.lastAt)) cur.lastAt = at;
+    attempts[site] = cur;
+  }
+
   return (
     <div className="px-6 py-8">
       <div className="mx-auto w-full max-w-4xl">
@@ -158,8 +184,9 @@ export default async function LeadsPage() {
             </span>
           </div>
           <p className="mb-4 text-sm text-ink-soft">
-            Businesses we built a site for and haven&apos;t converted yet. Tap 📞 to call, 💬 to text the link — the calling
-            script and their reviews are right there.
+            Businesses we built a site for and haven&apos;t converted yet. Click a row to open the script, reviews, and
+            contact buttons. Every 📞/💬/✉️ tap is counted under <span className="font-medium text-ink">Attempts</span> so
+            you can see who&apos;s been chased and how often.
           </p>
           {webDevLeads.length === 0 ? (
             <p className="rounded-2xl border border-line bg-background p-6 text-sm text-ink-soft">
@@ -167,11 +194,7 @@ export default async function LeadsPage() {
               <Link href="/command/prospects" className="font-semibold text-brand hover:underline">Approve some in prospecting →</Link>
             </p>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
-              {webDevLeads.map((item) => (
-                <LeadCallCard key={item.id} item={item} />
-              ))}
-            </div>
+            <LeadsTable leads={webDevLeads} attempts={attempts} />
           )}
         </section>
 

@@ -179,6 +179,23 @@ export async function denyForgeSite(id: string, reason?: string) {
   revalidatePath("/command/leads");
 }
 
+/** Record a manual reach-out attempt from the call room (call / text / email click). Fire-and-forget
+ *  from the client so the tally + "last tried" update without blocking the tel:/sms:/mailto: link. */
+export async function logContactAttempt(siteId: string, channel: "call" | "text" | "email"): Promise<{ ok: boolean }> {
+  await assertAdmin();
+  const id = Number(siteId);
+  if (!Number.isFinite(id)) return { ok: false };
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "lead_contact_attempt",
+    summary: `${channel === "call" ? "Called" : channel === "text" ? "Texted" : "Emailed"} lead (site #${id})`,
+    metadata: { detail: { siteId: id, channel } },
+  });
+  await db.update(forgeSites).set({ contactedAt: now() }).where(eq(forgeSites.id, id));
+  revalidatePath("/command/leads");
+  return { ok: true };
+}
+
 /** Include/exclude a built site from the scheduled outreach batch (the 10am send). Skipping sets
  *  outreach_status='skipped' so the sender passes it over; including resets it to 'none'. */
 export async function setOutreachSkip(id: string, skip: boolean): Promise<{ ok: boolean }> {
