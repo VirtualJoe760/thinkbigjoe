@@ -13,6 +13,8 @@ webhooks. Provisioned by [`scripts/retell/create-tbj-agent.mjs`](../scripts/rete
 - **Env** (in `.env.local` / Vercel): `RETELL_API_KEY`, `RETELL_WEBHOOK_SECRET` (bearer that
   protects every `/api/voice/*` route — see `voiceAuthed()` in `src/lib/voice-booking.ts`),
   and optionally `VOICE_WEBHOOK_BASE` (defaults to `https://thinkbigjoe.com`).
+- **Live number:** **+1 (480) 764-2121** — provisioned and bound as the receptionist's
+  `inbound_agents`, so calling it reaches the agent (i.e. the current claim-concierge flow).
 
 ## The call flow (TBJ's own front desk)
 
@@ -57,9 +59,8 @@ up a Retell agent *for their business* — same shape as `create-tbj-agent.mjs`,
 client's business info in the prompt, their booking calendar, and their own phone number. This
 is the blueprint; the automated per-client version is **not built yet**.
 
-> ⚠️ **Blocker:** buying phone numbers + running client agents needs **Retell billing enabled**.
-> Until then, agents exist but have **no live number** — test via a **web call** in the Retell
-> dashboard (Agents → the agent → Test).
+Retell billing is **active** (Pay As You Go; the one-time Persona KYC is done), so provisioning a
+number per client works via the API — each number is a PAYG cost, so gate it on a paid Voice plan.
 
 ## Editing + applying the agent
 
@@ -81,5 +82,8 @@ Live agent as of this writing: `agent_fc091c7bd9f23c9760ed6fa559` / `llm_2be0665
 - ✅ Agent + LLM created on Retell (prototype); booking webhooks live; `verify_code` route added.
 - ✅ Live agent updated to the claim-concierge flow (account# / claim-code lookup, portal plans,
   book Joe) via `update-tbj-agent.mjs` — verified on Retell.
-- ⏳ Live phone number — blocked on Retell billing (test via web call meanwhile).
-- ⏳ Automated per-client provisioning + agent activation on plan purchase — not built.
+- ✅ Live number +1 (480) 764-2121 bound to the receptionist — calling it hits the new flow.
+- ⏳ Automated per-client provisioning + agent activation on plan purchase — not built (billing is
+  on; each client number is a PAYG cost).
+- ⏳ **Texting** — the SMS agent exists (`agent_e56a619c…`) but the number isn't A2P-10DLC
+  registered yet (`create-sms-chat` → 404), so two-way SMS is blocked on that registration.
