@@ -58,6 +58,21 @@ export interface CalendarEvent {
   conferenceData?: unknown;
   status?: string;
   htmlLink?: string;
+  hangoutLink?: string; // Google Meet URL (present when conferenceData was requested)
+}
+
+/** Pull the Google Meet URL out of a created event (top-level hangoutLink, else conferenceData entry). */
+export function meetLinkOf(event: CalendarEvent): string | null {
+  if (event.hangoutLink) return event.hangoutLink;
+  const cd = event.conferenceData as { entryPoints?: Array<{ entryPointType?: string; uri?: string }> } | undefined;
+  const video = cd?.entryPoints?.find((e) => e.entryPointType === "video" && e.uri);
+  return video?.uri || null;
+}
+
+/** The calendar/Google-Meet host — `GCAL_CALENDAR_ID` (defaults to the connected account's primary).
+ *  Change this env var to move bookings + the Meet to a different calendar/email. */
+export function bookingHost(): string {
+  return process.env.GCAL_CALENDAR_ID || "primary";
 }
 
 export interface TimeSlot {

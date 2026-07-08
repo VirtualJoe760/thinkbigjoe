@@ -81,6 +81,14 @@ Booking runs on `src/lib/gcal.ts` — **regular** calls Mon–Fri 11 AM–1 PM P
 Mon–Fri 9 AM–5 PM Pacific (`AGENTIC_HOURS`), 30-min slots. Weekends always closed. All routes are
 bearer-gated by `RETELL_WEBHOOK_SECRET`.
 
+**Host calendar / Google Meet:** every booking is created on the calendar named by **`GCAL_CALENDAR_ID`**
+(env; defaults to `primary` = the connected Google account, currently Joe's `josephsardella@gmail.com`).
+**To change which email/calendar hosts the Meet, set `GCAL_CALENDAR_ID` to that address** (the connected
+OAuth account must own or have write access; switching to a different account entirely means re-OAuthing
+`GCAL_REFRESH_TOKEN`). Every booking path (voice, web `appointments/book`, `venus-book`) now also sends a
+**branded confirmation email carrying the Meet link** (`sendBookingConfirmationEmail`), so attendees get
+the video link from us, not just Google's raw invite.
+
 ## Support queue (interim → dashboard ticket system later)
 
 `create_support_ticket` currently emails **joe@thinkbigjoe.com** (`SUPPORT_EMAIL` env overrides) and

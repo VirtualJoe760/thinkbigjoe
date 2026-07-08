@@ -3,12 +3,14 @@ import { eq } from "drizzle-orm";
 
 import { db, leads, activityLog } from "@/db";
 import { notifyTelegram } from "@/lib/telegram";
+import { sendBookingConfirmationEmail } from "@/lib/email";
 import {
   BOOKING_TIMEZONE,
   SLOT_DURATION_MIN,
   createEvent,
   isCalendarConfigured,
   isWindowFree,
+  meetLinkOf,
 } from "@/lib/gcal";
 import { callerPhone, parseRetellArgs, spokenLabel, voiceAuthed } from "@/lib/voice-booking";
 
@@ -124,6 +126,10 @@ export async function POST(req: Request) {
     }
 
     const label = spokenLabel(start.toISOString());
+    const meetLink = meetLinkOf(event);
+    sendBookingConfirmationEmail({ to: email, name, whenLabel: label, meetLink, isAgentic }).catch((err) =>
+      console.error("[voice/book] confirmation email failed:", err),
+    );
     notifyTelegram(
       `📞 <b>New ${isAgentic ? "AGENTIC " : ""}strategy call booked</b> (via phone assistant)\n${name}${phone ? ` · ${phone}` : ""}\n${label}${reason ? `\nReason: ${reason}` : ""}`,
     ).catch(() => {});

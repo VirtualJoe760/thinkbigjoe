@@ -3,13 +3,14 @@ import { eq } from "drizzle-orm";
 
 import { db, leads } from "@/db";
 import { verifyBookingToken } from "@/lib/booking-token";
-import { sendNotificationEmail } from "@/lib/email";
+import { sendNotificationEmail, sendBookingConfirmationEmail } from "@/lib/email";
 import { notifyTelegram } from "@/lib/telegram";
 import {
   BOOKING_TIMEZONE,
   createEvent,
   isCalendarConfigured,
   isWindowFree,
+  meetLinkOf,
   MIN_NOTICE_MS,
   SLOT_DURATION_MIN,
 } from "@/lib/gcal";
@@ -129,12 +130,7 @@ export async function POST(req: Request) {
       },
     });
 
-    const meetLink =
-      (event as { hangoutLink?: string }).hangoutLink ||
-      (event as { conferenceData?: { entryPoints?: Array<{ entryPointType?: string; uri?: string }> } }).conferenceData?.entryPoints?.find(
-        (e) => e.entryPointType === "video",
-      )?.uri ||
-      null;
+    const meetLink = meetLinkOf(event);
     await db
       .update(leads)
       .set({
@@ -146,6 +142,14 @@ export async function POST(req: Request) {
       })
       .where(eq(leads.id, leadId))
       .catch((err) => console.error("[appointments] lead update failed:", err));
+
+    // Attendee's branded confirmation, carrying the Meet link.
+    sendBookingConfirmationEmail({
+      to: email,
+      name,
+      whenLabel: `${start.toLocaleString("en-US", { timeZone: BOOKING_TIMEZONE, dateStyle: "full", timeStyle: "short" })} Pacific`,
+      meetLink,
+    }).catch((err) => console.error("[appointments] confirmation email failed:", err));
 
     // Admin heads-up (no-ops until SMTP is configured; the Google Calendar
     // invite is the primary notification either way).

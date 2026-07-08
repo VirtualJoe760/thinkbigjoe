@@ -209,6 +209,49 @@ export async function sendReplyEmail(args: { to: string; subject: string; text: 
   });
 }
 
+/**
+ * Booking confirmation — sent by every booking path (voice, web, venus) so the
+ * attendee always gets a branded email that carries the **Google Meet link** (not
+ * just Google's raw calendar invite). Reply-to Joe so they can reach a human.
+ */
+export async function sendBookingConfirmationEmail(args: {
+  to: string;
+  name?: string | null;
+  whenLabel: string; // e.g. "Monday, July 13 at 11:00 AM Pacific"
+  meetLink?: string | null;
+  isAgentic?: boolean;
+}) {
+  const first = args.name?.trim().split(/\s+/)[0];
+  const kind = args.isAgentic ? "agentic strategy call" : "call";
+  const replyTo = process.env.EMAIL_FROM || FROM;
+  return sendEmail({
+    to: args.to,
+    replyTo,
+    subject: `You're booked — ${args.whenLabel}`,
+    html: layout(`
+      <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;">You're all set${first ? `, ${first}` : ""} 📅</h1>
+      <p style="margin:0;font-size:15px;line-height:1.6;color:#5b616e;">
+        Your ${kind} with Joe is confirmed for:
+      </p>
+      <p style="margin:12px 0 0;font-size:17px;font-weight:700;color:#0a0a0b;">${escapeHtml(args.whenLabel)}</p>
+      ${
+        args.meetLink
+          ? `${button(args.meetLink, "Join the video call")}
+             <p style="margin:16px 0 0;font-size:13px;line-height:1.6;color:#9aa0ad;">
+               Or paste this link at your call time:<br/>
+               <a href="${args.meetLink}" style="color:${BRAND};word-break:break-all;">${escapeHtml(args.meetLink)}</a>
+             </p>`
+          : `<p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#5b616e;">
+               A calendar invite with the video link is on its way to your inbox.
+             </p>`
+      }
+      <p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#9aa0ad;">
+        Need to reschedule? Just reply to this email.
+      </p>
+    `),
+  });
+}
+
 /** Password-reset email with a one-time reset link (expires in 1 hour). */
 export async function sendResetPasswordEmail(to: string, url: string, name?: string | null) {
   const firstName = name?.split(" ")[0];

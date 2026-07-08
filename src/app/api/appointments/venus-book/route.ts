@@ -3,11 +3,13 @@ import { eq } from "drizzle-orm";
 
 import { db, leads, activityLog } from "@/db";
 import { notifyTelegram } from "@/lib/telegram";
+import { sendBookingConfirmationEmail } from "@/lib/email";
 import {
   BOOKING_TIMEZONE,
   createEvent,
   isCalendarConfigured,
   isWindowFree,
+  meetLinkOf,
 } from "@/lib/gcal";
 
 export async function POST(req: Request) {
@@ -127,6 +129,13 @@ export async function POST(req: Request) {
       dateStyle: "medium",
       timeStyle: "short",
     });
+
+    sendBookingConfirmationEmail({
+      to: email,
+      name,
+      whenLabel: `${start.toLocaleString("en-US", { timeZone: BOOKING_TIMEZONE, dateStyle: "full", timeStyle: "short" })} Pacific`,
+      meetLink: meetLinkOf(event),
+    }).catch((err) => console.error("[venus-book] confirmation email failed:", err));
 
     notifyTelegram(
       `📅 <b>New strategy call booked</b> (via Venus)\n${name}${company ? ` · ${company}` : ""}\n${timeStr} PT`,
