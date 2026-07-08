@@ -28,12 +28,15 @@ never used · cron with no UI → work happens with no way to review it.
 
 ---
 
-## Command-center nav (6 tabs)
+## Command-center nav (7 tabs)
+
+The nav follows the funnel: **Build → Prospect → Sell.**
 
 | Tab | Route | What it's for |
 |---|---|---|
 | **Overview** | `/command` | Dashboard — appointments, calendar connection status, top-line stats. |
-| **Prospecting** | `/command/prospects` | The pipeline: web-dev leads (find → review → **Built**, gated behind marketing approval) + the demoted LinkedIn/B2B funnel. Cross-links to the call room. |
+| **Engine** | `/command/engine` | The **engine room** — run the forge the way the Venus tab watches Venus. Forge on/off kill-switch, the live build queue (elapsed + ETA, one build at a time), a pending customer-edits indicator, a "Clear stuck builds" maintenance action, and a forge activity feed (`event_type like 'forge%'`). The on/off switch gates **both** new-site builds (`forge-poll`) and portal edits (`edit-poll`) — see FORGE.md's kill-switch note. |
+| **Prospecting** | `/command/prospects` | The pipeline: web-dev leads (find → review → **Built**, gated behind marketing approval) + the showroom preview/outreach dials. Cross-links to the call room. |
 | **Leads** | `/command/leads` | The **call room** — only sites Joe has approved for marketing. Photo, reviews, a ready calling script, click-to-call/text/email. Cross-links back to Prospecting. |
 | **Appointments** | `/command/appointments` | DB-enriched booked-call detail (role/industry/team-size/timeline, calendar links). |
 | **Venus** | `/command/crons` (+ sub-nav: Crons / Audit log / Team) | Cron manifest + last-run, the audit log (`activity_log`), and the OpenClaw team roster. |

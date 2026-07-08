@@ -183,6 +183,20 @@ GitHub pushes flying out even for builds that failed locally. That's what draine
 approved sites drains one every ~10–15 minutes, however large N is. This is the correct behavior —
 do not "fix" slowness by re-introducing parallelism without also adding the guardrails below.
 
+### UI kill-switch — one switch, both flows (builds + edits)
+
+The forge on/off toggle in the **Engine room** (`/command/engine`) writes `forge_engine.enabled`.
+**Both** local pollers read it at the top of every tick and no-op when it's `false`:
+- `forge-poll.mjs` — pauses new-site builds.
+- `edit-poll.mjs` — pauses applying portal edits.
+
+Crucially, turning the forge **off never drops work**. The Vercel front-end still accepts
+everything: an approved site stays `status='approved'`, and a customer's portal edit is still
+written to `edit_requests` as `status='requested'` (the `/api/edit-requests` route has no
+forge-state gate). Both simply **queue** until Joe flips the forge back on, then drain on the next
+tick. So "the forge is offline" degrades to "builds are paused," never "edits are lost." The Engine
+room surfaces this: a pending customer-edits indicator shows the count waiting while it's off.
+
 ### Rules that keep this safe going forward
 
 1. **Never bulk-approve/re-queue more than a handful of sites at once** without discussing it —

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { desc, eq, sql } from "drizzle-orm";
 
-import { db, forgeEngine, forgeSites, activityLog } from "@/db";
+import { db, forgeEngine, forgeSites, editRequests, activityLog } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { ForgePanel, type ForgeEngineStats } from "../prospects/forge-panel";
 import { ClearBuildCache } from "./clear-cache";
@@ -65,6 +65,12 @@ export default async function EnginePage() {
     };
   }
 
+  const pendingEdits = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(editRequests)
+    .where(sql`status in ('requested','applying')`)
+    .then((r) => r[0]?.count ?? 0);
+
   const activity = await db
     .select()
     .from(activityLog)
@@ -87,6 +93,26 @@ export default async function EnginePage() {
             <ForgePanel stats={forgeStats} />
           </div>
         )}
+
+        <div className="mt-3 flex items-center gap-3 rounded-2xl border border-line bg-background px-5 py-3.5">
+          <span className="text-lg leading-none">✏️</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-ink">
+              {pendingEdits === 0
+                ? "No customer edits waiting"
+                : `${pendingEdits} customer edit${pendingEdits === 1 ? "" : "s"} queued`}
+            </p>
+            <p className="text-[11px] text-ink-soft">
+              Portal edits are always accepted and saved — they apply on the next tick when the forge is on, or wait here
+              while it&apos;s off.
+            </p>
+          </div>
+          {pendingEdits > 0 && (
+            <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+              {forgeStats?.enabled ? "applying" : "waiting"}
+            </span>
+          )}
+        </div>
 
         <h2 className="mt-8 text-sm font-semibold uppercase tracking-widest text-ink-soft">Maintenance</h2>
         <div className="mt-3 rounded-2xl border border-line bg-background p-4">
