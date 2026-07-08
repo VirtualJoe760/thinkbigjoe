@@ -345,6 +345,7 @@ function BuiltActions({ item }: { item: ForgeSiteItem }) {
   const [prompt, setPrompt] = useState("");
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
+  const [confirmDel, setConfirmDel] = useState(false);
   const approved = !!item.marketingApprovedAt;
 
   const send = (fn: () => Promise<{ ok: boolean; message: string }>) => {
@@ -375,13 +376,28 @@ function BuiltActions({ item }: { item: ForgeSiteItem }) {
         >
           🎲 Rebuild differently
         </button>
-        <button
-          onClick={() => { if (confirm(`Delete "${item.businessName}"? It's removed from every view (recoverable in the DB). Use this for demos/tests/mistakes — for a real business you're rejecting, use Deny instead.`)) send(() => deleteForgeSite(item.id)); }}
-          disabled={pending}
-          className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-background px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
-        >
-          🗑 Delete
-        </button>
+        {confirmDel ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-red-300 bg-red-50 px-2.5 py-1 text-xs">
+            <span className="font-semibold text-red-700">Delete this site?</span>
+            <button
+              onClick={() => send(() => deleteForgeSite(item.id))}
+              disabled={pending}
+              className="rounded-full bg-red-600 px-2.5 py-0.5 font-bold text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              Yes, delete
+            </button>
+            <button onClick={() => setConfirmDel(false)} className="px-1 font-medium text-ink-soft hover:text-ink">cancel</button>
+          </span>
+        ) : (
+          <button
+            onClick={() => setConfirmDel(true)}
+            disabled={pending}
+            title="Remove from every view (recoverable in the DB). For demos/tests/mistakes — use Deny to reject a real business."
+            className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-background px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+          >
+            🗑 Delete
+          </button>
+        )}
         <span className="flex-1" />
         {approved ? (
           <span className="inline-flex items-center gap-2">
