@@ -5,8 +5,9 @@ import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { db, leads, prospects, replyDrafts, forgeSites } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { type ForgeSiteItem } from "../sites/sites-queue";
-import { getLeadHistories, type LeadHistoryEvent } from "@/lib/forge-outreach";
+import { getLeadHistories, getPendingReplies, type LeadHistoryEvent } from "@/lib/forge-outreach";
 import { LeadsTable, type AttemptStat } from "./leads-table";
+import { RepliesInbox } from "./replies-inbox";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -162,6 +163,9 @@ export default async function LeadsPage() {
   // Contact/message history per lead (the follow-up timeline).
   const histories: Record<string, LeadHistoryEvent[]> = await getLeadHistories(webDevLeads);
 
+  // Inbound email replies awaiting a response (poller pre-drafts them).
+  const pendingReplies = await getPendingReplies();
+
   return (
     <div className="px-6 py-8">
       <div className="mx-auto w-full max-w-4xl">
@@ -178,6 +182,23 @@ export default async function LeadsPage() {
             ← Prospecting pipeline
           </Link>
         </div>
+
+        {/* ── Email replies awaiting a response (draft → review → send) ── */}
+        {pendingReplies.length > 0 && (
+          <section className="mb-10">
+            <div className="mb-1 flex items-center gap-3">
+              <h2 className="text-xl font-extrabold tracking-tight">Replies to respond to</h2>
+              <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                {pendingReplies.length} awaiting
+              </span>
+            </div>
+            <p className="mb-4 text-sm text-ink-soft">
+              A prospect emailed back. We pre-drafted a reply for you — edit it and hit send, or dismiss it.
+              Nothing goes out until you click <span className="font-medium text-ink">Send reply</span>.
+            </p>
+            <RepliesInbox replies={pendingReplies} />
+          </section>
+        )}
 
         {/* ── Web-dev leads (built businesses to call) ── */}
         <section className="mb-10">

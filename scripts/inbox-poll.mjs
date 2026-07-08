@@ -24,7 +24,27 @@ const readEnv = (k) => {
 };
 const USER = readEnv("SMTP_USER"), PASS = readEnv("SMTP_PASS");
 const DB = readEnv("DATABASE_URL_UNPOOLED") || readEnv("DATABASE_URL");
+const GKEY = readEnv("GEMINI_API_KEY");
+const TG_TOKEN = readEnv("TELEGRAM_BOT_TOKEN"), TG_CHAT = readEnv("TELEGRAM_CHAT_ID");
 if (!USER || !PASS || !DB) { console.error("missing SMTP_USER/SMTP_PASS/DATABASE_URL in .env.local"); process.exit(1); }
+
+async function tg(text) {
+  if (!TG_TOKEN || !TG_CHAT) return;
+  try { await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: TG_CHAT, text, parse_mode: "HTML" }) }); } catch { /* best-effort */ }
+}
+// Draft a warm reply FROM JOE to an inbound message (Gemini text). Returns text or null.
+async function geminiDraft(lead, inbound) {
+  if (!GKEY) return null;
+  const prompt = `You are Joe Sardella, founder of ThinkBigJoe (a web-design studio). You emailed the owner of "${lead.business_name}" offering a website you already built for them (live at ${lead.live_url || "a preview"}${lead.claim_code ? `, claim code ${lead.claim_code}` : ""}). They just REPLIED:\n\n"""${(inbound || "").slice(0, 1500)}"""\n\nWrite a short, warm, HUMAN reply FROM JOE — first person, 2-4 sentences, matching their tone. If they seem interested, nudge toward a quick 10-minute call or claiming the site. If they asked something, answer briefly and helpfully. Never pushy, no hype. Output ONLY the email body (no subject line). Sign off as "Joe".`;
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GKEY}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+    });
+    const j = await r.json();
+    return j?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join("").trim() || null;
+  } catch { return null; }
+}
 
 const STATE = "/tmp/tbj-inbox-poll.uid";
 const log = (...a) => console.log(`[${new Date().toISOString()}]`, ...a);
@@ -42,7 +62,7 @@ async function logAct(eventType, summary, detail) {
 
 // Our outreach recipients → for matching bounces (address in DSN body) + replies (From = lead).
 const leads = (await db.query(
-  "select id, business_name, lower(email) email from forge_sites where email is not null and outreach_status is not null",
+  "select id, business_name, lower(email) email, live_url, claim_code from forge_sites where email is not null and outreach_status is not null",
 )).rows;
 const byEmail = new Map(leads.map((l) => [l.email, l]));
 
@@ -74,8 +94,10 @@ try {
         if (looksBounce) {
           const hit = leads.find((l) => body.includes(l.email));
           if (hit) {
+            const already = (await db.query("select 1 from forge_sites where id=$1 and outreach_status='bounced'", [hit.id])).rowCount > 0;
             await db.query("update forge_sites set outreach_status='bounced', updated_at=now() where id=$1 and coalesce(outreach_status,'')<>'bounced'", [hit.id]);
             await logAct("email_bounced", `Bounced — ${hit.business_name} <${hit.email}>`, { siteId: hit.id, address: hit.email, subject: subject.slice(0, 140) });
+            if (!already) await tg(`⚠️ <b>Email bounced</b> — ${hit.business_name} &lt;${hit.email}&gt;\nAddress is bad. Marked <code>bounced</code> (won't resend). Re-enrich for a better address or fall back to a phone/text.`);
           } else {
             await logAct("email_bounced", `Bounce received (couldn't match to a lead) — "${subject.slice(0, 80)}"`, { from, subject: subject.slice(0, 140) });
           }
@@ -84,7 +106,16 @@ try {
         }
         const lead = byEmail.get(from);
         if (lead) {
-          await logAct("email_reply", `Reply from ${lead.business_name} <${from}>`, { siteId: lead.id, from, subject: subject.slice(0, 140), snippet: (parsed.text || "").replace(/\s+/g, " ").slice(0, 300) });
+          const cleanBody = (parsed.text || "").replace(/\s+/g, " ").trim();
+          await logAct("email_reply", `Reply from ${lead.business_name} <${from}>`, { siteId: lead.id, from, subject: subject.slice(0, 140), snippet: cleanBody.slice(0, 300) });
+          // Prepare a draft response (draft → Joe approves → send). One row per inbound msg (UID watermark dedupes).
+          const draft = await geminiDraft(lead, parsed.text || subject);
+          const ins = await db.query(
+            `insert into forge_replies (site_id, from_email, subject, inbound_text, draft, status)
+             values ($1,$2,$3,$4,$5,'awaiting') returning id`,
+            [lead.id, from, subject.slice(0, 200), cleanBody.slice(0, 4000), draft],
+          );
+          await tg(`↩️ <b>Reply</b> from ${lead.business_name} &lt;${from}&gt;\n"${cleanBody.slice(0, 160)}"\n\n${draft ? "✍️ A draft response is ready for your review" : "⚠️ Couldn't auto-draft — write one"} → command/leads (reply #${ins.rows[0].id}).`);
           replies++;
         }
       }

@@ -1,6 +1,6 @@
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 
-import { db, forgeSites } from "@/db";
+import { db, forgeSites, forgeReplies } from "@/db";
 
 /**
  * The owner-outreach message for a built site — "I built you a website, claim it."
@@ -66,6 +66,41 @@ export function smsText(l: { businessName: string; ownerName: string | null; liv
   return `Hi${first ? ` ${first}` : ""}, it's Joe — here's the site I built for ${l.businessName}: ${l.liveUrl || ""}`;
 }
 
+export type PendingReply = {
+  id: number;
+  siteId: number;
+  businessName: string;
+  liveUrl: string | null;
+  fromEmail: string | null;
+  subject: string | null;
+  inboundText: string | null;
+  draft: string | null;
+  createdAt: string;
+};
+
+/**
+ * Inbound replies awaiting Joe's review. Each row was created by the inbox poller
+ * (scripts/inbox-poll.mjs) when a prospect wrote back — with a Gemini-drafted response
+ * pre-written. Joe reviews/edits the draft and sends (draft → approve → send). Newest first.
+ */
+export async function getPendingReplies(): Promise<PendingReply[]> {
+  const rows = await db
+    .select({
+      id: forgeReplies.id, siteId: forgeReplies.siteId, fromEmail: forgeReplies.fromEmail,
+      subject: forgeReplies.subject, inboundText: forgeReplies.inboundText, draft: forgeReplies.draft,
+      createdAt: forgeReplies.createdAt, businessName: forgeSites.businessName, liveUrl: forgeSites.liveUrl,
+    })
+    .from(forgeReplies)
+    .leftJoin(forgeSites, eq(forgeReplies.siteId, forgeSites.id))
+    .where(eq(forgeReplies.status, "awaiting"))
+    .orderBy(sql`${forgeReplies.createdAt} DESC`);
+  return rows.map((r) => ({
+    id: r.id, siteId: r.siteId, businessName: r.businessName ?? `Site #${r.siteId}`,
+    liveUrl: r.liveUrl, fromEmail: r.fromEmail, subject: r.subject, inboundText: r.inboundText,
+    draft: r.draft, createdAt: r.createdAt,
+  }));
+}
+
 export type LeadHistoryEvent = {
   at: string;
   kind: "email-sent" | "call" | "text" | "email" | "bounce" | "reply";
@@ -94,7 +129,7 @@ export async function getLeadHistories(leads: HistLead[]): Promise<Record<string
            (metadata->'detail'->>'snippet') AS snippet,
            event_type, created_at
     FROM activity_log
-    WHERE event_type IN ('forge_outreach_sent','lead_contact_attempt','email_bounced','email_reply')
+    WHERE event_type IN ('forge_outreach_sent','lead_contact_attempt','email_bounced','email_reply','email_reply_sent')
       AND (metadata->'detail'->>'siteId') IS NOT NULL
     ORDER BY created_at ASC`);
   const rows = (Array.isArray(res) ? res : (res as { rows?: unknown }).rows ?? []) as Record<string, unknown>[];
@@ -114,6 +149,8 @@ export async function getLeadHistories(leads: HistLead[]): Promise<Record<string
       ev = { at, kind: "bounce", label: "Bounced — didn't deliver", body: r.subject ? `Bounce: ${String(r.subject)}` : undefined };
     } else if (r.event_type === "email_reply") {
       ev = { at, kind: "reply", label: "Replied", subject: r.subject ? String(r.subject) : undefined, body: r.snippet ? String(r.snippet) : undefined };
+    } else if (r.event_type === "email_reply_sent") {
+      ev = { at, kind: "email", label: "Sent a reply", body: r.snippet ? String(r.snippet) : undefined };
     } else {
       const ch = String(r.ch || "email");
       if (ch === "call") ev = { at, kind: "call", label: "Called" };

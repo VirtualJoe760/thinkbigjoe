@@ -5,9 +5,9 @@ import { eq, inArray } from "drizzle-orm";
 
 import { and, sql } from "drizzle-orm";
 
-import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine, jobRequests, outreachEngine, previewEngine, forgeEngine } from "@/db";
+import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine, jobRequests, outreachEngine, previewEngine, forgeEngine, forgeReplies } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
-import { sendForgeOutreachEmail } from "@/lib/email";
+import { sendForgeOutreachEmail, sendReplyEmail } from "@/lib/email";
 
 const now = () => new Date().toISOString();
 
@@ -192,6 +192,51 @@ export async function logContactAttempt(siteId: string, channel: "call" | "text"
     metadata: { detail: { siteId: id, channel } },
   });
   await db.update(forgeSites).set({ contactedAt: now() }).where(eq(forgeSites.id, id));
+  revalidatePath("/command/leads");
+  return { ok: true };
+}
+
+/**
+ * Send Joe's reply to an inbound prospect message. The draft→approve→send gate: the poller
+ * pre-wrote a draft (forge_replies), Joe reviewed/edited the text here, and this actually sends it
+ * via SMTP (reply-to Joe, threaded on their subject). Marks the row 'sent' + logs the touch so it
+ * lands on the lead's Message history. Nothing goes out without this explicit action.
+ */
+export async function sendReply(replyId: number, text: string): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  const body = text.trim();
+  if (!body) return { ok: false, message: "Nothing to send — the reply is empty." };
+  const [r] = await db
+    .select({ id: forgeReplies.id, siteId: forgeReplies.siteId, fromEmail: forgeReplies.fromEmail, subject: forgeReplies.subject, status: forgeReplies.status })
+    .from(forgeReplies).where(eq(forgeReplies.id, replyId)).limit(1);
+  if (!r) return { ok: false, message: "Reply not found." };
+  if (r.status === "sent") return { ok: false, message: "This reply was already sent." };
+  if (!r.fromEmail) return { ok: false, message: "No address to reply to." };
+
+  const res = await sendReplyEmail({ to: r.fromEmail, subject: r.subject || "your website", text: body });
+  if ("error" in res && res.error) return { ok: false, message: "Send failed — check the email logs." };
+  if ("skipped" in res && res.skipped) return { ok: false, message: "SMTP isn't configured — can't send." };
+
+  await db.update(forgeReplies)
+    .set({ status: "sent", finalText: body, updatedAt: now() })
+    .where(eq(forgeReplies.id, replyId));
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "email_reply_sent",
+    summary: `Replied to ${r.fromEmail} (site #${r.siteId})`,
+    metadata: { detail: { siteId: r.siteId, channel: "email", to: r.fromEmail, snippet: body.slice(0, 300) } },
+  });
+  await db.update(forgeSites).set({ contactedAt: now() }).where(eq(forgeSites.id, r.siteId));
+  revalidatePath("/command/leads");
+  return { ok: true, message: "Reply sent." };
+}
+
+/** Dismiss an inbound reply without sending (handled elsewhere, spam, or not worth a response). */
+export async function dismissReply(replyId: number): Promise<{ ok: boolean }> {
+  await assertAdmin();
+  await db.update(forgeReplies)
+    .set({ status: "dismissed", updatedAt: now() })
+    .where(eq(forgeReplies.id, replyId));
   revalidatePath("/command/leads");
   return { ok: true };
 }

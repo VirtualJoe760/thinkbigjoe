@@ -137,3 +137,29 @@ Zoho rejects a normal account password over SMTP when 2FA is on — you need an
 
 Also confirm in Zoho that **IMAP/SMTP access is enabled** for the mailbox and the
 `noreply@thinkbigjoe.com` mailbox actually exists.
+
+## Inbound email — bounce & reply pipeline
+
+Sending is only half the loop. A deterministic poller watches the Zoho inbox so outreach never
+flies blind on what came back.
+
+- **Poller:** [`scripts/inbox-poll.mjs`](../scripts/inbox-poll.mjs) — Zoho **IMAP** (`imap.zoho.com:993`,
+  same creds as SMTP: `SMTP_USER`/`SMTP_PASS`), runs every ~10 min via launchd
+  `com.thinkbigjoe.inboxpoll`. Never marks mail read (`BODY.PEEK`); a UID watermark in `/tmp` means each
+  message is processed once. No LLM in the detection path (pure infra).
+- **Bounce** (Mailer-Daemon/DSN naming a lead's address) → sets that lead `outreach_status='bounced'`
+  (so it's **excluded from any resend**), logs `email_bounced`, and pings Telegram. The "response" to a
+  bounce is *not* an email — it's re-enrich for a better address or fall back to phone/text.
+- **Reply** (From = a lead) → logs `email_reply`, inserts a **`forge_replies`** row, and **pre-drafts a
+  warm response with Gemini** (`gemini-2.5-flash`), then pings Telegram. The draft lands in the
+  **"Replies to respond to"** panel at the top of `/command/leads`.
+- **The gate:** draft → **Joe edits & sends** (server action `sendReply`, `src/lib/email.ts` →
+  `sendReplyEmail`, reply-to Joe, threaded on `Re:`) → row marked `sent` + logged `email_reply_sent`.
+  **Nothing emails automatically** — same human gate as every outbound. `dismissReply` clears one without
+  sending. Bounces (⚠️), replies (↩️), and sent replies all show on each lead's **Message history** timeline
+  in the call room.
+- **Prereq — IMAP must be ON in Zoho:** mail.zoho.com → Settings → Mail Accounts → `joe@thinkbigjoe.com`
+  → IMAP Access → **Enable**. Until then the poller logs `inbox_checked` with an "IMAP not enabled" error
+  and does nothing. The launchd plist can stay loaded (it fails gracefully every run).
+- The Gemini draft uses `GEMINI_API_KEY` from `.env.local`; Telegram alerts use
+  `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (both optional — the poller degrades gracefully without them).

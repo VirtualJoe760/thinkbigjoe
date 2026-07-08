@@ -432,3 +432,19 @@ export const forgeEngine = pgTable("forge_engine", {
 	lastWarnPct: integer("last_warn_pct").default(0).notNull(),
 	lastWarnWeek: text("last_warn_week"),
 });
+
+export const forgeReplies = pgTable("forge_replies", {
+	id: serial().primaryKey().notNull(),
+	siteId: integer("site_id").notNull(),
+	fromEmail: text("from_email"),
+	subject: text(),
+	inboundText: text("inbound_text"),
+	draft: text(),
+	finalText: text("final_text"),
+	status: text().default('awaiting').notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("forge_replies_site_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops")),
+	index("forge_replies_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+]);

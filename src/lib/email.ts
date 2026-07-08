@@ -189,6 +189,26 @@ export async function sendWelcomeEmail(to: string, name?: string | null) {
   });
 }
 
+/**
+ * A personal reply from Joe to a prospect who wrote back — plain and human, NOT
+ * the branded "no-reply" shell. Threads on their subject (Re: …) and sets reply-to
+ * so their answer comes back to the same inbox the poller watches. Text → paragraphs.
+ */
+export async function sendReplyEmail(args: { to: string; subject: string; text: string }) {
+  const replyTo = process.env.EMAIL_FROM || FROM;
+  const paras = args.text
+    .split(/\n{2,}/)
+    .map((p) => `<p style="margin:0 0 14px;">${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`)
+    .join("");
+  const subject = /^re:/i.test(args.subject) ? args.subject : `Re: ${args.subject}`;
+  return sendEmail({
+    to: args.to,
+    subject,
+    replyTo,
+    html: `<div style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#0a0a0b;">${paras}</div>`,
+  });
+}
+
 /** Password-reset email with a one-time reset link (expires in 1 hour). */
 export async function sendResetPasswordEmail(to: string, url: string, name?: string | null) {
   const firstName = name?.split(" ")[0];

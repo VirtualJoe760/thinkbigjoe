@@ -75,6 +75,13 @@ it's still "in review" on Prospecting. Each card (`LeadCallCard`) shows a busine
 generated **calling script** (a personalized opener + the per-lead "angle" from call-prep). Buttons:
 📞 Call, 💬 Text the link, 🔗 Live site, ✉️ Email.
 
+**Replies to respond to** (top of the page, when any): inbound email replies caught by the inbox
+poller (`scripts/inbox-poll.mjs` → `forge_replies` table). Each arrives with a Gemini-drafted response
+pre-written; Joe edits and sends inline (`sendReply` / `dismissReply` server actions). **Draft → Joe
+approves → send** — nothing emails automatically. Bounces don't appear here (they can't be replied to);
+they set the lead `bounced` and show on the Message-history timeline. Full pipeline: [AUTH.md](AUTH.md)
+→ "Inbound email — bounce & reply pipeline".
+
 Also on this page (unchanged from before the rewrite): inbound form leads (`leads` table) and
 LinkedIn replied prospects (legacy funnel).
 
@@ -92,6 +99,7 @@ bulk runs — they all write into the same table the (much more expensive) forge
 | `scripts/enrich-engine.mjs` | `com.thinkbigjoe.enrichengine` | Apify-based contact enrichment (Google Search → Facebook page → email/Messenger) for leads missing email/socials. *(Currently the free `prospector` agent cron does this instead — see the cron table below — to save Apify budget; this script is kept for a manual "turbo" fill.)* |
 | `scripts/callprep-engine.mjs` | `com.thinkbigjoe.callprepengine` | Apify-based review-quote + follower-count + talking-points generation. Same note as above — the free agent cron is primary now. |
 | `scripts/trigger-poll.mjs` | `com.thinkbigjoe.triggerpoll` | Drains `job_requests` (the "Find leads now"/"Enrich now" buttons) — runs `lead-engine.mjs` or triggers the enrichment cron on demand. |
+| `scripts/inbox-poll.mjs` | `com.thinkbigjoe.inboxpoll` | Watches the Zoho inbox (IMAP, every ~10 min) for outreach **bounces** (→ mark lead `bounced`, exclude from resend) and **replies** (→ insert `forge_replies` + Gemini-draft a response → the "Replies to respond to" panel on `/command/leads`). No forge/LLM cost beyond a tiny draft. **Needs IMAP enabled in Zoho** for `joe@thinkbigjoe.com` — fails gracefully until then. Details: [AUTH.md](AUTH.md) → "Inbound email". |
 | `scripts/preview-engine.mjs` | `com.thinkbigjoe.previewengine` | Generates the cheap **showroom previews** in paced daily **waves** — Gemini hero copy + claim code + 14-day window — for contactable, un-previewed prospects (warmest first), via `POST /api/forge/preview`. NO forge build. Config in the `preview_engine` table (`daily_budget` = wave size, `enabled`); tracks `last_run_summary`. Plist created **unloaded** — `launchctl load` it to start waves. The wave budget paces to outreach capacity, not cost (previews are ~$0.0002 each). |
 
 **Check what's actually running:** `launchctl list | grep thinkbigjoe` — a `-` in the PID column
