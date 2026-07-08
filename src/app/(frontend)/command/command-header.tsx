@@ -11,6 +11,11 @@ import { Logo } from "@/components/logo";
 const LINKS: Array<{ href: string; label: string; icon: string; match?: string[] }> = [
   { href: "/command", label: "Overview", icon: "M3 12l9-9 9 9M5 10v10h14V10" },
   {
+    href: "/command/engine",
+    label: "Engine",
+    icon: "M12 15a3 3 0 100-6 3 3 0 000 6zM4 12h2M18 12h2M12 4v2M12 18v2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M17.7 6.3l-1.4 1.4M7.7 16.3l-1.4 1.4",
+  },
+  {
     href: "/command/prospects",
     label: "Prospecting",
     icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM4 20a8 8 0 0116 0",

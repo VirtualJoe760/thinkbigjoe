@@ -36,7 +36,27 @@ export async function toggleForge(enabled: boolean) {
     summary: `Build engine ${enabled ? "turned ON" : "turned OFF"}`,
     metadata: { detail: { enabled } },
   });
+  revalidatePath("/command/engine");
   revalidatePath("/command/prospects");
+}
+
+/** Clear stuck build state: re-queue any 'building' row that's been stuck too long (a crashed/hung
+ *  build). The forge picks a fresh worker + rebuilds it. Safe — only touches long-stuck rows. */
+export async function resetStuckBuilds(): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  const stuck = await db
+    .update(forgeSites)
+    .set({ status: "approved", updatedAt: now() })
+    .where(sql`status = 'building' AND updated_at < now() - interval '25 minutes'`)
+    .returning({ id: forgeSites.id });
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "forge_cache_cleared",
+    summary: `Cleared stuck builds — ${stuck.length} re-queued`,
+    metadata: { detail: { reset: stuck.length } },
+  });
+  revalidatePath("/command/engine");
+  return { ok: true, message: stuck.length ? `Re-queued ${stuck.length} stuck build(s).` : "No stuck builds — queue is clean." };
 }
 const slugify = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 const hostOf = (u: string) => {
