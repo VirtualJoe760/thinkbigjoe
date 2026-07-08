@@ -89,7 +89,9 @@ export function ForgePanel({ stats }: { stats: ForgeEngineStats }) {
               const rowBuilding = q.status === "building";
               let etaLabel: string;
               if (rowBuilding) {
-                etaLabel = `building now${q.elapsedMin != null ? ` · ~${q.elapsedMin}m in` : ""}`;
+                const elapsed = q.elapsedMin ?? 0;
+                const left = Math.max(0, stats.avgBuildMinutes - elapsed);
+                etaLabel = `building · ${elapsed}m elapsed · ~${left}m left`;
               } else {
                 cursor += stats.avgBuildMinutes;
                 etaLabel = enabled ? `${fmtEta(cursor)} to start` : "waiting — engine off";
