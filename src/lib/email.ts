@@ -150,7 +150,7 @@ export async function sendForgeOutreachEmail(args: {
     <div style="margin:20px 0;padding:14px 18px;background:#f5f7fb;border:1px solid #e6e9ef;border-radius:12px;">
       <div style="font-size:11px;color:#9aa0ad;text-transform:uppercase;letter-spacing:.5px;">Your claim code</div>
       <div style="font-size:22px;font-weight:800;letter-spacing:1.5px;font-family:'Courier New',monospace;color:#0a0a0b;">${escapeHtml(args.claimCode)}</div>
-      <div style="margin-top:4px;font-size:13px;line-height:1.5;color:#5b616e;">Create your free account, then enter this code at <a href="${SITE_URL}/portal/claim" style="color:${BRAND};">${SITE_URL}/portal/claim</a> to take ownership of your site.</div>
+      <div style="margin-top:4px;font-size:13px;line-height:1.5;color:#5b616e;">Create an account, then enter this code at <a href="${SITE_URL}/portal/claim" style="color:${BRAND};">${SITE_URL}/portal/claim</a> to claim your site and take ownership.</div>
     </div>`;
 
   const buttons = `

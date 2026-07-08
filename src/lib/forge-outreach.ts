@@ -22,7 +22,7 @@ export function composeOutreach(s: {
   const body = [
     `Hi${first ? ` ${first}` : ""} — I'm Joe. I came across ${s.businessName}${s.city ? ` in ${s.city}` : ""} and${repBit}, so I went ahead and built you a brand-new website (you can see it right below).`,
     `It's a real, finished site — your services, mobile-friendly, and fast. I built it on spec because I think ${s.businessName} deserves a site that matches how good you are at the work.`,
-    `If you like it, it's yours: create a free account, enter the claim code below, and you can take ownership and edit anything. No obligation, and it's reserved for you.`,
+    `If you'd like it, just create an account and enter the claim code below to claim your website — then you can take ownership and make any changes you want. It's reserved for you; no pressure.`,
   ].join("\n\n");
   return { subject: `I built ${s.businessName} a new website — take a look`, body };
 }
