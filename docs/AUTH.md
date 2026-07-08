@@ -4,6 +4,35 @@ How people sign in, how the command center is gated, and how the app sends
 password-reset / welcome / outreach email. If a login or a "didn't get the
 email" problem lands on your desk, start here.
 
+## Domain, DNS & email — where everything lives (check here first)
+
+The authoritative map of the domain/DNS/email topology. **Check this before asking where
+anything is** — don't guess or ask the user.
+
+| Thing | Where | Notes |
+|---|---|---|
+| **Domain** | `thinkbigjoe.com` | the one production domain |
+| **DNS** | **Vercel** (Vercel → Domains → `thinkbigjoe.com` → DNS) | *all* DNS records live here — MX, SPF, DKIM, DMARC, verification. To add/change any record, do it in Vercel. |
+| **Email (mailboxes + receiving)** | **Zoho Mail** (free tier) | mailbox `joe@thinkbigjoe.com`; MX → `mx.zoho.com` / `mx2` / `mx3` |
+| **Transactional + outreach sending** | Zoho **SMTP** (`smtp.zoho.com`) as `joe@thinkbigjoe.com` | see "Transactional email" below |
+| **App hosting** | Vercel (project `thinkbigjoe-cyio`) | env vars set via `vercel env … production` |
+
+**So: DNS = Vercel, email = Zoho.** Changing a DNS record (e.g. adding DMARC) is a Vercel action;
+changing a mailbox/DKIM is a Zoho action.
+
+### Email deliverability status (as of go-live)
+- **SPF** ✅ `v=spf1 include:zohomail.com ~all`
+- **DKIM** ✅ selector `zmail._domainkey`
+- **MX** ✅ `mx.zoho.com` (+ mx2/mx3)
+- **DMARC** ⚠️ **MISSING** — add a TXT record at `_dmarc.thinkbigjoe.com` in **Vercel DNS**
+  (start `v=DMARC1; p=none; rua=mailto:joe@thinkbigjoe.com`). Gmail/Yahoo bulk-sender rules push
+  unauthenticated cold mail to spam, so this matters once outreach volume ramps.
+- The mailbox is **day-old with no sending reputation** — burst cold sends bounce/spam-file. Warm up
+  with small daily batches; verify recipient addresses (skip guessed `info@`/`hello@`) before sending.
+
+> The old `ACQUISITION_SYSTEM.md` also describes this setup, but that doc is flagged *aspirational* —
+> **this table is the current source of truth.**
+
 ## The auth system
 
 - **Library:** [better-auth](https://better-auth.com) (`src/lib/auth.ts`,
