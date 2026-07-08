@@ -40,6 +40,36 @@ export async function toggleForge(enabled: boolean) {
   revalidatePath("/command/prospects");
 }
 
+/** Flip one of the forge's granular capability switches (new-site builds, customer edits, or the
+ *  idle template-designer). The poller reads these each tick — master `enabled` still gates all of
+ *  them, these throttle spend within it (e.g. "edits only, no new sites"). */
+export async function setForgeCapability(
+  capability: "builds" | "edits" | "idleTemplates",
+  on: boolean,
+): Promise<{ ok: boolean }> {
+  await assertAdmin();
+  const col = { builds: "buildsEnabled", edits: "editsEnabled", idleTemplates: "idleTemplatesEnabled" } as const;
+  await db.update(forgeEngine).set({ [col[capability]]: on, updatedAt: now() }).where(eq(forgeEngine.id, 1));
+  const label = { builds: "New-site builds", edits: "Customer edits", idleTemplates: "Idle template-building" }[capability];
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "forge_engine_toggled",
+    summary: `${label} ${on ? "turned ON" : "turned OFF"}`,
+    metadata: { detail: { capability, on } },
+  });
+  revalidatePath("/command/engine");
+  return { ok: true };
+}
+
+/** Set the weekly forge run-budget (the quota gauge cap). A "run" = one build, edit, or template. */
+export async function setWeeklyRunBudget(budget: number): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  const clean = Math.max(1, Math.min(1000, Math.round(Number(budget) || 0)));
+  await db.update(forgeEngine).set({ weeklyRunBudget: clean, lastWarnPct: 0, updatedAt: now() }).where(eq(forgeEngine.id, 1));
+  revalidatePath("/command/engine");
+  return { ok: true, message: `Weekly run-budget set to ${clean}.` };
+}
+
 /** Clear stuck build state: re-queue any 'building' row that's been stuck too long (a crashed/hung
  *  build). The forge picks a fresh worker + rebuilds it. Safe — only touches long-stuck rows. */
 export async function resetStuckBuilds(): Promise<{ ok: boolean; message: string }> {

@@ -423,4 +423,12 @@ export const forgeEngine = pgTable("forge_engine", {
 	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
 	lastRunSummary: text("last_run_summary"),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	buildsEnabled: boolean("builds_enabled").default(true).notNull(),
+	editsEnabled: boolean("edits_enabled").default(true).notNull(),
+	idleTemplatesEnabled: boolean("idle_templates_enabled").default(false).notNull(),
+	weeklyRunBudget: integer("weekly_run_budget").default(40).notNull(),
+	templatesPerDay: integer("templates_per_day").default(2).notNull(),
+	lastTemplateAt: timestamp("last_template_at", { withTimezone: true, mode: 'string' }),
+	lastWarnPct: integer("last_warn_pct").default(0).notNull(),
+	lastWarnWeek: text("last_warn_week"),
 });
