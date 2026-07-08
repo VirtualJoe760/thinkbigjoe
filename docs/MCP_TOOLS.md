@@ -75,6 +75,11 @@ tool-by-tool → UI-surface map):
 - **Outreach**: `list_forge_outreach_queue` (gated on `marketing_approved_at` — see
   [FORGE.md](FORGE.md)'s lifecycle), `save_forge_outreach_draft`, `mark_forge_outreach_sent`,
   `list_forge_followup_due`
+- **Monitoring / spend**: `forge_digest` (v2.18.0) — the forge ops snapshot: master +
+  per-capability switches, weekly RUN-budget used vs remaining (75/90% warnings), build + edit
+  queue depth, 24h/7d throughput. Fetches `GET /api/forge/digest` (`getForgeDigest` — the same
+  source the Engine cockpit + Overview render), so ask it anytime for "where are we at with the
+  forge, usage, and spend?" `forge_funnel_stats` covers the sell-first funnel counts.
 - **Every state-changing tool in every group calls `audit(...)`** — the mechanism behind
   `/command/jobs`'s "verified" rows. See VENUS_UI_MAPPING.md's Audit log section.
 

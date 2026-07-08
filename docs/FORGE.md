@@ -197,6 +197,36 @@ forge-state gate). Both simply **queue** until Joe flips the forge back on, then
 tick. So "the forge is offline" degrades to "builds are paused," never "edits are lost." The Engine
 room surfaces this: a pending customer-edits indicator shows the count waiting while it's off.
 
+### Granular controls, weekly run-budget + idle template-building
+
+Beyond the master `enabled`, the Engine cockpit exposes finer control (all columns on
+`forge_engine`, read by the pollers each tick):
+
+| Column | Control | Effect when off / exceeded |
+|---|---|---|
+| `builds_enabled` | New-site builds | `forge-poll` skips claiming `approved` sites (edits + idle templates still run) |
+| `edits_enabled` | Customer edits | `edit-poll` no-ops; edits stay `requested` and drain when re-enabled |
+| `idle_templates_enabled` | Idle template-building | when the forge is otherwise free, design a new template (default **off**) |
+| `weekly_run_budget` | Quota guard (default 40) | when 7-day runs ≥ budget, new builds **and** templates pause; edits still run |
+| `templates_per_day` | Idle template daily cap (default 2) | — |
+
+**Spend = runs, not dollars.** The forge runs on the Claude **Max subscription** (flat weekly
+rate-limit), so there is no per-token bill. A "run" = one build, edit, or template (counted from
+`activity_log`: `forge_site_built`/`forge_site_build_failed`/`edit_applied`/`edit_failed`/
+`forge_template_built`, including failures — they still burn quota). `forge-poll` warns via Telegram
+once per **75 / 90 / 100%** band crossed (`last_warn_pct` de-dupes) and logs `forge_budget_warning`.
+
+**Idle template-building** (the "grow the library when free" fallback) only fires when: the toggle is
+on **and** under budget **and** under the daily cap **and** ≥3h since the last template **and** no
+edits are pending. It designs the next unbuilt entry from `factory/design-languages.json` via
+`forge-template.sh` (registered `enabled:false` for review). Seed more directions there to extend
+the backlog.
+
+The digest that powers all of this — queues, throughput, the budget gauge — is computed once in
+`src/lib/forge-stats.ts` (`getForgeDigest`), exposed at `GET /api/forge/digest` (Bearer
+`CRON_SECRET`), and consumed by the Engine cockpit, the Overview "Engine flow" card, and the
+`forge_digest` MCP tool.
+
 ### Rules that keep this safe going forward
 
 1. **Never bulk-approve/re-queue more than a handful of sites at once** without discussing it —
