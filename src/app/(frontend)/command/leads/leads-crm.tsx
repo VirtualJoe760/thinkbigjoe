@@ -55,6 +55,14 @@ function niche1(i: ForgeSiteItem): string {
   return (i.niche || "").split(/[—·,/]/)[0].trim();
 }
 
+// A preview image of the built site: the stored screenshot if we have one, else a live screenshot
+// of the deployed URL via WordPress mShots (free, no key) so we can always see what the site looks like.
+function siteShot(item: ForgeSiteItem): string | null {
+  if (item.screenshotUrl) return item.screenshotUrl;
+  if (item.liveUrl) return `https://s.wordpress.com/mshots/v1/${encodeURIComponent(item.liveUrl)}?w=1200`;
+  return null;
+}
+
 function initialsOf(item: ForgeSiteItem) {
   return (item.businessName || "?").split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 }
@@ -171,8 +179,9 @@ function ContactDetail({
   const isUser = meta.stage === "claimed" || meta.stage === "customer";
   const script = opener(item);
   // Hero: the business photo we sourced dominates the top; fall back to the built-site screenshot.
-  const heroImg = item.photoUrl || item.screenshotUrl || null;
-  const showSiteShot = item.screenshotUrl && item.screenshotUrl !== heroImg;
+  const site = siteShot(item);
+  const heroImg = item.photoUrl || site || null;
+  const showSiteShot = !!site && site !== heroImg;
 
   // Lock body scroll while the sheet is open.
   useEffect(() => {
@@ -277,9 +286,9 @@ function ContactDetail({
           {showSiteShot && (
             <div className="mt-5">
               <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-soft">The site we built</h3>
-              <a href={item.liveUrl || item.screenshotUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl border border-line transition-colors hover:border-brand">
+              <a href={item.liveUrl || site!} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl border border-line transition-colors hover:border-brand">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={item.screenshotUrl} alt={`${item.businessName} website`} className="max-h-64 w-full bg-surface object-cover object-top" />
+                <img src={site!} alt={`${item.businessName} website`} className="max-h-64 w-full bg-surface object-cover object-top" />
                 {item.liveUrl && <div className="border-t border-line bg-surface px-3 py-2 text-xs font-semibold text-brand">Open live site ↗</div>}
               </a>
             </div>

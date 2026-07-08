@@ -83,7 +83,8 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
 5. For each, open in Chrome and gather:
    - **Google Maps listing** → the exact star rating + review count, and copy **2–3 real review quotes** (reviewer name + the text — pick positive, specific ones).
    - **Facebook / Instagram** → their **follower counts**.
-6. SAVE: save_forge_callprep(site_id, google_rating, review_count, review_quotes:[{stars,name,text}], social_stats:{facebook:{followers},instagram:{followers}}, call_prep). Write **call_prep** as a tight script Joe can read off:
+   - **A strong business IMAGE** (shows as the lead's thumbnail + dominates the contact card, so it matters): grab the best direct image URL you can find — first choice the **Google Maps business photo** (a \`lh3.googleusercontent.com…\` URL: open the listing's photo, copy the image address), else the **Facebook/Instagram profile or cover photo**, else a clear storefront/work photo. Prefer a real photo of the business/their work over a logo. Only a direct image URL (ends in an image or is a Maps/FB CDN link) — never a page URL.
+6. SAVE: save_forge_callprep(site_id, google_rating, review_count, review_quotes:[{stars,name,text}], social_stats:{facebook:{followers},instagram:{followers}}, call_prep, photo_url). Pass **photo_url** with the business image you found (it only fills if empty — it won't clobber a good one). Write **call_prep** as a tight script Joe can read off:
    - Open warm — praise a real strength (their rating, years in business) and reference a specific review.
    - The gap — no website, so people who search them can't find/book them; those leads go to a competitor who has a site.
    - The pitch — our plan turns their reputation into booked jobs: a pro site + click-to-call + online booking + a dashboard that captures & organizes every lead (more sales, less chaos).

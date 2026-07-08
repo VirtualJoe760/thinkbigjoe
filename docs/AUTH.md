@@ -182,6 +182,20 @@ flies blind on what came back.
   in the call room.
 - **Prereq — IMAP must be ON in Zoho:** mail.zoho.com → Settings → Mail Accounts → `joe@thinkbigjoe.com`
   → IMAP Access → **Enable**. Until then the poller logs `inbox_checked` with an "IMAP not enabled" error
-  and does nothing. The launchd plist can stay loaded (it fails gracefully every run).
+  and does nothing. The launchd plist can stay loaded (it fails gracefully every run). **This is why leads
+  that actually bounced can still look "contacted"** — their bouncebacks (DSNs) are sitting unread in the
+  inbox. Enable IMAP + run `node scripts/inbox-poll.mjs` to catch up.
+
+### Deliverability principle — a bounce is a FAILED attempt, never "contacted"
+
+We must not record a lead as *contacted* when delivery failed. Enforced in two places:
+- **Send-time:** a permanent SMTP rejection (5xx / rejected recipient) in `/api/forge/send-outreach`
+  retires the address (nulls `email`, notes it) and logs `email_bounced` — it does **not** mark
+  `outreach_status='sent'`. Catches synchronous bounces without IMAP.
+- **Async (DSN):** the inbox poller does the same when a bounceback arrives (needs IMAP).
+- **In the CRM** (`/command/leads`): a bounced lead's email sends are counted as **failed**, kept out of
+  the "successful touches" total, shown as "email bounced" (red) and "Emailed — didn't deliver" on the
+  timeline. The lead sits in the **Bad contact** stage, not Contacted — and re-enters the research
+  agent's hunt for a working channel.
 - The Gemini draft uses `GEMINI_API_KEY` from `.env.local`; Telegram alerts use
   `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (both optional — the poller degrades gracefully without them).

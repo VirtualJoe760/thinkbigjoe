@@ -75,6 +75,14 @@ it's still "in review" on Prospecting. Each card (`LeadCallCard`) shows a busine
 generated **calling script** (a personalized opener + the per-lead "angle" from call-prep). Buttons:
 📞 Call, 💬 Text the link, 🔗 Live site, ✉️ Email.
 
+The room is a **CRM**: a table of contacts by pipeline stage (`new → contacted → replied → bad-contact
+→ user → customer`), each row with a **business thumbnail** (`photo_url`, sourced by the enrichment cron
+from Maps/social) and rich at-a-glance data (rating, activity). Tapping opens a contact screen led by a
+**dominant business image**, plus a **screenshot of the site we built** — the stored `screenshot_url` if
+present, else a live screenshot of the deployed URL via WordPress mShots (free, no key). Deliverability
+is honored: a **bounced email is a failed attempt, never a "touch"** (see [AUTH.md](AUTH.md) →
+"Deliverability principle").
+
 **Replies to respond to** (top of the page, when any): inbound email replies caught by the inbox
 poller (`scripts/inbox-poll.mjs` → `forge_replies` table). Each arrives with a Gemini-drafted response
 pre-written; Joe edits and sends inline (`sendReply` / `dismissReply` server actions). **Draft → Joe
