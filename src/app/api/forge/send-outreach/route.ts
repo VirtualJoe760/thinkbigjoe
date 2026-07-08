@@ -3,6 +3,7 @@ import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 import { db, forgeSites, activityLog, outreachEngine } from "@/db";
 import { sendForgeOutreachEmail } from "@/lib/email";
+import { composeOutreach } from "@/lib/forge-outreach";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -22,24 +23,6 @@ function authed(req: Request): boolean {
   if (!expected) return false;
   const got = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   return got === expected;
-}
-
-function composeOutreach(s: {
-  businessName: string; city: string | null; ownerName: string | null;
-  googleRating: string | null; reviewCount: string | null;
-}) {
-  const first = s.ownerName ? s.ownerName.trim().split(/\s+/)[0] : "";
-  const rating = s.googleRating ? Number(s.googleRating) : 0;
-  const reviews = s.reviewCount ? Number(s.reviewCount) : 0;
-  const repBit = rating
-    ? ` your ${rating}★ reputation${reviews ? ` across ${reviews}+ reviews` : ""}`
-    : " the way you show up for your customers";
-  const body = [
-    `Hi${first ? ` ${first}` : ""} — I'm Joe. I came across ${s.businessName}${s.city ? ` in ${s.city}` : ""} and${repBit}, so I went ahead and built you a brand-new website (you can see it right below).`,
-    `It's a real, finished site — your services, mobile-friendly, and fast. I built it on spec because I think ${s.businessName} deserves a site that matches how good you are at the work.`,
-    `If you like it, it's yours: create a free account, enter the claim code below, and you can take ownership and edit anything. No obligation, and it's reserved for you.`,
-  ].join("\n\n");
-  return { subject: `I built ${s.businessName} a new website — take a look`, body };
 }
 
 export async function POST(req: Request) {

@@ -179,6 +179,17 @@ export async function denyForgeSite(id: string, reason?: string) {
   revalidatePath("/command/leads");
 }
 
+/** Include/exclude a built site from the scheduled outreach batch (the 10am send). Skipping sets
+ *  outreach_status='skipped' so the sender passes it over; including resets it to 'none'. */
+export async function setOutreachSkip(id: string, skip: boolean): Promise<{ ok: boolean }> {
+  await assertAdmin();
+  await db.update(forgeSites)
+    .set({ outreachStatus: skip ? "skipped" : "none", updatedAt: now() })
+    .where(eq(forgeSites.id, Number(id)));
+  revalidatePath("/command/outreach");
+  return { ok: true };
+}
+
 /**
  * Delete a forge site from the UI. SOFT delete — sets status='deleted' so it disappears from every
  * view (review/queued/built/archive all filter by specific statuses) but the row + its live

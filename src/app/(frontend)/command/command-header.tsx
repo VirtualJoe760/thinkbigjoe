@@ -21,6 +21,7 @@ const LINKS: Array<{ href: string; label: string; icon: string; match?: string[]
     icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM4 20a8 8 0 0116 0",
     match: ["/command/prospects", "/command/analyzer", "/command/sites"],
   },
+  { href: "/command/outreach", label: "Outreach", icon: "M4 6h16v12H4zM4 7l8 6 8-6" },
   { href: "/command/leads", label: "Leads", icon: "M4 4h16v4H4zM4 12h16v8H4z" },
   { href: "/command/appointments", label: "Appointments", icon: "M8 2v4M16 2v4M3 9h18M5 5h14v16H5z" },
   {
