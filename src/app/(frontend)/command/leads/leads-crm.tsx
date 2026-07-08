@@ -47,19 +47,25 @@ function relTime(iso: string | null): string {
   if (h < 24) return `${h}h ago`;
   return `${Math.round(h / 24)}d ago`;
 }
+// Clean niche for display: take the first term, dropping verbose "/"-lists like
+// "Handyman/Handywoman/Handyperson" → "Handyman".
 function niche1(i: ForgeSiteItem): string {
-  return (i.niche || "").split(/[—·,]/)[0].trim();
+  return (i.niche || "").split(/[—·,/]/)[0].trim();
 }
 
-function Avatar({ item, size = 44 }: { item: ForgeSiteItem; size?: number }) {
+function initialsOf(item: ForgeSiteItem) {
+  return (item.businessName || "?").split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+}
+
+// Rectangular business thumbnail (the photo we sourced from Maps/social), monogram fallback.
+function Thumb({ item, size = 48, rounded = "rounded-lg" }: { item: ForgeSiteItem; size?: number; rounded?: string }) {
   const [broken, setBroken] = useState(false);
-  const initials = (item.businessName || "?").split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
   if (item.photoUrl && !broken)
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={item.photoUrl} alt="" onError={() => setBroken(true)} className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />;
+    return <img src={item.photoUrl} alt="" onError={() => setBroken(true)} className={`shrink-0 ${rounded} object-cover`} style={{ width: size, height: size }} />;
   return (
-    <div className="flex shrink-0 items-center justify-center rounded-full text-sm font-bold text-white" style={{ width: size, height: size, background: item.brandColor || "#64748b" }}>
-      {initials}
+    <div className={`flex shrink-0 items-center justify-center ${rounded} text-sm font-bold text-white`} style={{ width: size, height: size, background: item.brandColor || "#64748b" }}>
+      {initialsOf(item)}
     </div>
   );
 }
@@ -159,6 +165,9 @@ function ContactDetail({
   const st = STAGE[meta.stage];
   const isUser = meta.stage === "claimed" || meta.stage === "customer";
   const script = opener(item);
+  // Hero: the business photo we sourced dominates the top; fall back to the built-site screenshot.
+  const heroImg = item.photoUrl || item.screenshotUrl || null;
+  const showSiteShot = item.screenshotUrl && item.screenshotUrl !== heroImg;
 
   // Lock body scroll while the sheet is open.
   useEffect(() => {
@@ -176,7 +185,7 @@ function ContactDetail({
           <button onClick={onClose} className="-ml-1 rounded-full p-1.5 text-ink-soft hover:bg-surface" aria-label="Back">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
           </button>
-          <Avatar item={item} size={36} />
+          <Thumb item={item} size={36} />
           <div className="min-w-0 flex-1">
             <div className="truncate font-bold text-ink">{item.businessName}</div>
             <div className="truncate text-xs text-ink-soft">{[niche1(item), cityState(item)].filter(Boolean).join(" · ")}</div>
@@ -185,6 +194,18 @@ function ContactDetail({
         </div>
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">
+          {/* hero — the business image dominates the top of the card */}
+          <div className="-mx-4 -mt-4 mb-4">
+            {heroImg ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={heroImg} alt={item.businessName} className="h-44 w-full bg-surface object-cover" />
+            ) : (
+              <div className="flex h-28 w-full items-center justify-center text-3xl font-extrabold text-white" style={{ background: item.brandColor || "#64748b" }}>
+                {initialsOf(item)}
+              </div>
+            )}
+          </div>
+
           {/* rating + reach */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-soft">
             {item.googleRating && <span className="flex items-center gap-1"><Stars rating={item.googleRating} /> {Number(item.googleRating).toFixed(1)}{item.reviewCount ? ` (${item.reviewCount})` : ""}</span>}
@@ -246,6 +267,18 @@ function ContactDetail({
             {item.email && (<><dt className="text-ink-soft">Email</dt><dd className="truncate text-ink">{item.email}</dd></>)}
             {item.claimCode && (<><dt className="text-ink-soft">Claim code</dt><dd className="font-mono text-ink">{item.claimCode}</dd></>)}
           </dl>
+
+          {/* the site we built for them — a screenshot so you can see it at a glance */}
+          {showSiteShot && (
+            <div className="mt-5">
+              <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-soft">The site we built</h3>
+              <a href={item.liveUrl || item.screenshotUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl border border-line transition-colors hover:border-brand">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={item.screenshotUrl} alt={`${item.businessName} website`} className="max-h-64 w-full bg-surface object-cover object-top" />
+                {item.liveUrl && <div className="border-t border-line bg-surface px-3 py-2 text-xs font-semibold text-brand">Open live site ↗</div>}
+              </a>
+            </div>
+          )}
 
           {/* communication timeline */}
           <div className="mt-5">
@@ -364,38 +397,65 @@ export function LeadsCRM({
 
       {/* contact list */}
       {filtered.length === 0 ? (
-        <p className="rounded-2xl border border-line bg-background p-6 text-sm text-ink-soft">No contacts match.</p>
+        <p className="py-8 text-sm text-ink-soft">No contacts match.</p>
       ) : (
-        <ul className="overflow-hidden rounded-2xl border border-line bg-background">
-          {filtered.map((item) => {
-            const m = metaOf(item.id);
-            const a = stat(item.id);
-            const st = STAGE[m.stage];
-            return (
-              <li key={item.id}>
-                <button
-                  onClick={() => setOpenId(item.id)}
-                  className="flex w-full items-center gap-3 border-b border-line px-3 py-3 text-left last:border-b-0 hover:bg-surface active:bg-surface"
-                >
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${st.dot}`} title={st.label} />
-                  <Avatar item={item} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate font-semibold text-ink">{item.businessName}</span>
-                    </div>
-                    <div className="truncate text-xs text-ink-soft">
-                      {[niche1(item), cityState(item)].filter(Boolean).join(" · ") || item.email}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.chip}`}>{st.label}</span>
-                    <span className="text-[11px] text-ink-soft">{a.total > 0 ? `${a.total} touch${a.total === 1 ? "" : "es"}` : "no touch"}</span>
-                  </div>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-y border-line text-left text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+                <th className="py-2 pr-3 font-semibold">Business</th>
+                <th className="hidden px-3 py-2 font-semibold md:table-cell">Rating</th>
+                <th className="hidden px-3 py-2 font-semibold sm:table-cell">Activity</th>
+                <th className="py-2 pl-3 text-right font-semibold">Stage</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((item) => {
+                const m = metaOf(item.id);
+                const a = stat(item.id);
+                const st = STAGE[m.stage];
+                const touches = a.total > 0 ? `${a.total} touch${a.total === 1 ? "" : "es"}` : "no touch";
+                return (
+                  <tr
+                    key={item.id}
+                    onClick={() => setOpenId(item.id)}
+                    className="cursor-pointer border-b border-line align-middle transition-colors hover:bg-surface"
+                  >
+                    <td className="py-2.5 pr-3">
+                      <div className="flex items-center gap-3">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${st.dot}`} title={st.label} />
+                        <Thumb item={item} size={44} />
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold text-ink">{item.businessName}</div>
+                          <div className="truncate text-xs text-ink-soft">
+                            {[niche1(item), cityState(item)].filter(Boolean).join(" · ") || item.email}
+                          </div>
+                          {/* mobile-only meta (the desktop columns collapse below sm) */}
+                          <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-soft sm:hidden">
+                            {item.googleRating && <span className="text-amber-500">★ <span className="text-ink-soft">{Number(item.googleRating).toFixed(1)}</span></span>}
+                            <span>{touches}</span>
+                            {a.lastAt && <span>· {relTime(a.lastAt)}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="hidden whitespace-nowrap px-3 py-2.5 text-ink-soft md:table-cell">
+                      {item.googleRating ? (
+                        <span className="flex items-center gap-1"><Stars rating={item.googleRating} /> <span className="text-ink">{Number(item.googleRating).toFixed(1)}</span>{item.reviewCount ? <span className="text-xs">({item.reviewCount})</span> : null}</span>
+                      ) : <span className="text-xs">—</span>}
+                    </td>
+                    <td className="hidden whitespace-nowrap px-3 py-2.5 text-xs text-ink-soft sm:table-cell">
+                      {touches}{a.lastAt ? <span className="block text-[11px]">last {relTime(a.lastAt)}</span> : null}
+                    </td>
+                    <td className="whitespace-nowrap py-2.5 pl-3 text-right">
+                      <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.chip}`}>{st.label}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {open && (

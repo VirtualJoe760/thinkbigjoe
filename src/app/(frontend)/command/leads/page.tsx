@@ -209,7 +209,7 @@ export default async function LeadsPage() {
         {/* ── Header + cross-nav to the prospecting pipeline ── */}
         <div className="mb-6 flex flex-wrap items-baseline justify-between gap-2">
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight">Contacts — CRM</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight">Leads</h1>
             <p className="mt-1 text-sm text-ink-soft">
               Every business we&apos;re working, by pipeline stage. Tap a contact for their info, communication
               history, and a calling script. Prospecting finds &amp; enriches leads → they land here.
