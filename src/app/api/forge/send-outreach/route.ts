@@ -79,7 +79,28 @@ export async function POST(req: Request) {
   const room = Math.max(0, dailyGoal - sentToday);
   const batch = eligible.slice(0, room);
 
-  const results: { businessName: string; email: string; subject: string; ok?: boolean; error?: string }[] = [];
+  const results: { businessName: string; email: string; subject: string; ok?: boolean; error?: string; bounced?: boolean }[] = [];
+  // A permanent SMTP rejection (5xx / rejected recipient) means the address is dead — retire it and
+  // record a bounce (NOT "sent"), exactly like the inbox poller. So we never mark a lead contacted
+  // when delivery failed. Async bounces (accepted-then-DSN) still need the IMAP poller.
+  const markSyncBounce = async (siteId: number, addr: string) => {
+    await db.update(forgeSites).set({
+      outreachStatus: "bounced", email: null, contactEnrichedAt: null,
+      contactNotes: sql`coalesce(contact_notes || E'\n', '') || ${`⚠️ Email rejected at send ${new Date().toISOString().slice(0, 10)}: ${addr} — dead address, find a new email or a social.`}`,
+      updatedAt: sql`now()`,
+    }).where(eq(forgeSites.id, siteId));
+    await db.insert(activityLog).values({
+      actor: "system", eventType: "email_bounced",
+      summary: `Bounced at send — ${addr} (address retired · handed to research)`,
+      metadata: { detail: { siteId, address: addr, sync: true } },
+    });
+  };
+  const isPermanentReject = (err: unknown) => {
+    const e = err as { responseCode?: number; code?: string; rejected?: unknown[] };
+    return (typeof e?.responseCode === "number" && e.responseCode >= 500) ||
+      e?.code === "EENVELOPE" || (Array.isArray(e?.rejected) && e.rejected.length > 0);
+  };
+
   for (const s of batch) {
     const { subject, body } = composeOutreach(s);
     if (dry) { results.push({ businessName: s.businessName, email: s.email!, subject }); continue; }
@@ -87,18 +108,30 @@ export async function POST(req: Request) {
       const r = await sendForgeOutreachEmail({
         to: s.email!, subject, body, businessName: s.businessName, liveUrl: s.liveUrl, claimCode: s.claimCode!,
       });
-      const ok = !("error" in r);
-      if (ok) {
+      const info = ("data" in r ? r.data : null) as { accepted?: unknown[]; rejected?: unknown[] } | null;
+      const rejected = !!info && Array.isArray(info.rejected) && info.rejected.length > 0 &&
+        !(Array.isArray(info.accepted) && info.accepted.length > 0);
+      if (rejected) {
+        await markSyncBounce(s.id, s.email!);
+        results.push({ businessName: s.businessName, email: s.email!, subject, ok: false, bounced: true });
+      } else if (!("error" in r)) {
         await db.update(forgeSites).set({ outreachStatus: "sent", updatedAt: sql`now()` }).where(eq(forgeSites.id, s.id));
         await db.insert(activityLog).values({
           actor: "joe", eventType: "forge_outreach_sent",
           summary: `Sent owner outreach — ${s.businessName} (${s.email})`,
           metadata: { auto: true, detail: { siteId: s.id, channel: "email" } },
         });
+        results.push({ businessName: s.businessName, email: s.email!, subject, ok: true });
+      } else {
+        results.push({ businessName: s.businessName, email: s.email!, subject, ok: false });
       }
-      results.push({ businessName: s.businessName, email: s.email!, subject, ok });
     } catch (err) {
-      results.push({ businessName: s.businessName, email: s.email!, subject, ok: false, error: err instanceof Error ? err.message : String(err) });
+      if (isPermanentReject(err)) {
+        await markSyncBounce(s.id, s.email!).catch(() => {});
+        results.push({ businessName: s.businessName, email: s.email!, subject, ok: false, bounced: true });
+      } else {
+        results.push({ businessName: s.businessName, email: s.email!, subject, ok: false, error: err instanceof Error ? err.message : String(err) });
+      }
     }
   }
 

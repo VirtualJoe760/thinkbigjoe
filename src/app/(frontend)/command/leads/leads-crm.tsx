@@ -6,7 +6,9 @@ import { logContactAttempt } from "../actions";
 import type { ForgeSiteItem } from "../sites/sites-queue";
 import type { LeadHistoryEvent } from "@/lib/forge-outreach";
 
-export type AttemptStat = { call: number; text: number; email: number; total: number; lastAt: string | null };
+// `total` = successful touches (delivered email + text + call). `failed` = bounced email sends
+// (attempted, not delivered) — kept out of `total` so a bounced lead never reads as "contacted".
+export type AttemptStat = { call: number; text: number; email: number; failed: number; total: number; lastAt: string | null };
 
 // The CRM pipeline: a lead becomes a contact (we reach out), then a user profile once they set up
 // on the site (claim), then a paying customer. Each stage is computed server-side (see page.tsx).
@@ -102,15 +104,18 @@ function Timeline({ history }: { history: LeadHistoryEvent[] }) {
     <ol className="space-y-2">
       {[...history].reverse().map((e, i) => {
         const h = HIST[e.kind];
+        // A bounced email is a failed delivery — override the "sent" badge.
+        const outcome: Outcome = e.failed ? "negative" : h.outcome;
+        const verb = e.failed && (e.kind === "email-sent" || e.kind === "email") ? "Emailed — didn't deliver" : h.verb;
         const paras = (e.body || "").split("\n\n").filter(Boolean);
         const expandable = paras.length > 1 || (paras[0]?.length ?? 0) > 140;
         const isOpen = open === i;
         return (
           <li key={i} className="rounded-xl border border-line bg-background p-3">
             <div className="flex items-center gap-2">
-              <span aria-hidden>{h.icon}</span>
-              <span className="font-semibold text-ink">{h.verb}</span>
-              <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${OUTCOME_CLS[h.outcome]}`}>{OUTCOME_LABEL[h.outcome]}</span>
+              <span aria-hidden>{e.failed && e.kind !== "bounce" ? "⚠️" : h.icon}</span>
+              <span className={`font-semibold ${e.failed ? "text-red-700" : "text-ink"}`}>{verb}</span>
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${OUTCOME_CLS[outcome]}`}>{OUTCOME_LABEL[outcome]}</span>
               <span className="ml-auto text-xs text-ink-soft">{relTime(e.at)}</span>
             </div>
             {e.subject && <p className="mt-1.5 text-sm font-medium text-ink">“{e.subject}”</p>}
@@ -284,7 +289,9 @@ function ContactDetail({
           <div className="mt-5">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-wide text-ink-soft">Communications</h3>
-              <span className="text-xs text-ink-soft">{attempt.total} attempt{attempt.total === 1 ? "" : "s"}{attempt.lastAt ? ` · last ${relTime(attempt.lastAt)}` : ""}</span>
+              <span className="text-xs text-ink-soft">
+                {attempt.total} reached{attempt.failed > 0 ? <span className="text-red-600"> · {attempt.failed} failed</span> : null}{attempt.lastAt ? ` · last ${relTime(attempt.lastAt)}` : ""}
+              </span>
             </div>
             <Timeline history={history} />
           </div>
@@ -414,7 +421,10 @@ export function LeadsCRM({
                 const m = metaOf(item.id);
                 const a = stat(item.id);
                 const st = STAGE[m.stage];
-                const touches = a.total > 0 ? `${a.total} touch${a.total === 1 ? "" : "es"}` : "no touch";
+                const touchFailed = a.total === 0 && a.failed > 0;
+                const touches = a.total > 0
+                  ? `${a.total} touch${a.total === 1 ? "" : "es"}`
+                  : touchFailed ? "email bounced" : "no touch";
                 return (
                   <tr
                     key={item.id}
@@ -433,8 +443,8 @@ export function LeadsCRM({
                           {/* mobile-only meta (the desktop columns collapse below sm) */}
                           <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-soft sm:hidden">
                             {item.googleRating && <span className="text-amber-500">★ <span className="text-ink-soft">{Number(item.googleRating).toFixed(1)}</span></span>}
-                            <span>{touches}</span>
-                            {a.lastAt && <span>· {relTime(a.lastAt)}</span>}
+                            <span className={touchFailed ? "font-medium text-red-600" : ""}>{touches}</span>
+                            {a.lastAt && !touchFailed && <span>· {relTime(a.lastAt)}</span>}
                           </div>
                         </div>
                       </div>
@@ -444,8 +454,8 @@ export function LeadsCRM({
                         <span className="flex items-center gap-1"><Stars rating={item.googleRating} /> <span className="text-ink">{Number(item.googleRating).toFixed(1)}</span>{item.reviewCount ? <span className="text-xs">({item.reviewCount})</span> : null}</span>
                       ) : <span className="text-xs">—</span>}
                     </td>
-                    <td className="hidden whitespace-nowrap px-3 py-2.5 text-xs text-ink-soft sm:table-cell">
-                      {touches}{a.lastAt ? <span className="block text-[11px]">last {relTime(a.lastAt)}</span> : null}
+                    <td className={`hidden whitespace-nowrap px-3 py-2.5 text-xs sm:table-cell ${touchFailed ? "text-red-600" : "text-ink-soft"}`}>
+                      {touches}{a.lastAt && !touchFailed ? <span className="block text-[11px]">last {relTime(a.lastAt)}</span> : null}
                     </td>
                     <td className="whitespace-nowrap py-2.5 pl-3 text-right">
                       <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.chip}`}>{st.label}</span>

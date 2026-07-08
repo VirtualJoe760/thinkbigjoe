@@ -107,6 +107,7 @@ export type LeadHistoryEvent = {
   label: string;
   subject?: string;
   body?: string;
+  failed?: boolean; // an email that bounced — attempted, not delivered
 };
 
 type HistLead = {
@@ -158,6 +159,15 @@ export async function getLeadHistories(leads: HistLead[]): Promise<Record<string
       else ev = { at, kind: "email", label: "Emailed (manual)" };
     }
     (out[site] ||= []).push(ev);
+  }
+  // Deliverability truth: if a lead ever bounced, its email sends did NOT reach anyone —
+  // mark every email-send failed so the UI shows a failed attempt, not a successful contact.
+  for (const events of Object.values(out)) {
+    if (events.some((e) => e.kind === "bounce")) {
+      for (const e of events) {
+        if (e.kind === "email-sent" || e.kind === "email") e.failed = true;
+      }
+    }
   }
   return out;
 }

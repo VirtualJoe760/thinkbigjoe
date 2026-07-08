@@ -146,17 +146,21 @@ export default async function LeadsPage() {
       AND metadata->'detail'->>'siteId' IS NOT NULL
     GROUP BY site, ch`);
   const attemptRows = (Array.isArray(attemptRes) ? attemptRes : (attemptRes as { rows?: unknown }).rows ?? []) as Record<string, unknown>[];
+  // Deliverability: a bounced lead's emails did NOT reach anyone — they're FAILED attempts, not
+  // successful touches. `total` counts only real contact (delivered email, text, call); `failed`
+  // tracks the bounced sends separately so we never show a bounced lead as "contacted".
+  const bouncedIds = new Set(webDevLeads.filter((l) => l.outreachStatus === "bounced").map((l) => l.id));
   const attempts: Record<string, AttemptStat> = {};
   for (const r of attemptRows) {
     const site = String(r.site);
     const ch = String(r.ch || "email");
     const n = Number(r.n) || 0;
     const at = r.last_at ? new Date(r.last_at as string).toISOString() : null;
-    const cur = attempts[site] || { call: 0, text: 0, email: 0, total: 0, lastAt: null };
-    if (ch === "call") cur.call += n;
-    else if (ch === "text") cur.text += n;
-    else cur.email += n; // email + any auto-outreach send
-    cur.total += n;
+    const cur = attempts[site] || { call: 0, text: 0, email: 0, failed: 0, total: 0, lastAt: null };
+    if (ch === "call") { cur.call += n; cur.total += n; }
+    else if (ch === "text") { cur.text += n; cur.total += n; }
+    else if (bouncedIds.has(site)) { cur.failed += n; } // email to a bounced address — failed, not a touch
+    else { cur.email += n; cur.total += n; }
     if (at && (!cur.lastAt || at > cur.lastAt)) cur.lastAt = at;
     attempts[site] = cur;
   }
