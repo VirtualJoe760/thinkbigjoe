@@ -49,6 +49,23 @@ changing a mailbox/DKIM is a Zoho action.
   local `.env.local` usually has **no** `GOOGLE_CLIENT_ID`, so **the Google button
   does not appear on localhost** — locally you must use email + password.
 
+### Account numbers
+
+Every account carries a human-friendly **account number** — a plain 6-digit id
+(`100001`, `100002`, …) a customer can read to the voice receptionist to be looked
+up. It's **distinct from a site claim code** (`TBJ-XXXX-XXXX`): the claim code
+belongs to a *built site*, the account number to a *person*.
+
+- **Column:** `better_auth."user".account_number` (text, unique), assigned by a
+  Postgres **column default** `nextval('better_auth.account_number_seq')` — so every
+  new signup auto-gets one. A fallback in the `create.after` hook (`src/lib/auth.ts`)
+  stamps one if the default is ever bypassed (idempotent — only fills a NULL).
+- **Exposed** on the session as `user.accountNumber` (a read-only better-auth
+  `additionalField`, `input:false`); shown to the customer on `/portal/account`.
+- **Backfill / re-run:** `node scripts/db/add-account-numbers.mjs` (idempotent —
+  creates the sequence/column/default and numbers any account still missing one,
+  oldest-first).
+
 ### Admin gate (the command center)
 
 `/command/**` is gated by `requireAdmin()` / `assertAdmin()`

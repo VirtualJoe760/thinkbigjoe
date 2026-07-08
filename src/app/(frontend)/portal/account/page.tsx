@@ -16,6 +16,7 @@ export default async function AccountPage() {
   if (!session) redirect("/login");
 
   const { user } = session;
+  const accountNumber = (user as { accountNumber?: string | null }).accountNumber || null;
 
   return (
     <div className="flex flex-1 flex-col">
@@ -28,6 +29,19 @@ export default async function AccountPage() {
         </p>
 
         <div className="mt-10 space-y-6">
+          {accountNumber && (
+            <section className="rounded-2xl border border-brand/30 bg-brand-tint/40 p-8">
+              <h2 className="text-xs font-bold uppercase tracking-wide text-brand">Your account number</h2>
+              <p className="mt-2 font-mono text-3xl font-extrabold tracking-widest tabular-nums text-ink">
+                {accountNumber}
+              </p>
+              <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+                This is your account ID. Have it handy when you call us — you can read it to our
+                phone assistant to pull up your account and site.
+              </p>
+            </section>
+          )}
+
           <section className="rounded-2xl border border-line bg-surface p-8">
             <h2 className="text-xl font-bold tracking-tight">Profile</h2>
             <AccountForm initialName={user.name ?? ""} email={user.email} />

@@ -54,25 +54,26 @@ const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
  * which powers the CMS admin + staff. better-auth stores its own tables
  * (user/session/account/verification) in the same Neon Postgres.
  */
+// better-auth's DB pool (also reused by the signup hook to stamp an account number).
+// Direct (unpooled) endpoint so the search_path startup option sticks, and the tables
+// live in the isolated `better_auth` schema (Payload's dev `push` owns `public` and
+// would DROP tables it doesn't recognize).
+const authPool = new Pool({
+  connectionString:
+    process.env.DATABASE_URL_UNPOOLED ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URI ||
+    "",
+  options: "-c search_path=better_auth",
+});
+
 export const auth = betterAuth({
   baseURL,
   trustedOrigins,
   secret: process.env.BETTER_AUTH_SECRET,
-  database: new Pool({
-    // Use Neon's DIRECT (unpooled) endpoint so the search_path startup option
-    // sticks — the pooled (pgbouncer) endpoint strips it.
-    connectionString:
-      process.env.DATABASE_URL_UNPOOLED ||
-      process.env.POSTGRES_URL_NON_POOLING ||
-      process.env.DATABASE_URL ||
-      process.env.POSTGRES_URL ||
-      process.env.DATABASE_URI ||
-      "",
-    // Isolate better-auth's tables in their own schema. Payload's dev `push`
-    // manages the `public` schema and will DROP tables it doesn't own, so
-    // keeping these out of `public` protects them.
-    options: "-c search_path=better_auth",
-  }),
+  database: authPool,
   emailAndPassword: {
     enabled: true,
     // Password recovery: better-auth generates a one-time token + link; we
@@ -104,12 +105,31 @@ export const auth = betterAuth({
         }
       : {}),
   },
+  // Every account carries a human-friendly account number (100001, 100002, …) —
+  // the DB assigns it via a column default (see scripts/db/add-account-numbers.mjs),
+  // so it's read-only here (`input: false`): better-auth never sets it, just returns
+  // it on the session as `user.accountNumber`. Customers read it to the voice agent.
+  user: {
+    additionalFields: {
+      accountNumber: { type: "string", required: false, input: false, fieldName: "account_number" },
+    },
+  },
   // Send a no-reply welcome / account-confirmation email on signup
   // (fires for email/password and social sign-ups alike).
   databaseHooks: {
     user: {
       create: {
         after: async (user) => {
+          // Guarantee an account number even if better-auth's INSERT bypassed the
+          // column default — idempotent (only fills a NULL).
+          try {
+            await authPool.query(
+              `UPDATE "user" SET account_number = nextval('account_number_seq')::text WHERE id = $1 AND account_number IS NULL`,
+              [user.id],
+            );
+          } catch (err) {
+            console.error("[auth] account-number assign failed:", err);
+          }
           try {
             await sendWelcomeEmail(user.email, user.name);
           } catch (err) {
