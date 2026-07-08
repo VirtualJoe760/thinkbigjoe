@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type AssetType = { key: string; label: string; hint: string; round?: boolean };
+type AssetType = { key: string; label: string; hint: string; round?: boolean; aspect?: string; shape?: string };
 const ASSET_TYPES: AssetType[] = [
-  { key: "logo", label: "Logo", hint: "as a clean, simple brand logo — centered, crisp, on a plain or transparent background" },
-  { key: "circle", label: "Circular logo", hint: "as a circular logo/badge designed to fit inside a circle, centered", round: true },
-  { key: "og", label: "OG image", hint: "as a 1200×630 social-share banner (Open Graph) with the brand feel, wide and balanced" },
-  { key: "hero", label: "Hero image", hint: "as a wide 16:9 hero background photo, leaving clear space on the left for headline text" },
-  { key: "carousel", label: "Carousel image", hint: "as a clean 4:3 gallery/carousel image" },
+  // Logo defaults to a WIDE horizontal lockup (21:9) — a square/centered logo renders tiny in a
+  // navbar (same issue the forge fixes). Circular is the 1:1 emblem for favicons/avatars.
+  { key: "logo", label: "Logo", hint: "as a HORIZONTAL brand logo lockup — the icon on the LEFT and the business-name wordmark on the RIGHT, side by side, flat and crisp, on a transparent background, tightly framed with minimal margin (NOT a small mark centered in empty space)", aspect: "21:9", shape: "wide lockup" },
+  { key: "circle", label: "Circular logo", hint: "as a circular logo/badge — the icon or monogram centered inside a circle, on a transparent background", round: true, aspect: "1:1", shape: "1:1 circle" },
+  { key: "og", label: "OG image", hint: "as a wide social-share banner (Open Graph) with the brand feel, balanced, with room for text", aspect: "16:9", shape: "16:9 banner" },
+  { key: "hero", label: "Hero image", hint: "as a wide hero background photo, leaving clear space on the left for headline text", aspect: "16:9", shape: "16:9 wide" },
+  { key: "carousel", label: "Carousel image", hint: "as a clean gallery/carousel image", aspect: "4:3", shape: "4:3" },
 ];
 
 const PRESETS = [
@@ -68,18 +70,20 @@ export function ImageStudio({ siteId }: { siteId: number }) {
 
   const currentDataUrl = () => canvasRef.current?.toDataURL("image/png") || null;
 
-  async function post(prompt: string, ref?: string | null) {
+  async function post(prompt: string, ref?: string | null, aspect?: string) {
     setBusy(true); setStatus(ref ? "Working on it…" : "Generating…");
     try {
       const res = await fetch("/api/generate-image", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, refDataUrl: ref || undefined }),
+        body: JSON.stringify({ prompt, refDataUrl: ref || undefined, aspect }),
       }).then((r) => r.json());
       if (res.ok && res.dataUrl) { setSrc(res.dataUrl); setStatus(""); } else setStatus(res.error || "Didn't work — try again.");
     } catch { setStatus("Request failed."); }
     setBusy(false);
   }
-  const generate = () => genPrompt.trim().length >= 3 && post(`${genPrompt.trim()} — ${assetType.hint}`, useRef_ && src ? currentDataUrl() : undefined);
+  // New generations honor the asset's aspect (wide lockup / circle / 16:9). AI edits omit it so
+  // they preserve the current image's shape.
+  const generate = () => genPrompt.trim().length >= 3 && post(`${genPrompt.trim()} — ${assetType.hint}`, useRef_ && src ? currentDataUrl() : undefined, assetType.aspect);
   const aiEdit = (instruction: string) => {
     const ref = currentDataUrl();
     if (!ref) { setStatus("Load or generate an image first."); return; }
@@ -116,6 +120,12 @@ export function ImageStudio({ siteId }: { siteId: number }) {
         </Section>
 
         <Section title="Generate">
+          {assetType.shape && (
+            <p className="mb-1.5 text-[11px] text-ink-soft">
+              Shape: <span className="font-medium text-ink">{assetType.shape}</span>
+              {assetType.key === "logo" && " — fills a navbar without shrinking"}
+            </p>
+          )}
           <textarea value={genPrompt} onChange={(e) => setGenPrompt(e.target.value)} placeholder={`Describe a ${assetType.label.toLowerCase()}…`} className="w-full rounded-xl border border-line bg-background px-3 py-2 text-sm" rows={2} />
           {src && (
             <label className="mt-1.5 flex items-center gap-1.5 text-xs text-ink-soft"><input type="checkbox" checked={useRef_} onChange={(e) => setUseRef(e.target.checked)} /> build from the current image</label>

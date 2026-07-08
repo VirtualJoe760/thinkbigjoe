@@ -30,7 +30,7 @@ async function fetchRef(url: string): Promise<{ mime: string; data: string } | n
  * `ref` (optional) — an existing image to condition on / edit; may be an https URL
  * OR a data: URL (e.g. the current studio canvas).
  */
-export async function generateImage(prompt: string, ref?: string): Promise<string | null> {
+export async function generateImage(prompt: string, ref?: string, aspect?: string): Promise<string | null> {
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
   if (!key) return null;
 
@@ -51,7 +51,12 @@ export async function generateImage(prompt: string, ref?: string): Promise<strin
     headers: { "Content-Type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify({
       contents: [{ parts }],
-      generationConfig: { responseModalities: ["IMAGE"] },
+      // aspectRatio matters for logos: without it Gemini defaults to a 1024² square, which
+      // makes a horizontal lockup render tiny in a navbar. 21:9 = wide lockup, 1:1 = circular.
+      generationConfig: {
+        responseModalities: ["IMAGE"],
+        ...(aspect ? { imageConfig: { aspectRatio: aspect } } : {}),
+      },
     }),
   });
   if (!res.ok) {

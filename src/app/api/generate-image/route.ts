@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Image generation isn't set up." }, { status: 503 });
   }
 
-  let body: { prompt?: string; refUrl?: string; refDataUrl?: string };
+  let body: { prompt?: string; refUrl?: string; refDataUrl?: string; aspect?: string };
   try {
     body = await req.json();
   } catch {
@@ -25,6 +25,9 @@ export async function POST(req: Request) {
   if (prompt.length < 3) {
     return NextResponse.json({ ok: false, error: "Describe what you want first." }, { status: 400 });
   }
+  // Whitelist the aspect ratios Gemini supports (logos: 21:9 wide lockup, 1:1 circular; hero: 16:9).
+  const ALLOWED_ASPECTS = ["21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16"];
+  const aspect = typeof body.aspect === "string" && ALLOWED_ASPECTS.includes(body.aspect) ? body.aspect : undefined;
   // Editing (studio canvas) sends a data: URL; element-refine sends an https URL.
   const ref =
     typeof body.refDataUrl === "string" && body.refDataUrl.startsWith("data:")
@@ -34,7 +37,7 @@ export async function POST(req: Request) {
         : undefined;
 
   try {
-    const dataUrl = await generateImage(prompt, ref);
+    const dataUrl = await generateImage(prompt, ref, aspect);
     if (!dataUrl) return NextResponse.json({ ok: false, error: "No image came back — try rephrasing." });
     return NextResponse.json({ ok: true, dataUrl });
   } catch (err) {
