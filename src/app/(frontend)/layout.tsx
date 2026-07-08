@@ -43,7 +43,10 @@ export default function FrontendLayout({
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <meta name="theme-color" content="#0047ff" />
       </head>
-      <body className="min-h-full flex flex-col bg-background text-ink">
+      {/* suppressHydrationWarning: browser extensions (Grammarly's data-gr-*,
+          reader/theme extensions' data-rm-theme) mutate <body> before React
+          hydrates, which otherwise logs a benign attribute-mismatch warning. */}
+      <body className="min-h-full flex flex-col bg-background text-ink" suppressHydrationWarning>
         {children}
         <Analytics />
         <PwaRegister />
