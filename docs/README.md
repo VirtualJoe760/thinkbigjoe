@@ -79,6 +79,7 @@ from this app's own Vercel project).
 | [`FORGE.md`](FORGE.md) | You're touching site-building: a template, the queue/poller, deploy behavior, or anything that could trigger a `claude -p` build. **Read before any bulk `forge_sites` status change.** Includes the architecture map + exact env-var wiring between this repo and the forge repo. |
 | [`SHOWROOM.md`](SHOWROOM.md) | You're touching the **sell-first preview engine**: the personalized `/s/[slug]` previews, `claim = build` trigger, the `preview_engine` wave budget, the outreach-agent integration, or the preview schema. The full funnel from discovered → preview → claim → built. |
 | [`VENUS_UI_MAPPING.md`](VENUS_UI_MAPPING.md) | You're building or changing a `/command/**` or `/portal/**` surface, and need to know which MCP tool/cron/engine is supposed to feed it (or vice versa — a UI surface exists and you need to find its data source). |
+| [`AUTH.md`](AUTH.md) | You're touching **login, the admin gate, or transactional email** — how better-auth is wired, the admin allowlist, the Google-only-account/no-password gotcha, the Zoho SMTP setup, and the `/api/health/email` check for diagnosing "didn't get the reset email." |
 | [`ACQUISITION_SYSTEM.md`](ACQUISITION_SYSTEM.md) | You need the original multi-agent client-acquisition gameplan for context. **Partly aspirational** — it says so at the top; treat anything not corroborated by the docs above as not-yet-built, not as current behavior. |
 
 ## Every README.md in the ecosystem
