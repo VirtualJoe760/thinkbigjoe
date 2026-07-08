@@ -104,10 +104,19 @@ The receptionist is a **product**, sold via the plan tiers ([`src/lib/plans.ts`]
 - **Complete ($999/mo)** — the agentic tier: bespoke OpenClaw agents built *for that business*.
   Not self-serve — **the caller books Joe** (he scopes + builds the custom agents).
 
+**Customer setup UI:** a claimed-site owner configures their receptionist at
+**`/portal/receptionist/[id]`** (`saveReceptionistSetup`) — greeting, services, hours, booking
+preference, escalation number, FAQs, guardrails. Saved to `forge_sites.receptionist_config` (jsonb)
+with `receptionist_status` `none → submitted → active`; submitting logs `receptionist_setup_submitted`
++ pings Telegram so the team provisions the per-client agent. Linked from the portal site card.
+
+**Agentic ($999) marketing:** the public **`/agentic`** page (the "AI agent sales pipelines that make
+you money" breakdown) is what the receptionist points callers to; it books an agentic strategy call.
+
 **Path A per-client provisioning** (the plan): when a client subscribes to Website + Voice, spin
 up a Retell agent *for their business* — same shape as `create-tbj-agent.mjs`, but with the
-client's business info in the prompt, their booking calendar, and their own phone number. This
-is the blueprint; the automated per-client version is **not built yet**.
+client's business info (now captured via the setup UI above), their booking calendar, and their own
+phone number. This is the blueprint; the automated per-client version is **not built yet**.
 
 Retell billing is **active** (Pay As You Go; the one-time Persona KYC is done), so provisioning a
 number per client works via the API — each number is a PAYG cost, so gate it on a paid Voice plan.

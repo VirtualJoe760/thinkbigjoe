@@ -70,6 +70,7 @@ export default async function PortalPage() {
       domainCredits: forgeSites.domainCredits,
       domain: forgeSites.domain,
       domainStatus: forgeSites.domainStatus,
+      receptionistStatus: forgeSites.receptionistStatus,
     })
     .from(forgeSites)
     .where(eq(forgeSites.claimedByUserId, user.id));
@@ -215,6 +216,12 @@ export default async function PortalPage() {
                         >
                           View your site →
                         </a>
+                        <Link
+                          href={`/portal/receptionist/${site.id}`}
+                          className="inline-flex items-center justify-center rounded-full border border-line bg-background px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                        >
+                          🎙️ {site.receptionistStatus && site.receptionistStatus !== "none" ? "Receptionist setup" : "Set up AI receptionist"}
+                        </Link>
                       </div>
                     )}
                   </>

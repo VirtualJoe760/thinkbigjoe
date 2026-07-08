@@ -391,6 +391,8 @@ export const forgeSites = pgTable("forge_sites", {
 	previewGeneratedAt: timestamp("preview_generated_at", { withTimezone: true, mode: 'string' }),
 	previewScrapedAt: timestamp("preview_scraped_at", { withTimezone: true, mode: 'string' }),
 	previewExpiresAt: timestamp("preview_expires_at", { withTimezone: true, mode: 'string' }),
+	receptionistConfig: jsonb("receptionist_config"),
+	receptionistStatus: text("receptionist_status").default('none'),
 }, (table) => [
 	uniqueIndex("forge_sites_claim_code_key").using("btree", table.claimCode.asc().nullsLast().op("text_ops")),
 	index("forge_sites_outreach_status_idx").using("btree", table.outreachStatus.asc().nullsLast().op("text_ops")),

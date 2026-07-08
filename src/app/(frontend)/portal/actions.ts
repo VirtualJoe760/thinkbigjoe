@@ -16,6 +16,63 @@ import { fulfillDomain } from "@/lib/domain-fulfill";
 
 const DOMAIN_SERVICE_FEE = 3.99; // charged only on additional (no-credit) domains
 
+export type ReceptionistState = { ok: boolean; message: string };
+
+/**
+ * Save a claimed site's AI-receptionist setup (from useActionState). Stores the config the
+ * receptionist needs for THAT business (greeting, services, hours, escalation, FAQs) and flags
+ * it `submitted` so the team provisions/activates the per-client agent. Owner-gated by claim.
+ */
+export async function saveReceptionistSetup(
+  _prev: ReceptionistState,
+  formData: FormData,
+): Promise<ReceptionistState> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return { ok: false, message: "Please sign in." };
+
+  const siteId = Number(formData.get("siteId"));
+  if (!Number.isFinite(siteId)) return { ok: false, message: "Missing site." };
+
+  const [site] = await db.select().from(forgeSites).where(eq(forgeSites.id, siteId)).limit(1);
+  if (!site || site.claimedByUserId !== session.user.id) {
+    return { ok: false, message: "We couldn't find that site on your account." };
+  }
+
+  const str = (k: string) => String(formData.get(k) || "").trim();
+  const config = {
+    services: str("services"),
+    hours: str("hours"),
+    greeting: str("greeting"),
+    booking: str("booking"),
+    forwardTo: str("forwardTo"),
+    faqs: str("faqs"),
+    doNot: str("doNot"),
+    updatedAt: new Date().toISOString(),
+  };
+  if (!config.services && !config.greeting) {
+    return { ok: false, message: "Tell us at least what your business does and how to greet callers." };
+  }
+
+  await db
+    .update(forgeSites)
+    .set({ receptionistConfig: config, receptionistStatus: "submitted", updatedAt: new Date().toISOString() })
+    .where(eq(forgeSites.id, siteId));
+
+  await db.insert(activityLog).values({
+    actor: "portal",
+    eventType: "receptionist_setup_submitted",
+    summary: `Receptionist setup submitted — ${site.businessName}`,
+    metadata: { detail: { siteId, userId: session.user.id } },
+  });
+  notifyTelegram(
+    `🎙️ <b>Receptionist setup submitted</b>\n${site.businessName} (#${siteId}) — ready to provision the per-client voice agent.`,
+  ).catch(() => {});
+
+  revalidatePath(`/portal/receptionist/${siteId}`);
+  revalidatePath("/portal");
+  return { ok: true, message: "Saved — our team will activate your receptionist and confirm by email." };
+}
+
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com";
 
 export type ClaimState = {
