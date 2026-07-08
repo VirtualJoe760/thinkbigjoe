@@ -24,6 +24,36 @@ const transporter = isConfigured
 // Transactional emails always send from the brand no-reply address.
 const FROM = process.env.EMAIL_FROM || "ThinkBigJoe <no-reply@thinkbigjoe.com>";
 
+/** True when SMTP env vars are present (host + user + pass). */
+export const isEmailConfigured = isConfigured;
+
+/**
+ * Health check: confirms the SMTP transport can connect + authenticate with the
+ * configured credentials (nodemailer `verify()`), without sending anything.
+ * Used by /api/health/email so we can prove password-reset / welcome emails will
+ * actually deliver — the flows themselves swallow errors to avoid leaking whether
+ * an account exists, so this is the only place a broken SMTP cred surfaces.
+ */
+export async function verifyEmailTransport(): Promise<
+  | { configured: false }
+  | { configured: true; ok: true; host?: string; from: string }
+  | { configured: true; ok: false; error: string; host?: string; from: string }
+> {
+  if (!transporter) return { configured: false };
+  try {
+    await transporter.verify();
+    return { configured: true, ok: true, host, from: FROM };
+  } catch (err) {
+    return {
+      configured: true,
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+      host,
+      from: FROM,
+    };
+  }
+}
+
 // Forward a copy of every transactional email here (admin visibility).
 const BCC = process.env.EMAIL_BCC;
 
