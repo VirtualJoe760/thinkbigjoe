@@ -61,16 +61,25 @@ is the blueprint; the automated per-client version is **not built yet**.
 > Until then, agents exist but have **no live number** — test via a **web call** in the Retell
 > dashboard (Agents → the agent → Test).
 
-## Updating the live agent
+## Editing + applying the agent
 
-`create-tbj-agent.mjs` **creates** an agent (re-running makes a *duplicate*). To apply a changed
-prompt/tools to the **existing** agent, update its Retell LLM via the API
-(`PATCH /update-retell-llm/{llm_id}` with the new `general_prompt` + `general_tools`) rather than
-recreating — the `llm_id`/`agent_id` are the ones from the original create run.
+The prompt, greeting, and tools live in **one place**:
+[`scripts/retell/agent-config.mjs`](../scripts/retell/agent-config.mjs) (`generalPrompt`,
+`beginMessage`, `buildTools`). Edit there — both scripts import it, so they can't drift.
+
+- **Apply changes to the LIVE agent** — `node scripts/retell/update-tbj-agent.mjs` (add `--dry`
+  to preview). It finds the "ThinkBigJoe Receptionist" agent, then `PATCH`es its Retell LLM in
+  place (`general_prompt` + `begin_message` + `general_tools`) — **no duplicate**. Test after via a
+  web call in the Retell dashboard (Agents → ThinkBigJoe Receptionist → Test).
+- **First-time / new agent** — `node scripts/retell/create-tbj-agent.mjs` (creates a *new* agent;
+  re-running makes a duplicate — use the update script for edits).
+
+Live agent as of this writing: `agent_fc091c7bd9f23c9760ed6fa559` / `llm_2be0665ec4b1d0313bc82066cb53`.
 
 ## Status
 
 - ✅ Agent + LLM created on Retell (prototype); booking webhooks live; `verify_code` route added.
-- ✅ Script updated to the claim-concierge flow (account# / claim-code lookup, portal plans, book Joe).
-- ⏳ Live phone number — blocked on Retell billing.
+- ✅ Live agent updated to the claim-concierge flow (account# / claim-code lookup, portal plans,
+  book Joe) via `update-tbj-agent.mjs` — verified on Retell.
+- ⏳ Live phone number — blocked on Retell billing (test via web call meanwhile).
 - ⏳ Automated per-client provisioning + agent activation on plan purchase — not built.
