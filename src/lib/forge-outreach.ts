@@ -68,7 +68,7 @@ export function smsText(l: { businessName: string; ownerName: string | null; liv
 
 export type LeadHistoryEvent = {
   at: string;
-  kind: "email-sent" | "call" | "text" | "email";
+  kind: "email-sent" | "call" | "text" | "email" | "bounce" | "reply";
   label: string;
   subject?: string;
   body?: string;
@@ -90,9 +90,11 @@ export async function getLeadHistories(leads: HistLead[]): Promise<Record<string
   const res = await db.execute(sql`
     SELECT (metadata->'detail'->>'siteId') AS site,
            (metadata->'detail'->>'channel') AS ch,
+           (metadata->'detail'->>'subject') AS subject,
+           (metadata->'detail'->>'snippet') AS snippet,
            event_type, created_at
     FROM activity_log
-    WHERE event_type IN ('forge_outreach_sent','lead_contact_attempt')
+    WHERE event_type IN ('forge_outreach_sent','lead_contact_attempt','email_bounced','email_reply')
       AND (metadata->'detail'->>'siteId') IS NOT NULL
     ORDER BY created_at ASC`);
   const rows = (Array.isArray(res) ? res : (res as { rows?: unknown }).rows ?? []) as Record<string, unknown>[];
@@ -108,6 +110,10 @@ export async function getLeadHistories(leads: HistLead[]): Promise<Record<string
     if (r.event_type === "forge_outreach_sent") {
       const { subject, body } = composeOutreach(lead);
       ev = { at, kind: "email-sent", label: "Sent the intro email", subject, body };
+    } else if (r.event_type === "email_bounced") {
+      ev = { at, kind: "bounce", label: "Bounced — didn't deliver", body: r.subject ? `Bounce: ${String(r.subject)}` : undefined };
+    } else if (r.event_type === "email_reply") {
+      ev = { at, kind: "reply", label: "Replied", subject: r.subject ? String(r.subject) : undefined, body: r.snippet ? String(r.snippet) : undefined };
     } else {
       const ch = String(r.ch || "email");
       if (ch === "call") ev = { at, kind: "call", label: "Called" };

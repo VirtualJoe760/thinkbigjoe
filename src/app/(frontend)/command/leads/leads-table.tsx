@@ -140,8 +140,9 @@ export function LeadsTable({ leads, attempts, histories }: { leads: ForgeSiteIte
   );
 }
 
-const HIST_ICON: Record<LeadHistoryEvent["kind"], string> = { "email-sent": "✉️", call: "📞", text: "💬", email: "✉️" };
-const HIST_VERB: Record<LeadHistoryEvent["kind"], string> = { "email-sent": "Emailed", call: "Called", text: "Texted", email: "Emailed" };
+const HIST_ICON: Record<LeadHistoryEvent["kind"], string> = { "email-sent": "✉️", call: "📞", text: "💬", email: "✉️", bounce: "⚠️", reply: "↩️" };
+const HIST_VERB: Record<LeadHistoryEvent["kind"], string> = { "email-sent": "Emailed", call: "Called", text: "Texted", email: "Emailed", bounce: "Bounced", reply: "Replied" };
+const HIST_VERB_CLS: Partial<Record<LeadHistoryEvent["kind"], string>> = { bounce: "text-red-600", reply: "text-green-600" };
 
 function HistoryTimeline({ history }: { history: LeadHistoryEvent[] }) {
   const [openMsg, setOpenMsg] = useState<number | null>(null);
@@ -160,9 +161,10 @@ function HistoryTimeline({ history }: { history: LeadHistoryEvent[] }) {
               <li key={i} className="rounded-lg border border-line bg-background p-2.5 text-sm">
                 <div className="flex flex-wrap items-baseline gap-x-2">
                   <span>{HIST_ICON[e.kind]}</span>
-                  <span className="font-semibold text-ink">{HIST_VERB[e.kind]}</span>
+                  <span className={`font-semibold ${HIST_VERB_CLS[e.kind] || "text-ink"}`}>{HIST_VERB[e.kind]}</span>
                   {e.kind === "email-sent" && <span className="text-ink-soft">the intro email</span>}
                   {e.kind === "text" && <span className="text-ink-soft">the site link</span>}
+                  {e.kind === "bounce" && <span className="text-red-600">— address failed, stop emailing</span>}
                   <span className="text-xs text-ink-soft">· {relTime(e.at)} ({stamp})</span>
                 </div>
                 {e.subject && <p className="mt-1.5 font-medium text-ink">“{e.subject}”</p>}
