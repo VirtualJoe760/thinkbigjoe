@@ -16,6 +16,35 @@ webhooks. Provisioned by [`scripts/retell/create-tbj-agent.mjs`](../scripts/rete
 - **Live number:** **+1 (480) 764-2121** — provisioned and bound as the receptionist's
   `inbound_agents`, so calling it reaches the agent (i.e. the current claim-concierge flow).
 
+## The A–Z pipeline the receptionist lives in
+
+A caller is almost always somewhere in this lifecycle — the agent's job is to know where they
+are and move them one step forward. End to end:
+
+1. **Discovery** — the prospector finds local businesses (Apify Maps) → `forge_sites` (`discovered`).
+2. **Enrichment** — owner name, email, socials, + call-prep (reviews, talking points).
+3. **Preview** — a cheap personalized showroom preview at **`/s/<slug>`** (Gemini copy, a **claim
+   code** `TBJ-XXXX-XXXX`, a ~14-day reservation). Sell-first: the preview is free to look at.
+4. **Outreach** — we reach the owner (email 10am batch / social DM / Joe's call) with the preview
+   link + claim code + "create an account and claim it." Bounces → re-enrich; replies → drafted.
+5. **Account** — the owner signs up → gets a 6-digit **account number** (`100001`…).
+6. **Claim** — `/portal/claim`, enter the claim code → links the site to their account. **Claiming a
+   preview triggers the real build** (forge); an already-built site just links. Build appears in the
+   portal shortly.
+7. **Plan + pay** — on their site in the portal they pick a plan (Website $99 / Website+Voice $299 /
+   Complete $999) → Stripe: one-time **$300 build** + monthly. Paying **activates hosting + goes live**.
+8. **Live + manage** — add a domain (1 free credit via Vercel, or bring their own), edit content in
+   the portal (click-to-edit + image studio), request rebuilds.
+9. **Voice add-on** — Website+Voice includes an AI receptionist; our team provisions a per-client
+   Retell agent for their business. **Complete ($999)** = bespoke agentic (OpenClaw) work Joe scopes
+   personally → book Joe.
+10. **Booking** — discovery/strategy calls land on Joe's Google Calendar (Meet), Mon–Fri 11 AM–1 PM
+    Pacific, 30-min slots.
+
+**The receptionist sits at the phone-call moment** (mostly owners from step 4 calling in). It must be
+able to place a caller in this pipeline and push them to the next step: reassure → verify their
+code/account → walk claim → point to portal plans → set up voice / book Joe.
+
 ## The call flow (TBJ's own front desk)
 
 Most callers are local owners who got our outreach ("we built you a website — here's the link
