@@ -6,7 +6,8 @@ import { db, leads, prospects, replyDrafts, forgeSites } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { type ForgeSiteItem } from "../sites/sites-queue";
 import { getLeadHistories, getPendingReplies, type LeadHistoryEvent } from "@/lib/forge-outreach";
-import { LeadsTable, type AttemptStat } from "./leads-table";
+import { PLANS, type PlanKey } from "@/lib/plans";
+import { LeadsCRM, type AttemptStat, type LeadMeta, type LeadStage } from "./leads-crm";
 import { RepliesInbox } from "./replies-inbox";
 
 export const dynamic = "force-dynamic";
@@ -166,6 +167,41 @@ export default async function LeadsPage() {
   // Inbound email replies awaiting a response (poller pre-drafts them).
   const pendingReplies = await getPendingReplies();
 
+  // CRM stage + user-profile enrichment per contact. A lead → contact (we reach out) → user
+  // (claimed a site + signed up) → customer (paying). Account number comes from better_auth.user.
+  const claimedUserIds = webDevRows.map((r) => r.claimedByUserId).filter((x): x is string => !!x);
+  const acctByUser: Record<string, string | null> = {};
+  if (claimedUserIds.length > 0) {
+    const res = await db.execute(sql`
+      SELECT id, account_number FROM better_auth."user"
+      WHERE id IN (${sql.join(claimedUserIds.map((id) => sql`${id}`), sql`, `)})`);
+    for (const r of (Array.isArray(res) ? res : (res as { rows?: unknown }).rows ?? []) as Record<string, unknown>[]) {
+      acctByUser[String(r.id)] = r.account_number ? String(r.account_number) : null;
+    }
+  }
+  const rowById = new Map(webDevRows.map((r) => [String(r.id), r]));
+  const leadMeta: Record<string, LeadMeta> = {};
+  for (const lead of webDevLeads) {
+    const row = rowById.get(lead.id);
+    const a = attempts[lead.id];
+    const hist = histories[lead.id] || [];
+    const paid = !!row?.oneTimePaid;
+    const claimed = !!row?.claimedByUserId;
+    let stage: LeadStage;
+    if (paid) stage = "customer";
+    else if (claimed) stage = "claimed";
+    else if (lead.outreachStatus === "bounced") stage = "bounced";
+    else if (hist.some((h) => h.kind === "reply")) stage = "replied";
+    else if ((a?.total ?? 0) > 0 || lead.outreachStatus === "sent") stage = "contacted";
+    else stage = "new";
+    leadMeta[lead.id] = {
+      stage,
+      accountNumber: row?.claimedByUserId ? acctByUser[row.claimedByUserId] ?? null : null,
+      plan: row?.plan ? PLANS[row.plan as PlanKey]?.label ?? row.plan : null,
+      paid,
+    };
+  }
+
   return (
     <div className="px-6 py-8">
       <div className="mx-auto w-full max-w-4xl">
@@ -173,9 +209,10 @@ export default async function LeadsPage() {
         {/* ── Header + cross-nav to the prospecting pipeline ── */}
         <div className="mb-6 flex flex-wrap items-baseline justify-between gap-2">
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight">Leads — call room</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight">Contacts — CRM</h1>
             <p className="mt-1 text-sm text-ink-soft">
-              Your ready-to-call leads, each with a photo, reviews, and a script. Prospecting is where leads are found &amp; enriched → they land here to call.
+              Every business we&apos;re working, by pipeline stage. Tap a contact for their info, communication
+              history, and a calling script. Prospecting finds &amp; enriches leads → they land here.
             </p>
           </div>
           <Link href="/command/prospects" className="rounded-full border border-line px-3 py-1.5 text-sm font-semibold text-brand hover:bg-brand-tint/40">
@@ -200,26 +237,15 @@ export default async function LeadsPage() {
           </section>
         )}
 
-        {/* ── Web-dev leads (built businesses to call) ── */}
+        {/* ── The CRM: contacts by pipeline stage ── */}
         <section className="mb-10">
-          <div className="mb-1 flex items-center gap-3">
-            <h2 className="text-xl font-extrabold tracking-tight">Ready to call</h2>
-            <span className="rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-semibold text-green-700">
-              {webDevLeads.length}
-            </span>
-          </div>
-          <p className="mb-4 text-sm text-ink-soft">
-            Businesses we built a site for and haven&apos;t converted yet. Click a row to open the script, reviews, and
-            contact buttons. Every 📞/💬/✉️ tap is counted under <span className="font-medium text-ink">Attempts</span> so
-            you can see who&apos;s been chased and how often.
-          </p>
           {webDevLeads.length === 0 ? (
             <p className="rounded-2xl border border-line bg-background p-6 text-sm text-ink-soft">
-              None to call yet — built sites show up here once the forge finishes them.{" "}
+              No contacts yet — built sites show up here once the forge finishes them.{" "}
               <Link href="/command/prospects" className="font-semibold text-brand hover:underline">Approve some in prospecting →</Link>
             </p>
           ) : (
-            <LeadsTable leads={webDevLeads} attempts={attempts} histories={histories} />
+            <LeadsCRM leads={webDevLeads} attempts={attempts} histories={histories} meta={leadMeta} />
           )}
         </section>
 
