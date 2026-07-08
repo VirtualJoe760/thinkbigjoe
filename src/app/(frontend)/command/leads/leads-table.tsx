@@ -141,38 +141,44 @@ export function LeadsTable({ leads, attempts, histories }: { leads: ForgeSiteIte
 }
 
 const HIST_ICON: Record<LeadHistoryEvent["kind"], string> = { "email-sent": "✉️", call: "📞", text: "💬", email: "✉️" };
+const HIST_VERB: Record<LeadHistoryEvent["kind"], string> = { "email-sent": "Emailed", call: "Called", text: "Texted", email: "Emailed" };
 
 function HistoryTimeline({ history }: { history: LeadHistoryEvent[] }) {
   const [openMsg, setOpenMsg] = useState<number | null>(null);
   return (
     <div className="mt-3">
-      <div className="text-xs font-bold uppercase tracking-wide text-ink-soft">Message history</div>
+      <div className="text-xs font-bold uppercase tracking-wide text-ink-soft">Message history — how &amp; what we sent</div>
       {history.length === 0 ? (
         <p className="mt-1 text-xs text-ink-soft">No contact yet — this lead hasn&apos;t been reached.</p>
       ) : (
-        <ol className="mt-1.5 space-y-1.5">
+        <ol className="mt-1.5 space-y-2">
           {history.map((e, i) => {
             const when = new Date(e.at);
-            const hasMsg = Boolean(e.body);
+            const paras = (e.body || "").split("\n\n").filter(Boolean);
+            const stamp = when.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
             return (
-              <li key={i} className="text-sm">
+              <li key={i} className="rounded-lg border border-line bg-background p-2.5 text-sm">
                 <div className="flex flex-wrap items-baseline gap-x-2">
                   <span>{HIST_ICON[e.kind]}</span>
-                  <span className="font-medium text-ink">{e.label}</span>
-                  <span className="text-xs text-ink-soft">{relTime(e.at)} · {when.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
-                  {hasMsg && (
-                    <button onClick={() => setOpenMsg(openMsg === i ? null : i)} className="text-xs font-medium text-brand hover:underline">
-                      {openMsg === i ? "hide" : "view message"}
-                    </button>
-                  )}
+                  <span className="font-semibold text-ink">{HIST_VERB[e.kind]}</span>
+                  {e.kind === "email-sent" && <span className="text-ink-soft">the intro email</span>}
+                  {e.kind === "text" && <span className="text-ink-soft">the site link</span>}
+                  <span className="text-xs text-ink-soft">· {relTime(e.at)} ({stamp})</span>
                 </div>
-                {hasMsg && openMsg === i && (
-                  <div className="mt-1 rounded-lg border border-line bg-background p-2.5 text-xs">
-                    {e.subject && <p className="font-semibold text-ink">{e.subject}</p>}
+                {e.subject && <p className="mt-1.5 font-medium text-ink">“{e.subject}”</p>}
+                {paras.length > 0 ? (
+                  <>
                     <div className="mt-1 space-y-1.5 text-ink-soft">
-                      {(e.body || "").split("\n\n").map((p, j) => <p key={j}>{p}</p>)}
+                      {(openMsg === i ? paras : paras.slice(0, 1)).map((p, j) => <p key={j}>{p}</p>)}
                     </div>
-                  </div>
+                    {paras.length > 1 && (
+                      <button onClick={() => setOpenMsg(openMsg === i ? null : i)} className="mt-1 text-xs font-medium text-brand hover:underline">
+                        {openMsg === i ? "show less" : "read full message"}
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <p className="mt-0.5 text-xs text-ink-soft">Phone call — no message.</p>
                 )}
               </li>
             );
