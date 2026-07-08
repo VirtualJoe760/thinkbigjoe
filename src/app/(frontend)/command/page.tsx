@@ -5,6 +5,7 @@ import { eq, sql } from "drizzle-orm";
 import { db, outreach, prospects, leads, activityLog } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { calendarHealth } from "@/lib/gcal";
+import { getForgeDigest } from "@/lib/forge-stats";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -23,6 +24,8 @@ const PIPELINE: Array<{ key: string; label: string }> = [
 
 export default async function OverviewPage() {
   await requireAdmin();
+
+  const digest = await getForgeDigest();
 
   const [rows, leadRows, upcomingAppointments, recentActivity, calHealth] = await Promise.all([
     db
@@ -176,6 +179,52 @@ export default async function OverviewPage() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Engine flow — the forge digest at a glance (full detail on /command/engine) */}
+        <div className="mt-8 flex items-center justify-between">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-ink-soft">Engine flow</h2>
+          <Link href="/command/engine" className="text-xs font-semibold text-brand hover:underline">
+            Engine room →
+          </Link>
+        </div>
+        <div className="mt-2 rounded-2xl border border-line bg-background p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <span className="text-sm font-semibold">
+              Forge{" "}
+              <span className={digest.config.masterEnabled ? "text-green-600" : "text-ink-soft"}>
+                {digest.config.masterEnabled ? "running" : "stopped"}
+              </span>
+            </span>
+            <span className="text-sm text-ink-soft">
+              <span className="font-semibold text-ink tabular-nums">{digest.budget.weekRunsUsed}</span>/
+              {digest.budget.weeklyRunBudget} runs this week
+            </span>
+          </div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-line">
+            <div
+              className={`h-full rounded-full ${digest.budget.pct >= 90 ? "bg-red-500" : digest.budget.pct >= 75 ? "bg-amber-500" : "bg-green-500"}`}
+              style={{ width: `${Math.min(100, digest.budget.pct)}%` }}
+            />
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: "Built 7d", value: digest.throughput.built7d },
+              { label: "Edits 7d", value: digest.throughput.edits7d },
+              { label: "Outreach 7d", value: digest.throughput.outreachSent7d },
+              { label: "Previews 7d", value: digest.throughput.previews7d },
+            ].map((s) => (
+              <div key={s.label}>
+                <div className="text-xl font-bold tabular-nums">{s.value}</div>
+                <div className="text-[11px] text-ink-soft">{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-ink-soft">
+            {digest.buildQueue.total} in build queue · {digest.editQueue.total} edits waiting · builds{" "}
+            {digest.config.buildsEnabled ? "on" : "off"} · edits {digest.config.editsEnabled ? "on" : "off"} · idle-templates{" "}
+            {digest.config.idleTemplatesEnabled ? "on" : "off"}
+          </p>
         </div>
 
         <div className="mt-8 grid gap-4 md:grid-cols-2">
