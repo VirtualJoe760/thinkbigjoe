@@ -103,6 +103,10 @@ export function LeadsTable({ leads, attempts, histories }: { leads: ForgeSiteIte
               const a = stat(item.id);
               const isOpen = openId === item.id;
               const contacted = a.total > 0;
+              const bounced = item.outreachStatus === "bounced";
+              // A qualifying first touch = email / text / a sent outreach (incl. social DM). A call alone
+              // doesn't count — we want them warmed on a non-call channel before Joe dials.
+              const touched = a.email > 0 || a.text > 0 || item.outreachStatus === "sent";
               return (
                 <Fragment key={item.id}>
                   <tr
@@ -117,16 +121,22 @@ export function LeadsTable({ leads, attempts, histories }: { leads: ForgeSiteIte
                     <td className="px-3 py-3"><AttemptChips a={a} /></td>
                     <td className="px-3 py-3 whitespace-nowrap text-xs text-ink-soft">{relTime(a.lastAt)}</td>
                     <td className="px-3 py-3">
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${contacted ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
-                        {contacted ? "In progress" : "New"}
-                      </span>
+                      {bounced ? (
+                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700" title="Email bounced — hunting a new contact">
+                          ⚠️ Bounced
+                        </span>
+                      ) : (
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${contacted ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
+                          {contacted ? "In progress" : "New"}
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-3 text-right text-ink-soft">{isOpen ? "▲" : "▼"}</td>
                   </tr>
                   {isOpen && (
                     <tr className="border-b border-line bg-surface/60">
                       <td colSpan={6} className="px-4 py-4">
-                        <LeadDetail item={item} onContact={record} history={histories[item.id] || []} />
+                        <LeadDetail item={item} onContact={record} history={histories[item.id] || []} touched={touched} />
                       </td>
                     </tr>
                   )}
@@ -191,7 +201,7 @@ function HistoryTimeline({ history }: { history: LeadHistoryEvent[] }) {
   );
 }
 
-function LeadDetail({ item, onContact, history }: { item: ForgeSiteItem; onContact: (id: string, ch: "call" | "text" | "email") => void; history: LeadHistoryEvent[] }) {
+function LeadDetail({ item, onContact, history, touched }: { item: ForgeSiteItem; onContact: (id: string, ch: "call" | "text" | "email") => void; history: LeadHistoryEvent[]; touched: boolean }) {
   const [copied, setCopied] = useState(false);
   const s = item.socialStats || {};
   const reach: string[] = [];
@@ -207,6 +217,23 @@ function LeadDetail({ item, onContact, history }: { item: ForgeSiteItem; onConta
       <Photo item={item} size={72} />
       <div className="min-w-0 flex-1">
         {reach.length > 0 && <div className="text-xs font-medium text-ink-soft">{reach.join("  ·  ")} followers</div>}
+
+        {/* Email bounced — the research agent is hunting a new channel */}
+        {item.outreachStatus === "bounced" && (
+          <div className="mb-2 rounded-xl border border-red-200 bg-red-50 p-2.5 text-xs leading-relaxed text-red-700">
+            ⚠️ <b>Email bounced</b> — that address was dead, so we retired it. Handed to the research agent to
+            find a new email or a social profile (Instagram/Facebook/LinkedIn); it re-runs a few times a day.
+            It&apos;ll be emailable again once a new channel turns up. In the meantime, reach out by phone or text.
+          </div>
+        )}
+
+        {/* Warm them before calling — a call lands better after one email/text/social touch */}
+        {!touched && (
+          <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs leading-relaxed text-amber-800">
+            💡 <b>No touch yet.</b> Text or email the site link first — calls convert better once they&apos;ve
+            seen what we built. Then call to close.
+          </div>
+        )}
 
         {/* contact actions — each logs an attempt */}
         <div className="mt-1 flex flex-wrap items-center gap-2">

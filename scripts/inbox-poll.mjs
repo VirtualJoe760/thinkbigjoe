@@ -92,12 +92,25 @@ try {
           /undeliver|delivery (status notification|has failed|failure)|failure notice|returned mail|couldn.t be delivered|wasn.t delivered|address not found|recipient.*not found/i.test(subject);
 
         if (looksBounce) {
-          const hit = leads.find((l) => body.includes(l.email));
+          const hit = leads.find((l) => l.email && body.includes(l.email));
           if (hit) {
             const already = (await db.query("select 1 from forge_sites where id=$1 and outreach_status='bounced'", [hit.id])).rowCount > 0;
-            await db.query("update forge_sites set outreach_status='bounced', updated_at=now() where id=$1 and coalesce(outreach_status,'')<>'bounced'", [hit.id]);
-            await logAct("email_bounced", `Bounced — ${hit.business_name} <${hit.email}>`, { siteId: hit.id, address: hit.email, subject: subject.slice(0, 140) });
-            if (!already) await tg(`⚠️ <b>Email bounced</b> — ${hit.business_name} &lt;${hit.email}&gt;\nAddress is bad. Marked <code>bounced</code> (won't resend). Re-enrich for a better address or fall back to a phone/text.`);
+            // Retire the dead address: stash it in contact_notes for the record, then NULL email so the
+            // lead re-enters the research agent's hunt (list_forge_needs_contact selects email-less leads).
+            // outreach_status='bounced' is the "scanning for new contact" flag shown in the call room; it
+            // flips back to sendable once enrich_forge_contact finds a new email or social channel.
+            await db.query(
+              `update forge_sites
+                 set outreach_status='bounced',
+                     contact_notes = coalesce(contact_notes || E'\\n', '') || $2,
+                     email = null,
+                     contact_enriched_at = null,
+                     updated_at = now()
+               where id=$1 and coalesce(outreach_status,'')<>'bounced'`,
+              [hit.id, `⚠️ Email bounced ${new Date().toISOString().slice(0, 10)}: ${hit.email} — dead address, find a NEW email or a social (IG/FB/LinkedIn).`],
+            );
+            await logAct("email_bounced", `Bounced — ${hit.business_name} <${hit.email}> (address retired · handed to research for a new email/social)`, { siteId: hit.id, address: hit.email, subject: subject.slice(0, 140) });
+            if (!already) await tg(`⚠️ <b>Email bounced</b> — ${hit.business_name} &lt;${hit.email}&gt;\nDead address retired (won't resend). Handed to the research agent to find a NEW email or a social profile.`);
           } else {
             await logAct("email_bounced", `Bounce received (couldn't match to a lead) — "${subject.slice(0, 80)}"`, { from, subject: subject.slice(0, 140) });
           }

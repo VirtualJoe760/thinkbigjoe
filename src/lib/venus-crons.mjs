@@ -74,9 +74,9 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
     prompt: `This is your enrichment run — the FREE, browser-based way to fill lead data (do NOT use the paid Apify tools here; those cost money and the paid engines handle bulk finding). You do two jobs each run: (A) find missing contact info, (B) build call-prep. You drive Chrome — this is exactly the research you're best at.
 
 === A) CONTACT ENRICHMENT ===
-1. PULL: call list_forge_needs_contact — leads missing an email or owner (BUILT ones first).
+1. PULL: call list_forge_needs_contact — leads missing an email or owner (BUILT ones first). **⚠️ BOUNCED leads are listed FIRST** — their previous email is DEAD (it bounced), so they're back in the queue: find a DIFFERENT email OR a social profile (IG/FB/LinkedIn). NEVER re-save the old bounced address; a social channel counts as a fix.
 2. HUNT by hand, be exhaustive: Google Business Profile + "[biz] owner/email"; Facebook About + Messenger; LinkedIn; Nextdoor; directories — Yelp, **BBB** (names the owner/principal), Angi, Thumbtack, Yellow Pages, Manta, local Chamber; Secretary of State registry; WHOIS. Capture the OWNER's name, a real EMAIL, and social URLs. NEVER invent contact info — only record what you verify.
-3. SAVE: enrich_forge_contact(site_id, owner_name, email, phone, instagram_url, facebook_url, linkedin_url, notes) — only fields you found; it gap-fills.
+3. SAVE: enrich_forge_contact(site_id, owner_name, email, phone, instagram_url, facebook_url, linkedin_url, notes) — only fields you found; it gap-fills. For a bounced lead, saving a new email or social automatically clears the bounce and re-arms it for outreach.
 
 === B) CALL-PREP (what Joe says on the phone) ===
 4. PULL: call list_forge_needs_callprep — leads with no talking points yet (most-reviewed first).

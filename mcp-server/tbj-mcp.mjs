@@ -707,22 +707,28 @@ async function toolListForgeNeedsContact() {
   // reachable channel for. Built ones first (they're ready for outreach/calls).
   const res = await query(
     `SELECT id, business_name, niche, city, service_area, phone, email, owner_name,
-            existing_website_url, live_url, google_maps_url, linkedin_url, instagram_url, facebook_url, status
+            existing_website_url, live_url, google_maps_url, linkedin_url, instagram_url, facebook_url, status, outreach_status
      FROM forge_sites
      WHERE status IN ('built','approved','discovered')
-       AND (email IS NULL OR email = '' OR owner_name IS NULL OR owner_name = '')
-     ORDER BY (status = 'built') DESC, created_at DESC
+       AND (email IS NULL OR email = '' OR owner_name IS NULL OR owner_name = '' OR outreach_status = 'bounced')
+     ORDER BY (outreach_status = 'bounced') DESC, (status = 'built') DESC, created_at DESC
      LIMIT 40`,
   );
   if (!res.rows.length) {
     return { content: [{ type: "text", text: "Every site already has an email + owner name — nothing to enrich." }] };
   }
-  const lines = [`🔎 **${res.rows.length} site(s) need contact enrichment** (built first):`, ""];
+  const bouncedN = res.rows.filter((r) => r.outreach_status === "bounced").length;
+  const header = bouncedN
+    ? `🔎 **${res.rows.length} site(s) need contact enrichment** — ⚠️ ${bouncedN} BOUNCED (dead email, hunt a new channel FIRST):`
+    : `🔎 **${res.rows.length} site(s) need contact enrichment** (built first):`;
+  const lines = [header, ""];
   for (const r of res.rows) {
+    const bounced = r.outreach_status === "bounced";
     const have = [r.email && "email", r.owner_name && "owner", r.phone && "phone", r.instagram_url && "IG", r.facebook_url && "FB", r.linkedin_url && "LinkedIn"].filter(Boolean);
     const dig = [r.existing_website_url && `their site: ${r.existing_website_url}`, r.google_maps_url && `maps: ${r.google_maps_url}`, r.live_url && `our build: ${r.live_url}`].filter(Boolean);
-    lines.push(`**#${r.id} ${r.business_name}** · ${r.niche || "—"} · ${r.city || r.service_area || "—"} [${r.status}]`);
-    lines.push(`   have: ${have.join(", ") || "phone only"} · MISSING: ${[!r.email && "email", !r.owner_name && "owner"].filter(Boolean).join(" + ")}`);
+    lines.push(`**#${r.id} ${r.business_name}** · ${r.niche || "—"} · ${r.city || r.service_area || "—"} [${r.status}]${bounced ? " ⚠️ BOUNCED" : ""}`);
+    if (bounced) lines.push(`   ⚠️ Their previous email BOUNCED (dead) — find a DIFFERENT email OR a social profile (IG/FB/LinkedIn). A social is a valid channel; don't reuse the old address.`);
+    lines.push(`   have: ${have.join(", ") || "phone only"} · MISSING: ${[!r.email && "email", !r.owner_name && "owner"].filter(Boolean).join(" + ") || "reachable channel"}`);
     if (dig.length) lines.push(`   dig here: ${dig.join(" · ")}`);
     lines.push("");
   }
@@ -735,7 +741,7 @@ async function toolListForgeNeedsContact() {
 async function toolEnrichForgeContact({ site_id, owner_name, email, phone, instagram_url, facebook_url, linkedin_url, notes } = {}) {
   const id = Number(site_id);
   if (!Number.isFinite(id)) return { content: [{ type: "text", text: "site_id must be a number." }] };
-  const existing = await query(`SELECT id, business_name FROM forge_sites WHERE id = $1 LIMIT 1`, [id]);
+  const existing = await query(`SELECT id, business_name, outreach_status FROM forge_sites WHERE id = $1 LIMIT 1`, [id]);
   if (!existing.rows.length) return { content: [{ type: "text", text: `forge_sites #${id} not found.` }] };
   const site = existing.rows[0];
 
@@ -760,15 +766,21 @@ async function toolEnrichForgeContact({ site_id, owner_name, email, phone, insta
     set.push(`contact_notes = COALESCE(contact_notes || E'\\n', '') || $${vals.length}`);
   }
   if (!set.length) return { content: [{ type: "text", text: `Nothing to save for ${site.business_name} — pass at least one field you found.` }] };
+  // Bounce recovery: if this lead was flagged 'bounced' and we now have a reachable channel
+  // (a new email or any social), clear the flag → 'none' so it re-enters outreach as sendable.
+  const gotChannel = [email, instagram_url, facebook_url, linkedin_url].some((v) => v && String(v).trim());
+  const recovered = site.outreach_status === "bounced" && gotChannel;
+  if (recovered) set.push(`outreach_status = 'none'`);
   set.push(`contact_enriched_at = now()`, `updated_at = now()`);
   await query(`UPDATE forge_sites SET ${set.join(", ")} WHERE id = $1`, vals);
 
-  await audit("forge_contact_enriched", `Enriched contact for ${site.business_name} (#${id})`, {
+  await audit("forge_contact_enriched", `Enriched contact for ${site.business_name} (#${id})${recovered ? " — RECOVERED from bounce" : ""}`, {
     target: site.business_name,
-    detail: { siteId: id, found: { owner_name, email, phone, instagram_url, facebook_url, linkedin_url } },
+    detail: { siteId: id, recovered, found: { owner_name, email, phone, instagram_url, facebook_url, linkedin_url } },
   });
   const found = [owner_name && `owner ${owner_name}`, email && `email ${email}`, phone && `phone ${phone}`].filter(Boolean).join(" · ");
-  return { content: [{ type: "text", text: `✅ Enriched ${site.business_name} (#${id})${found ? ` — ${found}` : ""}. (Existing values kept; only blanks filled.)` }] };
+  const recoveredNote = recovered ? ` ♻️ Recovered from a bounce — back in the outreach queue with a fresh channel.` : "";
+  return { content: [{ type: "text", text: `✅ Enriched ${site.business_name} (#${id})${found ? ` — ${found}` : ""}. (Existing values kept; only blanks filled.)${recoveredNote}` }] };
 }
 
 async function toolListForgeNeedsCallprep() {
@@ -1373,7 +1385,7 @@ async function toolListExpiringPreviews() {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.18.0" },
+  { name: "tbj-mcp", version: "2.19.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1554,7 +1566,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "list_forge_needs_contact",
-      description: "List forge sites still missing an owner name or email — the ones to enrich. Returns what contact info exists and where to dig (their website, Google Maps, socials). Call this to start a contact-enrichment run, then write findings with enrich_forge_contact.",
+      description: "List forge sites still missing an owner name or email — the ones to enrich. Also includes leads whose email BOUNCED (dead address, flagged ⚠️ BOUNCED and listed first): for those, find a DIFFERENT email or a social profile (IG/FB/LinkedIn) — never reuse the dead one. Returns what contact info exists and where to dig (their website, Google Maps, socials). Call this to start a contact-enrichment run, then write findings with enrich_forge_contact.",
       inputSchema: { type: "object", properties: {} },
     },
     {
