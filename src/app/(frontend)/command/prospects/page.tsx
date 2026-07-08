@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
 import { desc, eq, sql } from "drizzle-orm";
 
-import { db, outreach, prospects, forgeSites, leadEngine, outreachEngine, previewEngine, forgeEngine } from "@/db";
+import { db, outreach, prospects, forgeSites, leadEngine, outreachEngine, previewEngine } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { parseProspectRecon } from "@/lib/prospect-recon";
 import { ReviewQueue, type QueueItem } from "../review-queue";
 import { SitesQueue, type ForgeSiteItem } from "../sites/sites-queue";
 import { LeadEnginePanel, type LeadEngineStats } from "./lead-engine-panel";
 import { ShowroomPanel, type ShowroomStats } from "./showroom-panel";
-import { ForgePanel, type ForgeEngineStats } from "./forge-panel";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -148,32 +147,7 @@ export default async function ProspectsPage({
     };
   }
 
-  // Build engine (forge) — on/off flag + the live build queue with ETAs.
-  const forgeCfg = await db.select().from(forgeEngine).where(eq(forgeEngine.id, 1)).limit(1).then((r) => r[0]);
-  let forgeStats: ForgeEngineStats | null = null;
-  if (forgeCfg) {
-    const qRows = await db
-      .select({ id: forgeSites.id, businessName: forgeSites.businessName, status: forgeSites.status, updatedAt: forgeSites.updatedAt, createdAt: forgeSites.createdAt })
-      .from(forgeSites)
-      .where(sql`status in ('building','approved')`);
-    const nowMs = Date.now();
-    const ordered = [
-      ...qRows.filter((r) => r.status === "building"),
-      ...qRows
-        .filter((r) => r.status === "approved")
-        .sort((a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime()),
-    ];
-    forgeStats = {
-      enabled: forgeCfg.enabled,
-      avgBuildMinutes: forgeCfg.avgBuildMinutes,
-      queue: ordered.map((r) => ({
-        id: r.id,
-        businessName: r.businessName,
-        status: r.status,
-        elapsedMin: r.status === "building" && r.updatedAt ? Math.max(0, Math.round((nowMs - new Date(r.updatedAt).getTime()) / 60000)) : null,
-      })),
-    };
-  }
+  // Build engine (forge) controls moved to the Engine room (/command/engine) — a link stands in below.
 
   // --- Web-dev leads (the forge queue) — always loaded; this is the primary surface. ---
   // Exclude soft-deleted sites so they vanish from every view (bucketOf would otherwise
@@ -392,9 +366,15 @@ export default async function ProspectsPage({
           )}
         </div>
 
-        {!isLinkedIn && forgeStats && (
-          <div className="mt-6">
-            <ForgePanel stats={forgeStats} />
+        {!isLinkedIn && (
+          <div className="mt-6 flex items-center justify-between rounded-2xl border border-line bg-background px-5 py-3.5">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-ink">Build engine (forge)</p>
+              <p className="text-xs text-ink-soft">On/off, build queue, spend, and all forge controls now live in the Engine room.</p>
+            </div>
+            <a href="/command/engine" className="shrink-0 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand-tint/40">
+              Engine room →
+            </a>
           </div>
         )}
 
