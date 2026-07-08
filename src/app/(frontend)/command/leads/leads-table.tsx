@@ -4,6 +4,7 @@ import { Fragment, useState } from "react";
 
 import { logContactAttempt } from "../actions";
 import type { ForgeSiteItem } from "../sites/sites-queue";
+import type { LeadHistoryEvent } from "@/lib/forge-outreach";
 
 export type AttemptStat = { call: number; text: number; email: number; total: number; lastAt: string | null };
 
@@ -69,7 +70,7 @@ function AttemptChips({ a }: { a: AttemptStat }) {
   );
 }
 
-export function LeadsTable({ leads, attempts }: { leads: ForgeSiteItem[]; attempts: Record<string, AttemptStat> }) {
+export function LeadsTable({ leads, attempts, histories }: { leads: ForgeSiteItem[]; attempts: Record<string, AttemptStat>; histories: Record<string, LeadHistoryEvent[]> }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [local, setLocal] = useState<Record<string, AttemptStat>>(attempts);
 
@@ -125,7 +126,7 @@ export function LeadsTable({ leads, attempts }: { leads: ForgeSiteItem[]; attemp
                   {isOpen && (
                     <tr className="border-b border-line bg-surface/60">
                       <td colSpan={6} className="px-4 py-4">
-                        <LeadDetail item={item} onContact={record} />
+                        <LeadDetail item={item} onContact={record} history={histories[item.id] || []} />
                       </td>
                     </tr>
                   )}
@@ -139,7 +140,50 @@ export function LeadsTable({ leads, attempts }: { leads: ForgeSiteItem[]; attemp
   );
 }
 
-function LeadDetail({ item, onContact }: { item: ForgeSiteItem; onContact: (id: string, ch: "call" | "text" | "email") => void }) {
+const HIST_ICON: Record<LeadHistoryEvent["kind"], string> = { "email-sent": "✉️", call: "📞", text: "💬", email: "✉️" };
+
+function HistoryTimeline({ history }: { history: LeadHistoryEvent[] }) {
+  const [openMsg, setOpenMsg] = useState<number | null>(null);
+  return (
+    <div className="mt-3">
+      <div className="text-xs font-bold uppercase tracking-wide text-ink-soft">Message history</div>
+      {history.length === 0 ? (
+        <p className="mt-1 text-xs text-ink-soft">No contact yet — this lead hasn&apos;t been reached.</p>
+      ) : (
+        <ol className="mt-1.5 space-y-1.5">
+          {history.map((e, i) => {
+            const when = new Date(e.at);
+            const hasMsg = Boolean(e.body);
+            return (
+              <li key={i} className="text-sm">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span>{HIST_ICON[e.kind]}</span>
+                  <span className="font-medium text-ink">{e.label}</span>
+                  <span className="text-xs text-ink-soft">{relTime(e.at)} · {when.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+                  {hasMsg && (
+                    <button onClick={() => setOpenMsg(openMsg === i ? null : i)} className="text-xs font-medium text-brand hover:underline">
+                      {openMsg === i ? "hide" : "view message"}
+                    </button>
+                  )}
+                </div>
+                {hasMsg && openMsg === i && (
+                  <div className="mt-1 rounded-lg border border-line bg-background p-2.5 text-xs">
+                    {e.subject && <p className="font-semibold text-ink">{e.subject}</p>}
+                    <div className="mt-1 space-y-1.5 text-ink-soft">
+                      {(e.body || "").split("\n\n").map((p, j) => <p key={j}>{p}</p>)}
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function LeadDetail({ item, onContact, history }: { item: ForgeSiteItem; onContact: (id: string, ch: "call" | "text" | "email") => void; history: LeadHistoryEvent[] }) {
   const [copied, setCopied] = useState(false);
   const s = item.socialStats || {};
   const reach: string[] = [];
@@ -180,6 +224,8 @@ function LeadDetail({ item, onContact }: { item: ForgeSiteItem; onContact: (id: 
           )}
         </div>
         <p className="mt-1.5 text-[11px] text-ink-soft">Text opens your Messages app (sends from your phone, not the 480). Each tap is logged here as an attempt.</p>
+
+        <HistoryTimeline history={history} />
 
         {quotes.length > 0 && (
           <div className="mt-3">

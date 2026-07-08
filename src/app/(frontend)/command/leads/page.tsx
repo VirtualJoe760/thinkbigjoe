@@ -5,6 +5,7 @@ import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { db, leads, prospects, replyDrafts, forgeSites } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { type ForgeSiteItem } from "../sites/sites-queue";
+import { getLeadHistories, type LeadHistoryEvent } from "@/lib/forge-outreach";
 import { LeadsTable, type AttemptStat } from "./leads-table";
 
 export const dynamic = "force-dynamic";
@@ -158,6 +159,9 @@ export default async function LeadsPage() {
     attempts[site] = cur;
   }
 
+  // Contact/message history per lead (the follow-up timeline).
+  const histories: Record<string, LeadHistoryEvent[]> = await getLeadHistories(webDevLeads);
+
   return (
     <div className="px-6 py-8">
       <div className="mx-auto w-full max-w-4xl">
@@ -194,7 +198,7 @@ export default async function LeadsPage() {
               <Link href="/command/prospects" className="font-semibold text-brand hover:underline">Approve some in prospecting →</Link>
             </p>
           ) : (
-            <LeadsTable leads={webDevLeads} attempts={attempts} />
+            <LeadsTable leads={webDevLeads} attempts={attempts} histories={histories} />
           )}
         </section>
 

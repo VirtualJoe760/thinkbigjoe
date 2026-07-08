@@ -6,6 +6,6 @@ set -uo pipefail
 ENVF="$HOME/code/thinkbigjoe/.env.local"
 CRON=$(grep -E '^CRON_SECRET=' "$ENVF" | head -1 | sed -E 's/^CRON_SECRET=//; s/^"//; s/"$//' | tr -d ' ')
 [ -z "$CRON" ] && { echo "$(date) — no CRON_SECRET, abort"; exit 1; }
-echo "=== $(date) — firing 7am owner outreach ==="
+echo "=== $(date) — firing 10am owner outreach ==="
 curl -s -m 90 -X POST "https://thinkbigjoe.com/api/forge/send-outreach" -H "Authorization: Bearer $CRON"
 echo ""
