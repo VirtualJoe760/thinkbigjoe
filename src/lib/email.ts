@@ -150,13 +150,13 @@ export async function sendForgeOutreachEmail(args: {
     <div style="margin:20px 0;padding:14px 18px;background:#f5f7fb;border:1px solid #e6e9ef;border-radius:12px;">
       <div style="font-size:11px;color:#9aa0ad;text-transform:uppercase;letter-spacing:.5px;">Your claim code</div>
       <div style="font-size:22px;font-weight:800;letter-spacing:1.5px;font-family:'Courier New',monospace;color:#0a0a0b;">${escapeHtml(args.claimCode)}</div>
-      <div style="margin-top:4px;font-size:13px;line-height:1.5;color:#5b616e;">Create an account, then enter this code at <a href="${SITE_URL}/portal/claim" style="color:${BRAND};">${SITE_URL}/portal/claim</a> to claim your site and take ownership.</div>
+      <div style="margin-top:4px;font-size:13px;line-height:1.5;color:#5b616e;">Create an account, then enter this code at <a href="${SITE_URL}/portal/claim" target="_blank" rel="noopener" style="color:${BRAND};">${SITE_URL}/portal/claim</a> to claim your site and take ownership.</div>
     </div>`;
 
   const buttons = `
     <div style="margin-top:8px;">
-      ${args.liveUrl ? `<a href="${args.liveUrl}" style="display:inline-block;margin:8px 8px 0 0;background:${BRAND};color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:999px;">See your new site</a>` : ""}
-      <a href="${SITE_URL}/book-appointment" style="display:inline-block;margin:8px 0 0 0;background:#0a0a0b;color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:999px;">Book a call with Joe</a>
+      ${args.liveUrl ? `<a href="${args.liveUrl}" target="_blank" rel="noopener" style="display:inline-block;margin:8px 8px 0 0;background:${BRAND};color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:999px;">See your website preview</a>` : ""}
+      <a href="${SITE_URL}/book-appointment" target="_blank" rel="noopener" style="display:inline-block;margin:8px 0 0 0;background:#0a0a0b;color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:999px;">Book a call with Joe</a>
     </div>`;
 
   return sendEmail({

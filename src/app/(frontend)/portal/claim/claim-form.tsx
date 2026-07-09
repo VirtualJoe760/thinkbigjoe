@@ -91,32 +91,58 @@ export function ClaimForm() {
   }
 
   return (
-    <form action={action} className="rounded-2xl border border-line bg-surface p-8">
-      <label htmlFor="code" className="block text-sm font-semibold text-ink">
-        Claim code
-      </label>
-      <p className="mt-1 text-sm text-ink-soft">
-        Enter the code from your welcome email — it looks like{" "}
-        <span className="font-mono font-semibold">TBJ-XXXX-XXXX</span>.
-      </p>
-      <input
-        id="code"
-        name="code"
-        autoFocus
-        autoComplete="off"
-        placeholder="TBJ-••••-••••"
-        className="mt-4 w-full rounded-xl border border-line bg-background px-4 py-3 font-mono text-lg tracking-wide uppercase focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/40"
-      />
-      {state.message && !state.ok && (
-        <p className="mt-3 text-sm font-medium text-red-600">{state.message}</p>
-      )}
-      <button
-        type="submit"
-        disabled={pending}
-        className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-brand px-6 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-60 sm:w-auto"
-      >
-        {pending ? "Claiming…" : "Claim my site"}
-      </button>
-    </form>
+    <>
+      {/* Reminder: the code came by email. */}
+      <div className="mb-4 flex items-start gap-3 rounded-xl border border-brand/30 bg-brand-tint/50 p-4">
+        <span className="text-xl leading-none">📬</span>
+        <p className="text-sm leading-relaxed text-ink">
+          <span className="font-semibold">Check your email for your claim code.</span> We sent it to the inbox we
+          reached out to — look for a message from <span className="font-semibold">Joe at ThinkBigJoe</span> (and
+          check your spam folder). It looks like <span className="font-mono font-semibold">TBJ-XXXX-XXXX</span>.
+        </p>
+      </div>
+
+      <form action={action} className="rounded-2xl border border-line bg-surface p-8">
+        <label htmlFor="code" className="block text-sm font-semibold text-ink">
+          Claim code
+        </label>
+        <p className="mt-1 text-sm text-ink-soft">
+          Enter the code from your email to claim your website.
+        </p>
+        <input
+          id="code"
+          name="code"
+          autoFocus
+          autoComplete="off"
+          placeholder="TBJ-••••-••••"
+          className="mt-4 w-full rounded-xl border border-line bg-background px-4 py-3 font-mono text-lg tracking-wide uppercase focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/40"
+        />
+        {state.message && !state.ok && (
+          <p className="mt-3 text-sm font-medium text-red-600">{state.message}</p>
+        )}
+        <button
+          type="submit"
+          disabled={pending}
+          className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-brand px-6 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-60 sm:w-auto"
+        >
+          {pending ? "Claiming…" : "Claim my site"}
+        </button>
+      </form>
+
+      {/* No code? Route them to build a site from scratch instead. */}
+      <div className="mt-6 rounded-2xl border border-dashed border-line bg-background p-5 text-center">
+        <p className="text-sm font-semibold text-ink">Didn&apos;t get a claim code?</p>
+        <p className="mt-1 text-sm text-ink-soft">
+          No problem — you don&apos;t need one to get started. Tell us about your business and we&apos;ll build you a
+          brand-new site from scratch.
+        </p>
+        <Link
+          href="/portal/build"
+          className="mt-3 inline-flex items-center justify-center rounded-full border border-line bg-surface px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-brand-tint hover:text-brand"
+        >
+          🛠️ Build a site instead →
+        </Link>
+      </div>
+    </>
   );
 }
