@@ -171,10 +171,11 @@ function ContactDetail({
   const st = STAGE[meta.stage];
   const isUser = meta.stage === "claimed" || meta.stage === "customer";
   const script = opener(item);
-  // Hero: the business photo we sourced dominates the top (else a branded gradient).
-  const heroImg = item.photoUrl || item.screenshotUrl || null;
-  // Site preview: a stored screenshot if we have one, else a live (scaled) iframe of the deployed site.
-  const showSitePreview = !!(item.screenshotUrl || item.liveUrl);
+  // Hero imagery = the site we built (that's our work). Stored screenshot if we have one, else a
+  // live scaled iframe of the deployed URL; fall back to the business photo, then a branded gradient.
+  const heroShot = item.screenshotUrl || null;
+  const heroFrame = !item.screenshotUrl && item.liveUrl ? item.liveUrl : null;
+  const heroSite = !!(heroShot || heroFrame);
 
   // Lock body scroll while the sheet is open.
   useEffect(() => {
@@ -201,15 +202,34 @@ function ContactDetail({
         </div>
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">
-          {/* hero — the business image dominates the top of the card */}
-          <div className="-mx-4 -mt-4 mb-4">
-            {heroImg ? (
+          {/* hero — the SITE WE BUILT is the imagery (our work); business photo / gradient fall back */}
+          <div className="relative -mx-4 -mt-4 mb-4">
+            {heroShot ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={heroImg} alt={item.businessName} className="h-44 w-full bg-surface object-cover" />
+              <img src={heroShot} alt={`${item.businessName} website`} className="h-52 w-full bg-surface object-cover object-top" />
+            ) : heroFrame ? (
+              <div className="relative w-full overflow-hidden bg-surface" style={{ aspectRatio: "1280 / 800" }}>
+                <iframe
+                  src={heroFrame}
+                  title={`${item.businessName} website`}
+                  loading="lazy"
+                  scrolling="no"
+                  className="pointer-events-none absolute left-0 top-0 origin-top-left border-0"
+                  style={{ width: "320%", height: "320%", transform: "scale(0.3125)" }}
+                />
+              </div>
+            ) : item.photoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={item.photoUrl} alt={item.businessName} className="h-44 w-full bg-surface object-cover" />
             ) : (
               <div className="flex h-28 w-full items-center justify-center text-3xl font-extrabold text-white" style={{ background: item.brandColor || "#64748b" }}>
                 {initialsOf(item)}
               </div>
+            )}
+            {heroSite && item.liveUrl && (
+              <a href={item.liveUrl} target="_blank" rel="noreferrer" className="absolute bottom-2 right-2 rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white backdrop-blur transition-colors hover:bg-black/85">
+                Open live site ↗
+              </a>
             )}
           </div>
 
@@ -274,31 +294,6 @@ function ContactDetail({
             {item.email && (<><dt className="text-ink-soft">Email</dt><dd className="truncate text-ink">{item.email}</dd></>)}
             {item.claimCode && (<><dt className="text-ink-soft">Claim code</dt><dd className="font-mono text-ink">{item.claimCode}</dd></>)}
           </dl>
-
-          {/* the site we built for them — see it at a glance (live preview, or a stored screenshot) */}
-          {showSitePreview && (
-            <div className="mt-5">
-              <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-soft">The site we built</h3>
-              <a href={item.liveUrl || undefined} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl border border-line transition-colors hover:border-brand">
-                {item.screenshotUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.screenshotUrl} alt={`${item.businessName} website`} className="max-h-64 w-full bg-surface object-cover object-top" />
-                ) : (
-                  <div className="relative w-full overflow-hidden bg-surface" style={{ aspectRatio: "1280 / 800" }}>
-                    <iframe
-                      src={item.liveUrl!}
-                      title={`${item.businessName} website`}
-                      loading="lazy"
-                      scrolling="no"
-                      className="pointer-events-none absolute left-0 top-0 origin-top-left border-0"
-                      style={{ width: "320%", height: "320%", transform: "scale(0.3125)" }}
-                    />
-                  </div>
-                )}
-                {item.liveUrl && <div className="border-t border-line bg-surface px-3 py-2 text-xs font-semibold text-brand">Open live site ↗</div>}
-              </a>
-            </div>
-          )}
 
           {/* communication timeline */}
           <div className="mt-5">
