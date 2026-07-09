@@ -162,7 +162,10 @@ export async function sendForgeOutreachEmail(args: {
   return sendEmail({
     to: args.to,
     subject: args.subject,
-    replyTo: process.env.OUTREACH_REPLY_TO || "josephsardella@gmail.com",
+    // Replies must land in the MONITORED mailbox (joe@thinkbigjoe.com) so the inbox poller
+    // catches them + the reply pipeline drafts a response. Zoho then forwards a copy to Joe's
+    // Gmail (forwarding keeps a copy so the poller still sees it). OUTREACH_REPLY_TO can override.
+    replyTo: process.env.OUTREACH_REPLY_TO || process.env.SMTP_USER || "joe@thinkbigjoe.com",
     html: layout(`
       <h1 style="margin:0 0 12px;font-size:22px;font-weight:800;">${escapeHtml(args.businessName)} — your new website is ready 🎉</h1>
       ${paragraphs}
