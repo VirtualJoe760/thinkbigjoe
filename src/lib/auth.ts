@@ -98,7 +98,16 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24, // 24h
     sendVerificationEmail: async ({ user, url }) => {
       try {
-        await sendVerificationEmail(user.email, url, user.name);
+        // Redirect to the success page after verifying (which then bounces to /portal).
+        let verifyUrl = url;
+        try {
+          const u = new URL(url);
+          u.searchParams.set("callbackURL", "/email-verified");
+          verifyUrl = u.toString();
+        } catch {
+          /* url wasn't absolute — send as-is */
+        }
+        await sendVerificationEmail(user.email, verifyUrl, user.name);
       } catch (err) {
         console.error("[auth] verification email failed:", err);
       }
