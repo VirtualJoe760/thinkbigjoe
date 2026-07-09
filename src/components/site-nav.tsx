@@ -30,22 +30,25 @@ export function SiteNav() {
           ))}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           <a
             href="tel:+14807642121"
             className="hidden text-sm font-semibold text-ink transition-colors hover:text-brand lg:block"
           >
             (480) 764-2121
           </a>
+          <span className="hidden h-5 w-px bg-line lg:block" aria-hidden="true" />
           <Link
             href="/login"
-            className="hidden text-sm font-medium text-ink-soft transition-colors hover:text-ink sm:block"
+            className="text-sm font-medium text-ink-soft transition-colors hover:text-ink"
           >
             Login
           </Link>
-          <ButtonLink href="/book-appointment" size="sm">
-            Book a call
-          </ButtonLink>
+          <span className="hidden md:inline-flex">
+            <ButtonLink href="/book-appointment" size="sm">
+              Book a call
+            </ButtonLink>
+          </span>
           <SiteNavMobile links={links} />
         </div>
       </nav>

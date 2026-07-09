@@ -7,7 +7,7 @@ import { Logo } from "@/components/logo";
 
 // Consolidated to 6 workflow groups. `match` lists every path that should
 // highlight this item (Prospecting folds in the analyzer; Venus groups
-// crons/audit/team; Settings groups automation/analytics).
+// crons/audit/team).
 const LINKS: Array<{ href: string; label: string; icon: string; match?: string[] }> = [
   { href: "/command", label: "Overview", icon: "M3 12l9-9 9 9M5 10v10h14V10" },
   {
@@ -34,7 +34,7 @@ const LINKS: Array<{ href: string; label: string; icon: string; match?: string[]
     href: "/command/settings",
     label: "Settings",
     icon: "M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 13a7.9 7.9 0 000-2l2-1.6-2-3.4-2.4 1a7.9 7.9 0 00-1.7-1l-.4-2.6H10l-.4 2.6a7.9 7.9 0 00-1.7 1l-2.4-1-2 3.4 2 1.6a7.9 7.9 0 000 2l-2 1.6 2 3.4 2.4-1a7.9 7.9 0 001.7 1l.4 2.6h4l.4-2.6a7.9 7.9 0 001.7-1l2.4 1 2-3.4z",
-    match: ["/command/settings", "/command/automation", "/command/analytics"],
+    match: ["/command/settings", "/command/analytics"],
   },
 ];
 

@@ -25,6 +25,8 @@ export default async function ReceptionistSetupPage({ params }: { params: Promis
 
   const config = (site.receptionistConfig as ReceptionistConfig | null) || {};
   const status = site.receptionistStatus || "none";
+  const hasVoicePlan =
+    site.oneTimePaid === true && (site.plan === "voice" || site.plan === "complete");
 
   return (
     <div className="flex flex-1 flex-col">
@@ -40,14 +42,32 @@ export default async function ReceptionistSetupPage({ params }: { params: Promis
           activates the changes.
         </p>
 
-        <div className="mt-8">
-          <ReceptionistForm siteId={site.id} businessName={site.businessName} config={config} status={status} />
-        </div>
+        {!hasVoicePlan && (
+          <div className="mt-6 rounded-xl border border-brand/40 bg-brand-tint p-4">
+            <p className="text-sm font-semibold text-brand">🎙️ The receptionist comes with Website + Voice</p>
+            <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+              Fill this in now to get a head start — we&apos;ll save it as a draft. To switch your AI receptionist
+              on, add the <span className="font-semibold text-ink">Website + Voice</span> (or Complete) plan from
+              your portal, then re-save here and we&apos;ll provision it.
+            </p>
+            <Link
+              href="/portal"
+              className="mt-3 inline-flex items-center justify-center rounded-full bg-brand px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-dark"
+            >
+              Choose a plan →
+            </Link>
+          </div>
+        )}
 
-        <p className="mt-8 rounded-xl border border-line bg-surface p-4 text-xs leading-relaxed text-ink-soft">
-          The AI receptionist is part of the <span className="font-semibold text-ink">Website + Voice</span> plan.
-          Not on it yet? Choose your plan from the portal — then finish this setup and we&apos;ll switch it on.
-        </p>
+        <div className="mt-8">
+          <ReceptionistForm
+            siteId={site.id}
+            businessName={site.businessName}
+            config={config}
+            status={status}
+            hasVoicePlan={hasVoicePlan}
+          />
+        </div>
       </main>
     </div>
   );

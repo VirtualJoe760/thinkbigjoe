@@ -107,8 +107,19 @@ The receptionist is a **product**, sold via the plan tiers ([`src/lib/plans.ts`]
 **Customer setup UI:** a claimed-site owner configures their receptionist at
 **`/portal/receptionist/[id]`** (`saveReceptionistSetup`) — greeting, services, hours, booking
 preference, escalation number, FAQs, guardrails. Saved to `forge_sites.receptionist_config` (jsonb)
-with `receptionist_status` `none → submitted → active`; submitting logs `receptionist_setup_submitted`
-+ pings Telegram so the team provisions the per-client agent. Linked from the portal site card.
+with `receptionist_status` `none → submitted → active`. **Gated on a paid Website+Voice (or Complete)
+plan:** off-plan, the form saves a **draft** (config only, status stays `none`) and the page shows a
+"choose a plan" upsell; on-plan, submitting flips status to `submitted`, logs
+`receptionist_setup_submitted`, **pings Telegram** so the team provisions the per-client agent, and
+**emails the customer a confirmation** (`sendNotificationEmail`). Provisioning itself is still the
+manual team step (Path A auto-provisioning below is not built). Linked from the portal site card.
+
+**Book a call with Joe (portal):** any logged-in client can book a 30-min strategy call from the
+dashboard at **`/portal/book`** — `getPortalSlots()` lists open slots in Joe's regular Mon–Fri 11 AM–1 PM
+Pacific window, `bookStrategyCall()` books it. The session is the gate (no Turnstile token, unlike the
+public `/api/appointments/book`); it creates the GCal event + Meet, records the lead, and sends the same
+branded confirmation email as the voice + web paths. Entry point: the "Book a call with Joe" card on
+`/portal`.
 
 **Agentic ($999) marketing:** the public **`/agentic`** page (the "AI agent sales pipelines that make
 you money" breakdown) is what the receptionist points callers to; it books an agentic strategy call.

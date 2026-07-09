@@ -26,7 +26,7 @@ const ADMIN_PAGES = [
   {
     href: "/command/prospects",
     label: "Prospects",
-    description: "Review and approve LinkedIn outreach drafts. Approve → Venus sends.",
+    description: "Local businesses the prospector found — review and approve sites to build.",
   },
   {
     href: "/command/leads",
@@ -268,14 +268,17 @@ export default async function PortalPage() {
           </h2>
           <div className="mt-4 grid gap-6 md:grid-cols-2">
             <div className="rounded-2xl border border-line bg-surface p-8">
-              <h3 className="text-xl font-bold tracking-tight">Project progress</h3>
+              <h3 className="text-xl font-bold tracking-tight">Book a call with Joe</h3>
               <p className="mt-2 leading-relaxed text-ink-soft">
-                Milestones, status updates, and deliverables for your engagement —
-                coming online shortly.
+                Grab a 30-minute strategy call over Google Meet — talk plans, your
+                receptionist, domains, or anything on your mind.
               </p>
-              <span className="mt-4 inline-block rounded-full bg-brand-tint px-3 py-1 text-xs font-semibold text-brand">
-                Coming soon
-              </span>
+              <Link
+                href="/portal/book"
+                className="mt-4 inline-flex items-center justify-center rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-ink/90"
+              >
+                📅 Book a call
+              </Link>
             </div>
 
             <div className="rounded-2xl border border-line bg-surface p-8">

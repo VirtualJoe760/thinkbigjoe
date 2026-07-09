@@ -27,9 +27,9 @@ function Field({ label, name, hint, defaultValue, placeholder, rows = 3 }: {
 }
 
 export function ReceptionistForm({
-  siteId, businessName, config, status,
+  siteId, businessName, config, status, hasVoicePlan = true,
 }: {
-  siteId: number; businessName: string; config: ReceptionistConfig; status: string;
+  siteId: number; businessName: string; config: ReceptionistConfig; status: string; hasVoicePlan?: boolean;
 }) {
   const [state, action, pending] = useActionState(saveReceptionistSetup, initial);
 
@@ -98,7 +98,7 @@ export function ReceptionistForm({
         type="submit" disabled={pending}
         className="inline-flex items-center justify-center rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-50"
       >
-        {pending ? "Saving…" : submitted ? "Save changes" : "Submit setup"}
+        {pending ? "Saving…" : !hasVoicePlan ? "Save draft" : submitted ? "Save changes" : "Submit setup"}
       </button>
     </form>
   );

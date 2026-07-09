@@ -70,12 +70,6 @@ export function SiteNavMobile({ links }: { links: NavLink[] }) {
                 {l.label}
               </Link>
             ))}
-            <Link
-              href="/login"
-              className="rounded-xl px-3 py-3 text-base font-medium text-ink-soft transition-colors hover:bg-surface"
-            >
-              Login
-            </Link>
           </div>
         </nav>
 
