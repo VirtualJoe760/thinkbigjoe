@@ -8,6 +8,7 @@ import { type LeadEngineStats } from "./lead-engine-panel";
 import { type ShowroomStats } from "./showroom-panel";
 import { EnginesPanel } from "./engines-panel";
 import { AutoRefresh } from "@/components/auto-refresh";
+import { Toaster } from "@/components/toast";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -180,11 +181,18 @@ export default async function ProspectsPage({
     revisionNote: r.revisionNote || "",
   }));
 
+  // A prospect leaves "Needs review" the moment it's approved for marketing (or denied) —
+  // approved-but-unbuilt prospects live in the outreach funnel, not the review queue.
+  const isReview = (i: ForgeSiteItem) => bucketOf(i.status) === "review" && !i.marketingApprovedAt;
   const siteCounts: Record<WebdevView, number> = { review: 0, queued: 0, built: 0, archive: 0 };
-  for (const i of forgeItems) siteCounts[bucketOf(i.status)]++;
-  const withFollowing = forgeItems.filter((i) => bucketOf(i.status) === "review" && hasGoogleFollowing(i)).length;
+  for (const i of forgeItems) {
+    const b = bucketOf(i.status);
+    if (b === "review" && i.marketingApprovedAt) continue;
+    siteCounts[b]++;
+  }
+  const withFollowing = forgeItems.filter((i) => isReview(i) && hasGoogleFollowing(i)).length;
 
-  let siteItems: ForgeSiteItem[] = forgeItems.filter((i) => bucketOf(i.status) === view);
+  let siteItems: ForgeSiteItem[] = forgeItems.filter((i) => (view === "review" ? isReview(i) : bucketOf(i.status) === view));
   if (q) {
     siteItems = siteItems.filter((i) =>
       `${i.businessName} ${i.city} ${i.serviceArea} ${i.niche}`.toLowerCase().includes(qLower),
@@ -231,6 +239,7 @@ export default async function ProspectsPage({
   return (
     <div className="px-4 py-6 sm:px-6 sm:py-8">
       <AutoRefresh seconds={20} />
+      <Toaster />
       <div className="mx-auto w-full max-w-5xl">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h1 className="text-2xl font-extrabold tracking-tight">Web-dev leads</h1>

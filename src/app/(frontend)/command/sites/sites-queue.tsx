@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 import { denyForgeSite, deleteForgeSite, sendForgeOutreach, skipForgeOutreach, approveForMarketing, unapproveMarketing, requestForgeRevision, requestForgeRebuild } from "../actions";
+import { toast } from "@/components/toast";
 
 export type ForgeSiteItem = {
   id: string;
@@ -275,18 +277,15 @@ function BusinessMap({ item }: { item: ForgeSiteItem }) {
 }
 
 function DiscoveredRow({ item }: { item: ForgeSiteItem }) {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [denying, setDenying] = useState(false);
   const [reason, setReason] = useState("");
-  const [done, setDone] = useState<string | null>(null);
+  const [removed, setRemoved] = useState(false);
 
-  if (done) {
-    return (
-      <div className="rounded-2xl border border-line bg-surface p-4 text-sm text-ink-soft">
-        {item.businessName} — {done}.
-      </div>
-    );
-  }
+  // Approved/denied prospects vanish (toast confirms); router.refresh pulls the next
+  // prospect into the page so the queue stays full.
+  if (removed) return null;
 
   return (
     <div className="rounded-2xl border border-line bg-background p-4">
@@ -317,7 +316,7 @@ function DiscoveredRow({ item }: { item: ForgeSiteItem }) {
             />
             <button
               disabled={pending}
-              onClick={() => start(async () => { await denyForgeSite(item.id, reason); setDone("denied"); })}
+              onClick={() => start(async () => { await denyForgeSite(item.id, reason); toast(`${item.businessName} denied`); setRemoved(true); router.refresh(); })}
               className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-surface disabled:opacity-60"
             >
               Confirm deny
@@ -334,7 +333,11 @@ function DiscoveredRow({ item }: { item: ForgeSiteItem }) {
           <>
             <button
               disabled={pending}
-              onClick={() => start(async () => { const r = await approveForMarketing(item.id); setDone(r.ok ? "approved for marketing — outreach will start" : (r.message || "couldn't approve")); })}
+              onClick={() => start(async () => {
+                const r = await approveForMarketing(item.id);
+                if (r.ok) { toast(`${item.businessName} approved for marketing`); setRemoved(true); router.refresh(); }
+                else { toast(r.message || "Couldn't approve"); }
+              })}
               className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-60"
             >
               Approve for marketing
