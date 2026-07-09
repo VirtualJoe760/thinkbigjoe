@@ -183,11 +183,11 @@ flies blind on what came back.
   **Nothing emails automatically** — same human gate as every outbound. `dismissReply` clears one without
   sending. Bounces (⚠️), replies (↩️), and sent replies all show on each lead's **Message history** timeline
   in the call room.
-- **Prereq — IMAP must be ON in Zoho:** mail.zoho.com → Settings → Mail Accounts → `joe@thinkbigjoe.com`
-  → IMAP Access → **Enable**. Until then the poller logs `inbox_checked` with an "IMAP not enabled" error
-  and does nothing. The launchd plist can stay loaded (it fails gracefully every run). **This is why leads
-  that actually bounced can still look "contacted"** — their bouncebacks (DSNs) are sitting unread in the
-  inbox. Enable IMAP + run `node scripts/inbox-poll.mjs` to catch up.
+- **IMAP status — ENABLED ✅ (2026-07-09):** IMAP needs a **paid** Zoho plan (free tier excludes it). The
+  org is on **Mail Lite** (10 GB), and IMAP is on for `joe@thinkbigjoe.com`
+  (mail.zoho.com → Settings → Mail Accounts → IMAP Access → Enabled). The `com.thinkbigjoe.inboxpoll`
+  launchd job is **loaded** and polls every ~10 min. First catch-up run captured 4 real bounces. If IMAP
+  ever regresses, the poller logs `inbox_checked` with an "IMAP not enabled" error and no-ops gracefully.
 
 ### Deliverability principle — a bounce is a FAILED attempt, never "contacted"
 
@@ -202,3 +202,10 @@ We must not record a lead as *contacted* when delivery failed. Enforced in two p
   agent's hunt for a working channel.
 - The Gemini draft uses `GEMINI_API_KEY` from `.env.local`; Telegram alerts use
   `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (both optional — the poller degrades gracefully without them).
+
+**Pre-send verification (built, not yet wired — the real fix for guessed-address bounces):** most of the
+captured bounces were guessed role addresses (`info@`, `hello@`). A deterministic verifier —
+[`mcp-server/verify-email.mjs`](../mcp-server/verify-email.mjs) — does syntax + MX + an SMTP mailbox
+probe (must run where port 25 is open, i.e. the Mac/MCP side, NOT Vercel) and returns
+`valid|invalid|risky|unknown`. **TODO:** wire it into `enrich_forge_contact` so an `invalid` address is
+never saved (drop it, re-enrich) — stopping bounces at the source instead of catching them after.

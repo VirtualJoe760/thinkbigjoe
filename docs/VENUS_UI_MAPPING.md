@@ -108,7 +108,8 @@ bulk runs — they all write into the same table the (much more expensive) forge
 | `scripts/enrich-engine.mjs` | `com.thinkbigjoe.enrichengine` | Apify-based contact enrichment (Google Search → Facebook page → email/Messenger) for leads missing email/socials. *(Currently the free `prospector` agent cron does this instead — see the cron table below — to save Apify budget; this script is kept for a manual "turbo" fill.)* |
 | `scripts/callprep-engine.mjs` | `com.thinkbigjoe.callprepengine` | Apify-based review-quote + follower-count + talking-points generation. Same note as above — the free agent cron is primary now. |
 | `scripts/trigger-poll.mjs` | `com.thinkbigjoe.triggerpoll` | Drains `job_requests` (the "Find leads now"/"Enrich now" buttons) — runs `lead-engine.mjs` or triggers the enrichment cron on demand. |
-| `scripts/inbox-poll.mjs` | `com.thinkbigjoe.inboxpoll` | Watches the Zoho inbox (IMAP, every ~10 min) for outreach **bounces** (→ mark lead `bounced`, exclude from resend) and **replies** (→ insert `forge_replies` + Gemini-draft a response → the "Replies to respond to" panel on `/command/leads`). No forge/LLM cost beyond a tiny draft. **Needs IMAP enabled in Zoho** for `joe@thinkbigjoe.com` — fails gracefully until then. Details: [AUTH.md](AUTH.md) → "Inbound email". |
+| `scripts/inbox-poll.mjs` | `com.thinkbigjoe.inboxpoll` | Watches the Zoho inbox (IMAP, every ~10 min) for outreach **bounces** (→ mark lead `bounced`, exclude from resend) and **replies** (→ insert `forge_replies` + Gemini-draft a response → the "Replies to respond to" panel on `/command/leads`; also **forwards the reply to Joe's Gmail**). **IMAP is enabled (Mail Lite) + this job is LOADED** as of 2026-07-09. Details: [AUTH.md](AUTH.md) → "Inbound email". |
+| `scripts/forge-outreach-send.sh` → `POST /api/forge/send-outreach` | `com.thinkbigjoe.outreach` | The owner-outreach sender. Fires **every ~20 min** (StartInterval) but the route **drips**: only sends during **weekday 9am–6pm PT**, a **jittered 0–2 emails per run** with an 8-min min gap, capped by `outreach_engine.daily_goal`. So the day's sends trickle out like real use instead of blasting at a cron time. `?dry=1` previews without pacing. |
 | `scripts/preview-engine.mjs` | `com.thinkbigjoe.previewengine` | Generates the cheap **showroom previews** in paced daily **waves** — Gemini hero copy + claim code + 14-day window — for contactable, un-previewed prospects (warmest first), via `POST /api/forge/preview`. NO forge build. Config in the `preview_engine` table (`daily_budget` = wave size, `enabled`); tracks `last_run_summary`. Plist created **unloaded** — `launchctl load` it to start waves. The wave budget paces to outreach capacity, not cost (previews are ~$0.0002 each). |
 
 **Check what's actually running:** `launchctl list | grep thinkbigjoe` — a `-` in the PID column
@@ -178,8 +179,11 @@ investigate.
 
 The Retell voice receptionist (+1 480-764-2121) also guides callers through this same claim +
 verify flow conversationally — see the LLM prompt (`llm_2be0665ec4b1d0313bc82066cb53`) for the
-exact script. SMS outreach via Retell is built but blocked on A2P 10DLC carrier registration —
-email + social DM are the active outreach channels for now.
+exact script. **Texting:** SMS via Retell is built but blocked on **A2P-10DLC** carrier registration (a
+US requirement for any business SMS from a local number — Joe's dashboard action, ~days to approve). The
+current plan is a **Google Voice** number as Joe's outbound line, with an **OpenClaw agent driving the GV
+web UI** to send paced intro texts (GV has no API; low-volume only — GV bans automated/bulk use). Pending
+Joe creating + verifying the GV account. Email + social DM are the active channels today.
 
 ---
 
