@@ -36,7 +36,7 @@ export function SiteFooter() {
       </div>
       <div className="border-t border-line">
         <div className="mx-auto max-w-6xl px-6 py-6 text-xs text-ink-soft">
-          © {new Date().getFullYear()} ThinkBigJoe · JPS &amp; Company LLC. All rights reserved.
+          © {new Date().getFullYear()} ThinkBigJoe. All rights reserved.
         </div>
       </div>
     </footer>

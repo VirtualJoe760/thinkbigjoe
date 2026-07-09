@@ -25,7 +25,7 @@ export default function TermsPage() {
         <p className="mt-2 text-sm text-ink-soft">Effective {BUSINESS.effectiveDate}</p>
         <P>
           These Terms of Service (&ldquo;Terms&rdquo;) govern your use of {BUSINESS.brand} (&ldquo;{BUSINESS.brand},&rdquo;
-          &ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;), a service operated by {BUSINESS.dba}, including our website at{" "}
+          &ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;), including our website at{" "}
           {BUSINESS.site}, our websites-and-AI services, and our messaging program. By using our services or opting into
           our messages, you agree to these Terms.
         </P>

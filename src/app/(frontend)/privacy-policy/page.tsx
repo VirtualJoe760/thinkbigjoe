@@ -24,8 +24,8 @@ export default function PrivacyPage() {
         <h1 className="text-4xl font-extrabold tracking-tight">Privacy Policy</h1>
         <p className="mt-2 text-sm text-ink-soft">Effective {BUSINESS.effectiveDate}</p>
         <P>
-          This Privacy Policy explains how {BUSINESS.brand} (&ldquo;{BUSINESS.brand},&rdquo; &ldquo;we,&rdquo; &ldquo;us&rdquo;),
-          operated by {BUSINESS.dba}, collects, uses, and protects your information when you use our website at {BUSINESS.site},
+          This Privacy Policy explains how {BUSINESS.brand} (&ldquo;{BUSINESS.brand},&rdquo; &ldquo;we,&rdquo; &ldquo;us&rdquo;)
+          collects, uses, and protects your information when you use our website at {BUSINESS.site},
           our services, and our messaging program.
         </P>
 
