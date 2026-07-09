@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { db, forgeSites } from "@/db";
 import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
+import { trialStatus } from "@/lib/trial";
 import { EditWorkspace } from "./edit-workspace";
 
 export const metadata: Metadata = {
@@ -28,8 +29,13 @@ export default async function EditSitePage({
 
   const [site] = await db.select().from(forgeSites).where(eq(forgeSites.id, siteId)).limit(1);
   if (!site) notFound();
-  const owns = site.claimedByUserId === session.user.id || isAdminEmail(session.user.email);
+  const isAdmin = isAdminEmail(session.user.email);
+  const owns = site.claimedByUserId === session.user.id || isAdmin;
   if (!owns) redirect("/portal");
+
+  // Trial gate: once the 7-day trial ends unpaid, editing/Studio lock (admins bypass).
+  // The site stays viewable — this only blocks the editor.
+  if (!isAdmin && !trialStatus(site).canEdit) redirect(`/portal?locked=${siteId}`);
 
   return (
     <EditWorkspace

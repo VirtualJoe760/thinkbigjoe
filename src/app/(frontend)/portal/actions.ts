@@ -6,7 +6,7 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 
 import { db, forgeSites, rebuildRequests, activityLog, leads } from "@/db";
 import { auth } from "@/lib/auth";
-import { normalizeClaimCode } from "@/lib/claim-code";
+import { normalizeClaimCode, generateClaimCode } from "@/lib/claim-code";
 import { isForgeTemplate } from "@/lib/forge-templates";
 import { notifyTelegram } from "@/lib/telegram";
 import { sendBookingConfirmationEmail, sendNotificationEmail } from "@/lib/email";
@@ -683,5 +683,116 @@ export async function bookStrategyCall(
   } catch (err) {
     console.error("[bookStrategyCall] failed:", err);
     return { ok: false, message: "Something went wrong booking that — please try another slot." };
+  }
+}
+
+/**
+ * Request a call OUTSIDE Joe's regular 11–1 PT window. Unlike bookStrategyCall this does NOT
+ * touch the calendar — it records the ask as a lead and pings Joe (Telegram + email) so he can
+ * confirm a time manually. Auth-gated; identity comes from the session.
+ */
+export async function requestCallOutsideWindow(
+  _prev: BookState,
+  formData: FormData,
+): Promise<BookState> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return { ok: false, message: "Please sign in to request a time." };
+
+  const preferred = String(formData.get("preferred") || "").trim();
+  const reason = String(formData.get("reason") || "").trim();
+  if (!preferred) return { ok: false, message: "Tell us roughly when works for you." };
+
+  const name = session.user.name || session.user.email;
+  const email = session.user.email;
+
+  try {
+    const note = `OUT-OF-WINDOW CALL REQUEST — prefers: ${preferred}${reason ? ` · ${reason}` : ""}`;
+    const existing = await db.select({ id: leads.id }).from(leads).where(eq(leads.email, email)).limit(1);
+    if (existing.length > 0) {
+      await db.update(leads).set({ status: "new", notes: note }).where(eq(leads.email, email)).catch(() => {});
+    } else {
+      await db.insert(leads).values({ name, email, notes: note, status: "new", source: "booking-page" }).catch(() => {});
+    }
+
+    notifyTelegram(
+      `🗓️ <b>Call request (outside 11–1)</b>\n${name} · ${email}\nPrefers: ${preferred}${reason ? `\nReason: ${reason}` : ""}\n→ confirm a time + send them an invite.`,
+    ).catch(() => {});
+    sendNotificationEmail({
+      to: process.env.SUPPORT_EMAIL || process.env.EMAIL_FROM || "joe@thinkbigjoe.com",
+      subject: `Out-of-window call request — ${name}`,
+      heading: "Someone wants a call outside 11–1",
+      message: `${name} (${email}) requested a call outside your regular window.\n\nThey prefer: ${preferred}${reason ? `\nReason: ${reason}` : ""}\n\nReply to them to confirm a time.`,
+    }).catch(() => {});
+
+    return {
+      ok: true,
+      message: "Got it — Joe will reach out to confirm a time that works and send you a calendar invite.",
+    };
+  } catch (err) {
+    console.error("[requestCallOutsideWindow] failed:", err);
+    return { ok: false, message: "Something went wrong sending that request — please try again." };
+  }
+}
+
+// ── Inbound "build me a site" intake (customers who come without our outreach) ──
+export type BuildState = { ok: boolean; message: string };
+
+/**
+ * Queue a fresh from-scratch site build for a logged-in customer. Inserts a forge_sites
+ * row owned by them with status='approved' so the forge poller builds it. The 7-day trial
+ * starts once it's built (see lib/trial.ts).
+ */
+export async function requestSiteBuild(
+  _prev: BuildState,
+  formData: FormData,
+): Promise<BuildState> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return { ok: false, message: "Please sign in first." };
+
+  const str = (k: string) => String(formData.get(k) || "").trim();
+  const businessName = str("businessName");
+  const niche = str("niche");
+  const city = str("city");
+  const phone = str("phone");
+  const email = str("email") || session.user.email;
+  const brandColor = str("brandColor");
+  if (!businessName || !niche) {
+    return { ok: false, message: "Please tell us your business name and what you do." };
+  }
+
+  const base = businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "site";
+  const slug = `${base}-${Math.random().toString(36).slice(2, 7)}`;
+
+  try {
+    await db.insert(forgeSites).values({
+      slug,
+      businessName,
+      niche,
+      city: city || null,
+      phone: phone || null,
+      email: email || null,
+      brandColor: brandColor || null,
+      status: "approved", // queues the forge build
+      source: "inbound",
+      claimCode: generateClaimCode(),
+      claimedByUserId: session.user.id,
+      claimedAt: new Date().toISOString(),
+    });
+
+    await db.insert(activityLog).values({
+      actor: "portal",
+      eventType: "forge_prospect_added",
+      summary: `Inbound build request — ${businessName}`,
+      metadata: { detail: { businessName, niche, city, userId: session.user.id, source: "inbound" } },
+    }).catch(() => {});
+    notifyTelegram(
+      `🧱 <b>Inbound build request</b>\n${businessName} (${niche}${city ? ` · ${city}` : ""}) — queued to build.`,
+    ).catch(() => {});
+
+    revalidatePath("/portal");
+    return { ok: true, message: "Got it — we're building your site now. It'll show up in your portal shortly, and you'll have 7 days to play with it." };
+  } catch (err) {
+    console.error("[requestSiteBuild] failed:", err);
+    return { ok: false, message: "Something went wrong queuing your build — please try again." };
   }
 }

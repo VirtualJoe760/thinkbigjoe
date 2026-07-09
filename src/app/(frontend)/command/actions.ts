@@ -7,7 +7,17 @@ import { and, sql } from "drizzle-orm";
 
 import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine, jobRequests, outreachEngine, previewEngine, forgeEngine, forgeReplies } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
-import { sendForgeOutreachEmail, sendReplyEmail } from "@/lib/email";
+import { sendForgeOutreachEmail, sendReplyEmail, sendBookingConfirmationEmail } from "@/lib/email";
+import { notifyTelegram } from "@/lib/telegram";
+import {
+  BOOKING_TIMEZONE,
+  SLOT_DURATION_MIN,
+  createEvent,
+  getAvailableSlots,
+  isCalendarConfigured,
+  isWindowFree,
+  meetLinkOf,
+} from "@/lib/gcal";
 
 const now = () => new Date().toISOString();
 
@@ -497,4 +507,95 @@ export async function requestForgeRebuild(id: string): Promise<{ ok: boolean; me
   });
   revalidatePath("/command/prospects");
   return { ok: true, message: "Sent for a fresh rebuild with a different design — a few minutes." };
+}
+
+// ── Book an appointment FOR a lead (from the call room) ─────────────────────
+// A rep, on a call with the prospect, books them a call with Joe. Books onto Joe's
+// calendar with the prospect as the attendee (their name/email from the site).
+
+export type ContactSlot = { start: string; end: string };
+
+/** Open 30-min slots for a date (YYYY-MM-DD), Joe's regular window. Admin-only. */
+export async function getContactSlots(date: string): Promise<{ ok: boolean; slots: ContactSlot[] }> {
+  await assertAdmin();
+  if (!isCalendarConfigured() || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, slots: [] };
+  try {
+    return { ok: true, slots: await getAvailableSlots(date) };
+  } catch (err) {
+    console.error("[getContactSlots] failed:", err);
+    return { ok: false, slots: [] };
+  }
+}
+
+export type BookForContactState = { ok: boolean; message: string };
+
+/** Book a call for a lead onto Joe's calendar; emails the prospect the invite. Admin-only. */
+export async function bookForContact(
+  _prev: BookForContactState,
+  formData: FormData,
+): Promise<BookForContactState> {
+  await assertAdmin();
+  if (!isCalendarConfigured()) return { ok: false, message: "Booking isn't available (calendar not connected)." };
+
+  const siteId = Number(formData.get("siteId"));
+  const startTime = String(formData.get("startTime") || "");
+  const start = new Date(startTime);
+  if (!Number.isFinite(siteId) || Number.isNaN(start.getTime())) {
+    return { ok: false, message: "Pick a time slot to book." };
+  }
+  const end = new Date(start.getTime() + SLOT_DURATION_MIN * 60000);
+
+  const [site] = await db
+    .select({ businessName: forgeSites.businessName, ownerName: forgeSites.ownerName, email: forgeSites.email, phone: forgeSites.phone })
+    .from(forgeSites)
+    .where(eq(forgeSites.id, siteId))
+    .limit(1);
+  if (!site) return { ok: false, message: "Lead not found." };
+
+  const name = site.ownerName || site.businessName;
+  const email = site.email || "";
+
+  try {
+    if (!(await isWindowFree(start.toISOString(), end.toISOString()))) {
+      return { ok: false, message: "That time was just taken — pick another." };
+    }
+    const event = await createEvent({
+      summary: `Call — ${site.businessName}${site.ownerName ? ` (${site.ownerName})` : ""}`,
+      description: [
+        `Booked from the call room for ${site.businessName}.`,
+        ``,
+        `Contact: ${name}`,
+        email ? `Email: ${email}` : null,
+        site.phone ? `Phone: ${site.phone}` : null,
+      ].filter((l): l is string => l !== null).join("\n"),
+      start: { dateTime: start.toISOString(), timeZone: BOOKING_TIMEZONE },
+      end: { dateTime: end.toISOString(), timeZone: BOOKING_TIMEZONE },
+      attendees: email ? [{ email, displayName: name }] : undefined,
+      conferenceData: {
+        createRequest: {
+          requestId: `tbj-lead-${siteId}-${start.getTime()}`,
+          conferenceSolutionKey: { type: "hangoutsMeet" },
+        },
+      },
+      reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 60 }, { method: "popup", minutes: 15 }] },
+    });
+
+    const whenLabel = `${start.toLocaleString("en-US", { timeZone: BOOKING_TIMEZONE, dateStyle: "full", timeStyle: "short" })} Pacific`;
+    if (email) {
+      sendBookingConfirmationEmail({ to: email, name, whenLabel, meetLink: meetLinkOf(event) }).catch(() => {});
+    }
+    notifyTelegram(`📅 <b>Call booked from the room</b>\n${site.businessName}${site.ownerName ? ` · ${site.ownerName}` : ""}\n${whenLabel}`).catch(() => {});
+    await db.insert(activityLog).values({
+      actor: "joe",
+      eventType: "booking_made",
+      summary: `Booked a call for ${site.businessName} — ${whenLabel}`,
+      metadata: { auto: false, target: String(siteId), detail: { siteId, eventId: event.id, channel: "call" } },
+    }).catch(() => {});
+
+    revalidatePath("/command/leads");
+    return { ok: true, message: `Booked ${whenLabel}${email ? ` — invite sent to ${email}` : ""}.` };
+  } catch (err) {
+    console.error("[bookForContact] failed:", err);
+    return { ok: false, message: "Couldn't book that — try another slot." };
+  }
 }

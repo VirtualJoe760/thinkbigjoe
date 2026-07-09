@@ -7,6 +7,7 @@ import { requireAdmin } from "@/lib/require-admin";
 import { calendarHealth } from "@/lib/gcal";
 import { getForgeDigest } from "@/lib/forge-stats";
 import { getPendingReplies } from "@/lib/forge-outreach";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -26,7 +27,7 @@ const num = (v: unknown) => (v == null ? 0 : Number(v));
 export default async function OverviewPage() {
   await requireAdmin();
 
-  const [digest, counts, recentSales, recentBuilds, pendingReplies, upcomingAppointments, recentActivity, calHealth] =
+  const [digest, counts, recentSales, recentBuilds, pendingReplies, upcomingAppointments, recentActivity, calHealth, signupCounts, recentSignups] =
     await Promise.all([
       getForgeDigest(),
       db.execute(sql`SELECT
@@ -66,6 +67,13 @@ export default async function OverviewPage() {
         .orderBy(sql`${activityLog.createdAt} DESC`)
         .limit(10),
       calendarHealth(),
+      db.execute(sql`SELECT count(*)::int AS total,
+          count(*) FILTER (WHERE "createdAt" > now()-interval '30 days')::int AS recent30
+        FROM better_auth."user"`),
+      db.execute(sql`SELECT u.email, u.name, u."createdAt" AS created_at,
+          EXISTS(SELECT 1 FROM forge_sites f WHERE f.claimed_by_user_id = u.id) AS claimed,
+          EXISTS(SELECT 1 FROM forge_sites f WHERE f.claimed_by_user_id = u.id AND f.one_time_paid = true) AS paid
+        FROM better_auth."user" u ORDER BY u."createdAt" DESC LIMIT 6`),
     ]);
 
   const c = firstRow(counts);
@@ -75,6 +83,9 @@ export default async function OverviewPage() {
   const leadCount = num(c.leads);
   const repliesWaiting = pendingReplies.length;
   const booked = upcomingAppointments.length;
+  const signups = num(firstRow(signupCounts).total);
+  const signups30d = num(firstRow(signupCounts).recent30);
+  const signupRows = (Array.isArray(recentSignups) ? recentSignups : (recentSignups as { rows?: unknown[] }).rows ?? []) as Record<string, unknown>[];
 
   // Growth-oriented health tiles — is the machine producing, and is the pipeline moving?
   const metrics = [
@@ -82,6 +93,7 @@ export default async function OverviewPage() {
     { label: "Emails sent · 7d", value: digest.throughput.outreachSent7d, sub: `${digest.throughput.previews7d} previews`, accent: "" },
     { label: "Replies to handle", value: repliesWaiting, sub: "inbound", accent: repliesWaiting > 0 ? "text-brand" : "" },
     { label: "Customers", value: customers, sub: `${customers30d} in 30d`, accent: "text-brand" },
+    { label: "Sign-ups", value: signups, sub: `${signups30d} in 30d`, accent: signups30d > 0 ? "text-brand" : "" },
     { label: "Booked calls", value: booked, sub: "upcoming", accent: "text-brand" },
     { label: "Leads in room", value: leadCount, sub: "approved", accent: "" },
   ];
@@ -130,6 +142,7 @@ export default async function OverviewPage() {
 
   return (
     <div className="px-6 py-8">
+      <AutoRefresh seconds={30} />
       <div className="mx-auto w-full max-w-4xl">
         <h1 className="text-2xl font-extrabold tracking-tight">Overview</h1>
         <p className="mt-1 text-sm text-ink-soft">
@@ -265,6 +278,38 @@ export default async function OverviewPage() {
                         View
                       </a>
                     )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Recent sign-ups — did the people we reached actually create an account? */}
+        <div className="mt-4 rounded-2xl border border-line bg-background p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-bold tracking-tight">Recent sign-ups</h2>
+            <span className="text-xs font-semibold text-ink-soft">{signups} accounts</span>
+          </div>
+          {signupRows.length === 0 ? (
+            <p className="text-sm text-ink-soft">No accounts yet — sign-ups from your outreach show up here.</p>
+          ) : (
+            <ul className="space-y-2">
+              {signupRows.map((u, i) => (
+                <li key={i} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm">
+                  <span className="min-w-0 truncate">
+                    <span className="font-medium">{String(u.name || u.email)}</span>
+                    {u.name ? <span className="text-ink-soft"> · {String(u.email)}</span> : null}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {u.paid ? (
+                      <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700">paid</span>
+                    ) : u.claimed ? (
+                      <span className="rounded-full bg-brand-tint px-2 py-0.5 text-xs font-semibold text-brand">claimed</span>
+                    ) : (
+                      <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-ink-soft">no site yet</span>
+                    )}
+                    <span className="text-xs text-ink-soft">{u.created_at ? relativeTime(String(u.created_at)) : ""}</span>
                   </span>
                 </li>
               ))}

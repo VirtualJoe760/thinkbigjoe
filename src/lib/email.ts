@@ -297,3 +297,65 @@ export async function sendNotificationEmail(args: {
     `),
   });
 }
+
+// Where internal "new signup / new sale" alerts go (first admin, override with env).
+const ADMIN_ALERT_TO =
+  process.env.ADMIN_ALERT_EMAIL ||
+  (process.env.ADMIN_EMAILS || "").split(",")[0].trim() ||
+  "josephsardella@gmail.com";
+
+/** Internal heads-up to Joe (new signup, new sale, etc.). No-op if SMTP isn't configured. */
+export async function sendAdminAlert(args: {
+  subject: string;
+  heading: string;
+  message: string;
+  ctaUrl?: string;
+  ctaLabel?: string;
+}) {
+  return sendNotificationEmail({ to: ADMIN_ALERT_TO, ...args });
+}
+
+/** Customer lifecycle email for a plan change: subscribed / upgraded / downgraded / canceled. */
+export async function sendPlanEmail(args: {
+  to: string;
+  name?: string | null;
+  businessName?: string | null;
+  kind: "subscribed" | "upgraded" | "downgraded" | "canceled";
+  planLabel: string;
+}) {
+  const first = args.name?.trim().split(/\s+/)[0];
+  const biz = args.businessName ? ` for ${escapeHtml(args.businessName)}` : "";
+  const plan = escapeHtml(args.planLabel);
+  const copy = {
+    subscribed: {
+      subject: `You're live — welcome to ${args.planLabel}`,
+      heading: `You're all set${first ? `, ${escapeHtml(first)}` : ""} 🎉`,
+      body: `Your <b>${plan}</b> plan${biz} is active. Your site is going live and your editing tools (Studio, content edits, go-live) are unlocked.`,
+    },
+    upgraded: {
+      subject: `Upgraded to ${args.planLabel}`,
+      heading: "Upgrade confirmed ⬆️",
+      body: `Your plan${biz} is now <b>${plan}</b> — the new features are unlocked in your portal.`,
+    },
+    downgraded: {
+      subject: `Your plan changed to ${args.planLabel}`,
+      heading: "Plan updated",
+      body: `Your plan${biz} is now <b>${plan}</b>. Everything included in that plan stays active.`,
+    },
+    canceled: {
+      subject: `Your subscription was canceled`,
+      heading: "Subscription canceled",
+      body: `Your <b>${plan}</b> plan${biz} has been canceled. Your site preview stays available — resubscribe any time to edit it and take it live again.`,
+    },
+  }[args.kind];
+
+  return sendEmail({
+    to: args.to,
+    subject: copy.subject,
+    html: layout(`
+      <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;">${copy.heading}</h1>
+      <p style="margin:0;font-size:15px;line-height:1.6;color:#5b616e;">${copy.body}</p>
+      ${button(`${SITE_URL}/portal`, "Open your portal")}
+    `),
+  });
+}

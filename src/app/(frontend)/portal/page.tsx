@@ -10,6 +10,7 @@ import { db, forgeSites } from "@/db";
 import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
 import { PLANS, type PlanKey } from "@/lib/plans";
+import { trialStatus } from "@/lib/trial";
 import { SiteBilling } from "./site-billing";
 import { TemplatePicker } from "./template-picker";
 
@@ -50,10 +51,15 @@ const ADMIN_PAGES = [
   },
 ];
 
-export default async function PortalPage() {
+export default async function PortalPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ locked?: string }>;
+}) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login");
 
+  const { locked } = await searchParams;
   const { user } = session;
   const firstName = user.name?.split(" ")[0] || "there";
   const isAdmin = isAdminEmail(user.email);
@@ -64,6 +70,7 @@ export default async function PortalPage() {
       businessName: forgeSites.businessName,
       liveUrl: forgeSites.liveUrl,
       status: forgeSites.status,
+      builtAt: forgeSites.builtAt,
       preferredTemplate: forgeSites.preferredTemplate,
       plan: forgeSites.plan,
       oneTimePaid: forgeSites.oneTimePaid,
@@ -91,6 +98,13 @@ export default async function PortalPage() {
             ? "Your admin dashboards and client portal in one place."
             : "Track your project’s progress and manage billing in one place."}
         </p>
+
+        {locked && (
+          <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <span className="font-semibold">Editing is locked.</span> Your free trial has ended — subscribe below to unlock
+            Studio and content edits and take your site live.
+          </div>
+        )}
 
         {isAdmin && (
           <section className="mt-12">
@@ -121,18 +135,22 @@ export default async function PortalPage() {
             Your sites
           </h2>
           <div className="mt-4 grid gap-6 md:grid-cols-2">
-            {mySites.map((site) => (
+            {mySites.map((site) => {
+              const t = trialStatus(site);
+              return (
               <div key={site.id} className="rounded-2xl border border-line bg-surface p-8">
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="text-xl font-bold tracking-tight">{site.businessName}</h3>
-                  {site.oneTimePaid ? (
-                    <span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-800">
-                      Active
+                  {t.state === "paid" ? (
+                    <span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-800">Active</span>
+                  ) : t.state === "trial" ? (
+                    <span className="rounded-full bg-brand-tint px-2.5 py-1 text-xs font-semibold text-brand">
+                      Trial · {t.daysLeft}d left
                     </span>
+                  ) : t.state === "trial_ended" ? (
+                    <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">Trial ended</span>
                   ) : (
-                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
-                      Not active
-                    </span>
+                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">Not active</span>
                   )}
                 </div>
 
@@ -225,6 +243,48 @@ export default async function PortalPage() {
                       </div>
                     )}
                   </>
+                ) : site.liveUrl ? (
+                  <>
+                    {/* Built + unpaid → 7-day trial. Site stays viewable; editing gated. */}
+                    {t.state === "trial" ? (
+                      <div className="mt-3 rounded-xl border border-brand/40 bg-brand-tint px-4 py-3 text-sm text-brand">
+                        <span className="font-semibold">{t.daysLeft} day{t.daysLeft === 1 ? "" : "s"} left in your free trial.</span>{" "}
+                        Play with your site — subscribe to keep editing and take it live on your domain.
+                      </div>
+                    ) : (
+                      <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        <span className="font-semibold">Your free trial ended.</span>{" "}
+                        Your site&apos;s still here — subscribe to unlock editing and take it live.
+                      </div>
+                    )}
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {t.canEdit ? (
+                        <Link
+                          href={`/portal/edit/${site.id}`}
+                          className="inline-flex items-center justify-center rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-ink/90"
+                        >
+                          ✏️ Edit your site
+                        </Link>
+                      ) : (
+                        <span className="inline-flex items-center justify-center rounded-full border border-line bg-background px-5 py-2.5 text-sm font-semibold text-ink-soft">
+                          🔒 Editing locked
+                        </span>
+                      )}
+                      <a
+                        href={site.liveUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center rounded-full border border-line bg-background px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                      >
+                        View your site →
+                      </a>
+                    </div>
+
+                    <div className="mt-4">
+                      <SiteBilling siteId={site.id} />
+                    </div>
+                  </>
                 ) : (
                   <>
                     <p className="mt-2 text-sm text-ink-soft">
@@ -234,7 +294,8 @@ export default async function PortalPage() {
                   </>
                 )}
               </div>
-            ))}
+              );
+            })}
             <Link
               href="/portal/claim"
               className="group flex flex-col justify-center rounded-2xl border border-dashed border-line bg-surface p-8 text-center transition-colors hover:border-brand hover:bg-brand-tint"
@@ -245,6 +306,18 @@ export default async function PortalPage() {
               </span>
               <span className="mt-1 text-sm text-ink-soft">
                 Have a claim code? Link your website to this account.
+              </span>
+            </Link>
+            <Link
+              href="/portal/build"
+              className="group flex flex-col justify-center rounded-2xl border border-dashed border-line bg-surface p-8 text-center transition-colors hover:border-brand hover:bg-brand-tint"
+            >
+              <span className="text-2xl">🛠️</span>
+              <span className="mt-1 font-semibold tracking-tight group-hover:text-brand">
+                Build a new site
+              </span>
+              <span className="mt-1 text-sm text-ink-soft">
+                No site yet? Tell us about your business — we&apos;ll build one. 7 days free.
               </span>
             </Link>
             <Link

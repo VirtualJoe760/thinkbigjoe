@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useActionState, useMemo, useState, useEffect, useTransition } from "react";
 
-import { logContactAttempt } from "../actions";
+import { logContactAttempt, getContactSlots, bookForContact, type ContactSlot, type BookForContactState } from "../actions";
 import type { ForgeSiteItem } from "../sites/sites-queue";
 import type { LeadHistoryEvent } from "@/lib/forge-outreach";
 
@@ -153,6 +153,74 @@ function opener(item: ForgeSiteItem): string {
   ].join("\n");
 }
 
+// ── Book an appointment for a lead (compact scheduler in the slide-over) ──
+const TZ = "America/Los_Angeles";
+const bookInit: BookForContactState = { ok: false, message: "" };
+
+function BookForLead({ siteId, onBooked }: { siteId: string; onBooked: () => void }) {
+  const days = useMemo(() => {
+    const out: { date: string; label: string }[] = [];
+    const nowD = new Date();
+    for (let i = 0; out.length < 8 && i < 25; i++) {
+      const d = new Date(nowD.getTime() + i * 86400000);
+      const wd = d.toLocaleDateString("en-US", { timeZone: TZ, weekday: "short" });
+      if (wd === "Sat" || wd === "Sun") continue;
+      out.push({ date: d.toLocaleDateString("en-CA", { timeZone: TZ }), label: `${wd} ${d.toLocaleDateString("en-US", { timeZone: TZ, month: "short", day: "numeric" })}` });
+    }
+    return out;
+  }, []);
+  const [date, setDate] = useState(days[0]?.date ?? "");
+  const [slots, setSlots] = useState<ContactSlot[]>([]);
+  const [slot, setSlot] = useState("");
+  const [loading, startLoad] = useTransition();
+  const [state, action, pending] = useActionState(bookForContact, bookInit);
+
+  useEffect(() => {
+    if (!date) return;
+    setSlot(""); setSlots([]);
+    startLoad(async () => { const r = await getContactSlots(date); setSlots(r.slots); });
+  }, [date]);
+  useEffect(() => { if (state.ok) onBooked(); }, [state.ok, onBooked]);
+
+  const fmtSlot = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit" });
+
+  if (state.ok) return <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{state.message}</div>;
+
+  return (
+    <form action={action} className="mt-2 rounded-xl border border-line bg-surface p-3">
+      <input type="hidden" name="siteId" value={siteId} />
+      <input type="hidden" name="startTime" value={slot} />
+      <div className="flex flex-wrap gap-1.5">
+        {days.map((d) => (
+          <button key={d.date} type="button" onClick={() => setDate(d.date)}
+            className={`rounded-lg border px-2 py-1 text-xs font-semibold ${d.date === date ? "border-brand bg-brand text-white" : "border-line bg-background text-ink-soft hover:text-ink"}`}>
+            {d.label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-2 min-h-[2rem]">
+        {loading ? <p className="text-xs text-ink-soft">Loading times…</p>
+          : slots.length === 0 ? <p className="text-xs text-ink-soft">No open times that day (11–1 PT).</p>
+          : (
+            <div className="flex flex-wrap gap-1.5">
+              {slots.map((sl) => (
+                <button key={sl.start} type="button" onClick={() => setSlot(sl.start)}
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-semibold ${sl.start === slot ? "border-brand bg-brand text-white" : "border-line bg-background text-ink hover:border-brand"}`}>
+                  {fmtSlot(sl.start)}
+                </button>
+              ))}
+            </div>
+          )}
+      </div>
+      {state.message && !state.ok && <p className="mt-1 text-xs font-medium text-red-600">{state.message}</p>}
+      <button type="submit" disabled={pending || !slot}
+        className="mt-2 w-full rounded-lg bg-ink px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+        {pending ? "Booking…" : slot ? `Book ${fmtSlot(slot)} PT` : "Pick a time"}
+      </button>
+    </form>
+  );
+}
+
 // ── Contact detail (slide-over: full-screen on mobile, right sheet on desktop) ──
 function ContactDetail({
   item, meta, attempt, history, onClose, onContact,
@@ -161,13 +229,20 @@ function ContactDetail({
   onClose: () => void; onContact: (id: string, ch: "call" | "text" | "email") => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [copiedMsg, setCopiedMsg] = useState(false);
+  const [showBook, setShowBook] = useState(false);
   const s = item.socialStats || {};
   const reach: string[] = [];
   if (s.instagram?.followers) reach.push(`📷 ${fmtNum(s.instagram.followers)}`);
   if (s.facebook?.followers) reach.push(`👍 ${fmtNum(s.facebook.followers)}`);
   const quotes = (item.reviewQuotes || []).filter((q) => q.text).slice(0, 2);
   const isApple = typeof navigator !== "undefined" && /(iphone|ipad|mac)/i.test(navigator.userAgent);
-  const smsBody = encodeURIComponent(`Hi${firstName(item.ownerName) ? ` ${firstName(item.ownerName)}` : ""}, it's Joe — here's the site I built for ${item.businessName}: ${item.liveUrl || ""}`);
+  const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com";
+  const previewLink = item.liveUrl || (item.slug ? `${SITE}/s/${item.slug}` : SITE);
+  // The message the rep texts from their Google Voice — carries the preview link AND the claim code
+  // so the prospect can create an account and claim (then pay for) the site.
+  const claimMsg = `Hi${firstName(item.ownerName) ? ` ${firstName(item.ownerName)}` : ""}, it's Joe — here's the website preview I built for ${item.businessName}: ${previewLink}${item.claimCode ? `. To make it yours, create a free account and enter code ${item.claimCode} at ${SITE}/portal/claim` : ""}. Text me back with any questions!`;
+  const smsBody = encodeURIComponent(claimMsg);
   const st = STAGE[meta.stage];
   const isUser = meta.stage === "claimed" || meta.stage === "customer";
   const script = opener(item);
@@ -285,7 +360,37 @@ function ContactDetail({
               </a>
             )}
           </div>
-          <p className="mt-1.5 text-[11px] text-ink-soft">Texts send from your phone (not the 480). Every tap is logged as an attempt below.</p>
+
+          {/* Text the claim code from Google Voice — copy the ready message + paste into GV. */}
+          {item.claimCode && (
+            <button
+              onClick={() => {
+                onContact(item.id, "text");
+                navigator.clipboard?.writeText(claimMsg).then(() => {
+                  setCopiedMsg(true);
+                  setTimeout(() => setCopiedMsg(false), 1800);
+                });
+              }}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-3 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-dark active:scale-[0.98]"
+            >
+              {copiedMsg ? "✓ Copied — paste into Google Voice" : "📋 Copy claim text (preview + code) for Google Voice"}
+            </button>
+          )}
+          <p className="mt-1.5 text-[11px] text-ink-soft">
+            Text the code from your <b>Google Voice</b> — copy the message, then paste + send in GV. The
+            phone/📱 buttons use your device. Every tap is logged as an attempt below.
+          </p>
+
+          {/* Book an appointment for this prospect (onto Joe's calendar). */}
+          <div className="mt-3">
+            <button
+              onClick={() => setShowBook((v) => !v)}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-line px-3 py-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+            >
+              📅 {showBook ? "Hide booking" : "Book an appointment"}
+            </button>
+            {showBook && <BookForLead siteId={item.id} onBooked={() => onContact(item.id, "call")} />}
+          </div>
 
           {/* contact facts */}
           <dl className="mt-4 grid grid-cols-[auto,1fr] gap-x-3 gap-y-1.5 text-sm">

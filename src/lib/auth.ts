@@ -3,7 +3,7 @@ import { nextCookies } from "better-auth/next-js";
 import { captcha } from "better-auth/plugins";
 import { Pool } from "pg";
 
-import { sendResetPasswordEmail, sendWelcomeEmail } from "./email";
+import { sendResetPasswordEmail, sendWelcomeEmail, sendAdminAlert } from "./email";
 import { notifyTelegram } from "./telegram";
 
 const baseURL =
@@ -138,6 +138,13 @@ export const auth = betterAuth({
           notifyTelegram(
             `👤 <b>New signup</b>\n${user.name ? `${user.name} · ` : ""}${user.email}`,
           ).catch(() => {});
+          sendAdminAlert({
+            subject: `New signup — ${user.name || user.email}`,
+            heading: "New account created 👤",
+            message: `${user.name ? `${user.name} (${user.email})` : user.email} just created an account.`,
+            ctaUrl: `${process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com"}/command/leads`,
+            ctaLabel: "Open leads",
+          }).catch((err) => console.error("[auth] admin signup alert failed:", err));
         },
       },
     },

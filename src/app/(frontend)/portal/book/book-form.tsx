@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useActionState } from "react";
 
-import { bookStrategyCall, getPortalSlots, type BookState, type PortalSlot } from "../actions";
+import { bookStrategyCall, getPortalSlots, requestCallOutsideWindow, type BookState, type PortalSlot } from "../actions";
 
 const TZ = "America/Los_Angeles";
 const initial: BookState = { ok: false, message: "" };
@@ -62,6 +62,7 @@ export function BookForm({ defaultName, email }: { defaultName?: string | null; 
   }
 
   return (
+    <>
     <form action={action} className="space-y-6">
       <input type="hidden" name="startTime" value={selectedSlot} />
 
@@ -146,5 +147,66 @@ export function BookForm({ defaultName, email }: { defaultName?: string | null; 
         {pending ? "Booking…" : selectedSlot ? `Book ${slotLabel(selectedSlot)}` : "Pick a time to book"}
       </button>
     </form>
+
+    <div className="mt-6">
+      <OutOfWindowRequest />
+    </div>
+    </>
+  );
+}
+
+const owInitial: BookState = { ok: false, message: "" };
+
+/** Ask for a time outside the 11–1 PT window — recorded as a request Joe confirms manually. */
+function OutOfWindowRequest() {
+  const [open, setOpen] = useState(false);
+  const [state, action, pending] = useActionState(requestCallOutsideWindow, owInitial);
+
+  if (state.ok) {
+    return (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+        {state.message}
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-line pt-4">
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)} className="text-sm font-semibold text-brand hover:underline">
+          None of these times work? Request another →
+        </button>
+      ) : (
+        <form action={action} className="space-y-3">
+          <p className="text-sm text-ink-soft">
+            Tell Joe when works and he&apos;ll confirm a time outside the usual 11am–1pm window and send you an invite.
+          </p>
+          <label className="block">
+            <span className="text-sm font-semibold text-ink">When works for you?</span>
+            <input
+              name="preferred"
+              placeholder="e.g. weekday mornings before 10, or Thursday afternoon"
+              className="mt-2 w-full rounded-xl border border-line bg-background px-3.5 py-2.5 text-sm text-ink focus:border-brand focus:outline-none"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-semibold text-ink">Anything else? <span className="font-normal text-ink-soft">(optional)</span></span>
+            <input
+              name="reason"
+              placeholder="What you'd like to talk about"
+              className="mt-2 w-full rounded-xl border border-line bg-background px-3.5 py-2.5 text-sm text-ink focus:border-brand focus:outline-none"
+            />
+          </label>
+          {state.message && !state.ok && <p className="text-sm font-medium text-red-600">{state.message}</p>}
+          <button
+            type="submit"
+            disabled={pending}
+            className="inline-flex items-center justify-center rounded-full border border-line bg-background px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface disabled:opacity-50"
+          >
+            {pending ? "Sending…" : "Send request"}
+          </button>
+        </form>
+      )}
+    </div>
   );
 }

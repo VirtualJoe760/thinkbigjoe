@@ -16,7 +16,7 @@ export const SLOT_DURATION_MIN = 30;
 export const SLOT_BUFFER_MIN = 15;
 export const ADVANCE_BOOKING_DAYS = 30;
 /** Minimum notice before a slot can be booked (ms). */
-export const MIN_NOTICE_MS = 60 * 60 * 1000; // 1 hour
+export const MIN_NOTICE_MS = 3 * 60 * 60 * 1000; // 3 hours
 
 /**
  * Sales-call windows in 24h clock, per weekday (0 = Sunday). null = closed.

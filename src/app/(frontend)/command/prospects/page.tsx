@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/require-admin";
 import { SitesQueue, type ForgeSiteItem } from "../sites/sites-queue";
 import { LeadEnginePanel, type LeadEngineStats } from "./lead-engine-panel";
 import { ShowroomPanel, type ShowroomStats } from "./showroom-panel";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -227,6 +228,7 @@ export default async function ProspectsPage({
 
   return (
     <div className="px-4 py-6 sm:px-6 sm:py-8">
+      <AutoRefresh seconds={20} />
       <div className="mx-auto w-full max-w-5xl">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h1 className="text-2xl font-extrabold tracking-tight">Web-dev leads</h1>

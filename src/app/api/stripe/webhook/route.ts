@@ -1,11 +1,32 @@
 import { NextResponse } from "next/server";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import type Stripe from "stripe";
 
 import { stripe } from "@/lib/stripe";
 import { db, forgeSites, activityLog } from "@/db";
 import { notifyTelegram } from "@/lib/telegram";
 import { fulfillDomain } from "@/lib/domain-fulfill";
+import { sendPlanEmail, sendAdminAlert } from "@/lib/email";
+import { PLANS, PLAN_KEYS, isPlanKey, type PlanKey } from "@/lib/plans";
+
+const planLabel = (p: string | null | undefined) => (isPlanKey(p) ? PLANS[p].label : p || "your plan");
+
+// Map a Stripe price id back to our plan key (reverse of planPriceId).
+function planKeyForPrice(priceId: string | null | undefined): PlanKey | null {
+  if (!priceId) return null;
+  return PLAN_KEYS.find((k) => process.env[PLANS[k].priceEnv] === priceId) ?? null;
+}
+
+// The claimed owner's email for a site, via the better_auth user store.
+async function ownerEmailForSite(claimedByUserId: string | null): Promise<{ email: string; name: string | null } | null> {
+  if (!claimedByUserId) return null;
+  const res = await db.execute(
+    sql`SELECT email, name FROM better_auth."user" WHERE id = ${claimedByUserId} LIMIT 1`,
+  );
+  const rows = (Array.isArray(res) ? res : (res as { rows?: unknown[] }).rows ?? []) as Record<string, unknown>[];
+  const r = rows[0];
+  return r ? { email: String(r.email), name: r.name ? String(r.name) : null } : null;
+}
 
 // Stripe needs the raw request body to verify the signature.
 export async function POST(req: Request) {
@@ -101,16 +122,36 @@ export async function POST(req: Request) {
           .from(forgeSites)
           .where(eq(forgeSites.id, siteId))
           .limit(1);
+        const bizName = site?.businessName ?? `site #${siteId}`;
 
         await db.insert(activityLog).values({
           actor: "stripe",
           eventType: "site_paid",
-          summary: `${site?.businessName ?? `site #${siteId}`} paid ($300 + ${plan}) — activated + 1 domain credit`,
+          summary: `${bizName} paid ($300 + ${plan}) — activated + 1 domain credit`,
           metadata: { auto: true, target: String(siteId), detail: { plan, customer: s.customer } },
         });
         notifyTelegram(
-          `💳 <b>New paid client</b>\n${site?.businessName ?? `site #${siteId}`} — $300 + ${plan} plan`,
+          `💳 <b>New paid client</b>\n${bizName} — $300 + ${plan} plan`,
         ).catch(() => {});
+
+        // Customer: subscription confirmation. Admin: heads-up.
+        const custEmail = s.customer_details?.email || s.customer_email || null;
+        if (custEmail) {
+          sendPlanEmail({
+            to: custEmail,
+            name: s.customer_details?.name ?? null,
+            businessName: bizName,
+            kind: "subscribed",
+            planLabel: planLabel(plan),
+          }).catch((err) => console.error("[stripe] subscribe email failed:", err));
+        }
+        sendAdminAlert({
+          subject: `New paid client — ${bizName}`,
+          heading: "New sale 💳",
+          message: `${bizName} just paid: $300 build + ${planLabel(plan)} plan${custEmail ? ` (${custEmail})` : ""}.`,
+          ctaUrl: `${process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com"}/command`,
+          ctaLabel: "Open command",
+        }).catch((err) => console.error("[stripe] admin sale alert failed:", err));
         break;
       }
 
@@ -119,10 +160,60 @@ export async function POST(req: Request) {
         const sub = event.data.object as Stripe.Subscription;
         const siteId = Number(sub.metadata?.siteId);
         if (!Number.isFinite(siteId)) break;
+
+        const [site] = await db
+          .select({ businessName: forgeSites.businessName, plan: forgeSites.plan, claimedByUserId: forgeSites.claimedByUserId })
+          .from(forgeSites)
+          .where(eq(forgeSites.id, siteId))
+          .limit(1);
+
+        const canceled = event.type === "customer.subscription.deleted";
+        // Detect a plan change from the new subscription price.
+        const newPlan = canceled ? null : planKeyForPrice(sub.items?.data?.[0]?.price?.id);
+        const oldPlan = isPlanKey(site?.plan) ? (site!.plan as PlanKey) : null;
+        const changed = !canceled && newPlan && newPlan !== oldPlan;
+
         await db
           .update(forgeSites)
-          .set({ subscriptionStatus: sub.status, updatedAt: new Date().toISOString() })
+          .set({
+            subscriptionStatus: sub.status,
+            ...(changed ? { plan: newPlan } : {}),
+            updatedAt: new Date().toISOString(),
+          })
           .where(eq(forgeSites.id, siteId));
+
+        // Email the owner on a real plan change or a cancellation.
+        if (changed || canceled) {
+          const owner = await ownerEmailForSite(site?.claimedByUserId ?? null).catch(() => null);
+          const bizName = site?.businessName ?? `site #${siteId}`;
+          if (owner?.email) {
+            const kind = canceled
+              ? "canceled"
+              : (oldPlan && PLANS[newPlan!].monthly > PLANS[oldPlan].monthly) || !oldPlan
+                ? "upgraded"
+                : "downgraded";
+            sendPlanEmail({
+              to: owner.email,
+              name: owner.name,
+              businessName: bizName,
+              kind,
+              planLabel: planLabel(canceled ? oldPlan : newPlan),
+            }).catch((err) => console.error("[stripe] plan-change email failed:", err));
+          }
+          if (canceled) {
+            sendAdminAlert({
+              subject: `Subscription canceled — ${bizName}`,
+              heading: "Subscription canceled",
+              message: `${bizName} canceled their subscription.`,
+            }).catch(() => {});
+          }
+          await db.insert(activityLog).values({
+            actor: "stripe",
+            eventType: canceled ? "subscription_canceled" : "plan_changed",
+            summary: canceled ? `${bizName} canceled their subscription` : `${bizName} changed plan → ${planLabel(newPlan)}`,
+            metadata: { auto: true, target: String(siteId), detail: { from: oldPlan, to: newPlan, status: sub.status } },
+          }).catch(() => {});
+        }
         break;
       }
 
