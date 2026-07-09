@@ -21,23 +21,41 @@ export async function POST(req: Request) {
   const name = String(form.get("name") || "").trim();
   const email = String(form.get("email") || "").trim().toLowerCase();
   const message = String(form.get("message") || "").trim();
+  const phone = String(form.get("phone") || "").trim();
+  // A2P 10DLC consent capture — itemized, so we have a record of exactly what the
+  // contact agreed to (transactional SMS, marketing SMS, email).
+  const smsTransactional = String(form.get("sms_transactional") || "") === "yes";
+  const smsMarketing = String(form.get("sms_marketing") || "") === "yes";
+  const emailConsent = String(form.get("email_consent") || "") === "yes";
+  // Where to send them back — the dedicated /contact page or the homepage anchor.
+  const fromContactPage = String(form.get("source_path") || "") === "/contact";
+  const okUrl = fromContactPage ? "/contact?sent=1" : "/?sent=1#contact";
+  const errUrl = fromContactPage ? "/contact?error=contact" : "/?error=contact#contact";
   // Honeypot — bots fill every field; humans never see this one.
   const website = String(form.get("website") || "").trim();
 
   if (website) {
-    return NextResponse.redirect(new URL("/?sent=1#contact", req.url), 303);
+    return NextResponse.redirect(new URL(okUrl, req.url), 303);
   }
   if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !message) {
-    return NextResponse.redirect(new URL("/?error=contact#contact", req.url), 303);
+    return NextResponse.redirect(new URL(errUrl, req.url), 303);
   }
+
+  const consentSummary = [
+    smsTransactional && "transactional SMS",
+    smsMarketing && "marketing SMS",
+    emailConsent && "email",
+  ].filter(Boolean).join(", ") || "none";
 
   try {
     await db.insert(leads).values({
       name,
       email,
+      phone: phone || null,
       problem: message,
+      notes: `Consent: ${consentSummary}${phone ? ` · phone ${phone}` : ""}`,
       source: "contact-form",
-      sourcePath: "/",
+      sourcePath: fromContactPage ? "/contact" : "/",
       status: "new",
     });
 
@@ -45,11 +63,11 @@ export async function POST(req: Request) {
       to: process.env.EMAIL_BCC || "josephsardella@gmail.com",
       subject: `New message from ${name}`,
       heading: "New contact message",
-      message: `${name} (${email})<br/><br/>${message.replace(/</g, "&lt;").replace(/\n/g, "<br/>")}`,
+      message: `${name} (${email})${phone ? ` · ${phone}` : ""}<br/>Consent: ${consentSummary}<br/><br/>${message.replace(/</g, "&lt;").replace(/\n/g, "<br/>")}`,
     }).catch(() => {});
 
     notifyTelegram(
-      `💬 <b>New contact message</b>\n${name} (${email})\n\n${message.slice(0, 500)}`,
+      `💬 <b>New contact message</b>\n${name} (${email})${phone ? ` · ${phone}` : ""}\nConsent: ${consentSummary}\n\n${message.slice(0, 500)}`,
     ).catch(() => {});
   } catch (err) {
     console.error("[contact] failed:", err);
@@ -57,5 +75,5 @@ export async function POST(req: Request) {
     // surface a scary error; it's logged for us.
   }
 
-  return NextResponse.redirect(new URL("/?sent=1#contact", req.url), 303);
+  return NextResponse.redirect(new URL(okUrl, req.url), 303);
 }

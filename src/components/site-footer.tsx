@@ -13,18 +13,21 @@ export function SiteFooter() {
           </p>
         </div>
 
-        <div className="flex flex-col gap-2 text-sm text-ink-soft sm:flex-row sm:gap-8">
+        <div className="grid grid-cols-2 gap-2 text-sm text-ink-soft sm:flex sm:flex-row sm:gap-8">
           <Link href="/solutions" className="hover:text-ink">
             Solutions
-          </Link>
-          <Link href="/#services" className="hover:text-ink">
-            Services
           </Link>
           <Link href="/login" className="hover:text-ink">
             Login
           </Link>
-          <Link href="/#contact" className="hover:text-ink">
+          <Link href="/contact" className="hover:text-ink">
             Contact
+          </Link>
+          <Link href="/privacy-policy" className="hover:text-ink">
+            Privacy
+          </Link>
+          <Link href="/terms-of-service" className="hover:text-ink">
+            Terms
           </Link>
           <a href="tel:+14807642121" className="font-semibold text-ink hover:text-brand">
             (480) 764-2121
@@ -33,7 +36,7 @@ export function SiteFooter() {
       </div>
       <div className="border-t border-line">
         <div className="mx-auto max-w-6xl px-6 py-6 text-xs text-ink-soft">
-          © {new Date().getFullYear()} ThinkBigJoe. All rights reserved.
+          © {new Date().getFullYear()} ThinkBigJoe · JPS &amp; Company LLC. All rights reserved.
         </div>
       </div>
     </footer>
