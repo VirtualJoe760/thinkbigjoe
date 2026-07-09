@@ -55,13 +55,6 @@ function niche1(i: ForgeSiteItem): string {
   return (i.niche || "").split(/[—·,/]/)[0].trim();
 }
 
-// A preview image of the built site: the stored screenshot if we have one, else a live screenshot
-// of the deployed URL via WordPress mShots (free, no key) so we can always see what the site looks like.
-function siteShot(item: ForgeSiteItem): string | null {
-  if (item.screenshotUrl) return item.screenshotUrl;
-  if (item.liveUrl) return `https://s.wordpress.com/mshots/v1/${encodeURIComponent(item.liveUrl)}?w=1200`;
-  return null;
-}
 
 function initialsOf(item: ForgeSiteItem) {
   return (item.businessName || "?").split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
@@ -178,10 +171,10 @@ function ContactDetail({
   const st = STAGE[meta.stage];
   const isUser = meta.stage === "claimed" || meta.stage === "customer";
   const script = opener(item);
-  // Hero: the business photo we sourced dominates the top; fall back to the built-site screenshot.
-  const site = siteShot(item);
-  const heroImg = item.photoUrl || site || null;
-  const showSiteShot = !!site && site !== heroImg;
+  // Hero: the business photo we sourced dominates the top (else a branded gradient).
+  const heroImg = item.photoUrl || item.screenshotUrl || null;
+  // Site preview: a stored screenshot if we have one, else a live (scaled) iframe of the deployed site.
+  const showSitePreview = !!(item.screenshotUrl || item.liveUrl);
 
   // Lock body scroll while the sheet is open.
   useEffect(() => {
@@ -282,13 +275,26 @@ function ContactDetail({
             {item.claimCode && (<><dt className="text-ink-soft">Claim code</dt><dd className="font-mono text-ink">{item.claimCode}</dd></>)}
           </dl>
 
-          {/* the site we built for them — a screenshot so you can see it at a glance */}
-          {showSiteShot && (
+          {/* the site we built for them — see it at a glance (live preview, or a stored screenshot) */}
+          {showSitePreview && (
             <div className="mt-5">
               <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-soft">The site we built</h3>
-              <a href={item.liveUrl || site!} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl border border-line transition-colors hover:border-brand">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={site!} alt={`${item.businessName} website`} className="max-h-64 w-full bg-surface object-cover object-top" />
+              <a href={item.liveUrl || undefined} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl border border-line transition-colors hover:border-brand">
+                {item.screenshotUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.screenshotUrl} alt={`${item.businessName} website`} className="max-h-64 w-full bg-surface object-cover object-top" />
+                ) : (
+                  <div className="relative w-full overflow-hidden bg-surface" style={{ aspectRatio: "1280 / 800" }}>
+                    <iframe
+                      src={item.liveUrl!}
+                      title={`${item.businessName} website`}
+                      loading="lazy"
+                      scrolling="no"
+                      className="pointer-events-none absolute left-0 top-0 origin-top-left border-0"
+                      style={{ width: "320%", height: "320%", transform: "scale(0.3125)" }}
+                    />
+                  </div>
+                )}
                 {item.liveUrl && <div className="border-t border-line bg-surface px-3 py-2 text-xs font-semibold text-brand">Open live site ↗</div>}
               </a>
             </div>
