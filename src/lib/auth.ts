@@ -76,6 +76,7 @@ export const auth = betterAuth({
   database: authPool,
   emailAndPassword: {
     enabled: true,
+    minPasswordLength: 8, // 8-char minimum (enforced client-side too, with a strength meter)
     // Password recovery: better-auth generates a one-time token + link; we
     // email it. The link lands on /reset-password?token=… (see reset page).
     resetPasswordTokenExpiresIn: 60 * 60, // 1 hour

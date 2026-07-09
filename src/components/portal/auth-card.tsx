@@ -5,10 +5,25 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { requestPasswordReset, signIn, signUp } from "@/lib/auth-client";
+import { recordSignupConsent } from "@/lib/consent";
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+const MIN_PASSWORD = 8;
 
 type Mode = "signin" | "signup" | "forgot";
+
+/** Score a password 0–4 for the strength meter (length + character variety). */
+function passwordScore(pw: string): number {
+  if (pw.length < MIN_PASSWORD) return 0;
+  let score = 1;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+  if (/\d/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  if (pw.length >= 12) score = Math.min(4, score + 1);
+  return Math.min(4, score);
+}
+const STRENGTH = ["Too short", "Weak", "Fair", "Good", "Strong"];
+const STRENGTH_COLOR = ["bg-red-400", "bg-red-400", "bg-amber-400", "bg-lime-500", "bg-green-500"];
 
 export function AuthCard({
   google,
@@ -22,6 +37,8 @@ export function AuthCard({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [agreedTerms, setAgreedTerms] = useState(false);
+  const [marketing, setMarketing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
@@ -76,6 +93,17 @@ export function AuthCard({
   async function handleEmail(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    // Signup gates: 8-char password minimum + agreeing to Terms/Privacy.
+    if (mode === "signup") {
+      if (password.length < MIN_PASSWORD) {
+        setError(`Password must be at least ${MIN_PASSWORD} characters.`);
+        return;
+      }
+      if (!agreedTerms) {
+        setError("Please agree to the Terms of Service and Privacy Policy to continue.");
+        return;
+      }
+    }
     setLoading(true);
     try {
       const fetchOptions = captchaToken
@@ -96,6 +124,10 @@ export function AuthCard({
         turnstileRef.current?.reset();
         setCaptchaToken(null);
         return;
+      }
+      if (mode === "signup") {
+        // A2P / marketing consent audit trail (best-effort; doesn't block login).
+        void recordSignupConsent(email, marketing);
       }
       router.push("/portal");
       router.refresh();
@@ -250,6 +282,24 @@ export function AuthCard({
           required
         />
 
+        {mode === "signup" && password.length > 0 && (
+          <div className="-mt-2">
+            <div className="flex gap-1">
+              {[0, 1, 2, 3].map((i) => (
+                <span
+                  key={i}
+                  className={`h-1.5 flex-1 rounded-full transition-colors ${i < passwordScore(password) ? STRENGTH_COLOR[passwordScore(password)] : "bg-line"}`}
+                />
+              ))}
+            </div>
+            <p className={`mt-1 text-xs ${password.length < MIN_PASSWORD ? "text-red-600" : "text-ink-soft"}`}>
+              {password.length < MIN_PASSWORD
+                ? `At least ${MIN_PASSWORD} characters`
+                : `${STRENGTH[passwordScore(password)]}${passwordScore(password) < 3 ? " — add a number, capital, or symbol" : ""}`}
+            </p>
+          </div>
+        )}
+
         {mode === "signin" && (
           <div className="-mt-2 text-right">
             <button
@@ -273,11 +323,46 @@ export function AuthCard({
           />
         )}
 
+        {mode === "signup" && (
+          <div className="space-y-2.5">
+            <label className="flex items-start gap-2.5 text-sm text-ink-soft">
+              <input
+                type="checkbox"
+                checked={agreedTerms}
+                onChange={(e) => setAgreedTerms(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-line text-brand focus:ring-brand"
+              />
+              <span>
+                I agree to the{" "}
+                <a href="/terms-of-service" target="_blank" className="font-semibold text-brand hover:underline">Terms of Service</a>{" "}
+                and{" "}
+                <a href="/privacy-policy" target="_blank" className="font-semibold text-brand hover:underline">Privacy Policy</a>.
+              </span>
+            </label>
+            <label className="flex items-start gap-2.5 text-sm text-ink-soft">
+              <input
+                type="checkbox"
+                checked={marketing}
+                onChange={(e) => setMarketing(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-line text-brand focus:ring-brand"
+              />
+              <span>
+                Send me product updates and offers by email and text (optional). Msg &amp; data rates may apply;
+                reply STOP to opt out.
+              </span>
+            </label>
+          </div>
+        )}
+
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <button
           type="submit"
-          disabled={loading || (needsCaptcha && !captchaToken)}
+          disabled={
+            loading ||
+            (needsCaptcha && !captchaToken) ||
+            (mode === "signup" && (!agreedTerms || password.length < MIN_PASSWORD))
+          }
           className="w-full rounded-full bg-brand px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-60"
         >
           {loading
