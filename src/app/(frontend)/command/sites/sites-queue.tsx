@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 
-import { approveForgeSite, denyForgeSite, deleteForgeSite, sendForgeOutreach, skipForgeOutreach, approveForMarketing, unapproveMarketing, requestForgeRevision, requestForgeRebuild } from "../actions";
+import { denyForgeSite, deleteForgeSite, sendForgeOutreach, skipForgeOutreach, approveForMarketing, unapproveMarketing, requestForgeRevision, requestForgeRebuild } from "../actions";
 
 export type ForgeSiteItem = {
   id: string;
@@ -314,10 +314,10 @@ function DiscoveredRow({ item }: { item: ForgeSiteItem }) {
           <>
             <button
               disabled={pending}
-              onClick={() => start(async () => { await approveForgeSite(item.id); setDone("approved — queued to build"); })}
+              onClick={() => start(async () => { const r = await approveForMarketing(item.id); setDone(r.ok ? "approved for marketing — outreach will start" : (r.message || "couldn't approve")); })}
               className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-60"
             >
-              Approve to build
+              Approve for marketing
             </button>
             <button
               disabled={pending}

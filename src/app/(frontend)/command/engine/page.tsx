@@ -68,6 +68,20 @@ export default async function EnginePage() {
   const digest = await getForgeDigest();
   const { config, buildQueue, editQueue, throughput, budget } = digest;
 
+  // Preview-engine progress — how much of the contactable prospect pool has a preview.
+  const pvRes = await db.execute(sql`SELECT
+      count(*) FILTER (WHERE preview IS NOT NULL)::int AS total,
+      count(*) FILTER (WHERE preview_generated_at >= date_trunc('day', now()))::int AS today,
+      count(*) FILTER (WHERE preview IS NULL AND claimed_by_user_id IS NULL AND status='discovered'
+        AND (nullif(phone,'') IS NOT NULL OR nullif(email,'') IS NOT NULL
+             OR nullif(instagram_url,'') IS NOT NULL OR nullif(facebook_url,'') IS NOT NULL))::int AS remaining
+    FROM forge_sites`);
+  const pvRow = ((Array.isArray(pvRes) ? pvRes : (pvRes as { rows?: unknown[] }).rows ?? [])[0] ?? {}) as Record<string, unknown>;
+  const pvTotal = Number(pvRow.total ?? 0);
+  const pvToday = Number(pvRow.today ?? 0);
+  const pvRemaining = Number(pvRow.remaining ?? 0);
+  const pvPct = pvTotal + pvRemaining > 0 ? Math.round((pvTotal / (pvTotal + pvRemaining)) * 100) : 100;
+
   const activity = await db
     .select()
     .from(activityLog)
@@ -122,10 +136,32 @@ export default async function EnginePage() {
         {/* Throughput */}
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatCard label="Built 24h" value={throughput.built24h} sub={`${throughput.built7d} in 7d`} />
+          <StatCard label="Previews 24h" value={throughput.previews24h} sub={`${throughput.previews7d} in 7d`} />
           <StatCard label="Edits 24h" value={throughput.edits24h} sub={`${throughput.edits7d} in 7d`} />
           <StatCard label="Outreach 24h" value={throughput.outreachSent24h} sub={`${throughput.outreachSent7d} in 7d`} />
-          <StatCard label="Previews 7d" value={throughput.previews7d} sub={`${throughput.templates7d} templates`} />
         </div>
+
+        {/* Preview engine — the sell-first pre-sale pages (one Gemini call each; the claim triggers the build) */}
+        <section className="mt-4 rounded-2xl border border-line bg-background p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-base font-bold tracking-tight">Preview engine</h2>
+            <span className="text-sm text-ink-soft">
+              <span className="font-semibold text-ink tabular-nums">{pvTotal}</span> made · {pvPct}% of contactable prospects
+            </span>
+          </div>
+          <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-line">
+            <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${Math.min(100, pvPct)}%` }} />
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-3">
+            <StatCard label="Total previews" value={pvTotal} sub="all prospects" />
+            <StatCard label="Made today" value={pvToday} />
+            <StatCard label="Remaining" value={pvRemaining} sub="eligible to generate" />
+          </div>
+          <p className="mt-3 text-[11px] text-ink-soft">
+            Each preview is one Gemini call (~$0.0002) — no build, no deploy. The forge build only fires when a prospect
+            claims their preview.
+          </p>
+        </section>
 
         {/* Activity chart */}
         <section className="mt-4 rounded-2xl border border-line bg-background p-5">

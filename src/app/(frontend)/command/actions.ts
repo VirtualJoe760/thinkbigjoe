@@ -422,7 +422,12 @@ export async function approveForMarketing(id: string): Promise<{ ok: boolean; me
   await assertAdmin();
   const [site] = await db.select().from(forgeSites).where(eq(forgeSites.id, Number(id))).limit(1);
   if (!site) return { ok: false, message: "Site not found." };
-  if (site.status !== "built") return { ok: false, message: "Only built sites can be approved for marketing." };
+  // Sell-first: a prospect's PREVIEW is the marketing asset (the real build fires on claim).
+  // Approve any live prospect that has — or will soon have — a preview; the preview engine
+  // fills in un-previewed ones and outreach only sends once a preview exists.
+  if (site.status === "denied" || site.status === "deleted") {
+    return { ok: false, message: "This prospect was denied — can't market it." };
+  }
   await db
     .update(forgeSites)
     .set({ marketingApprovedAt: now(), updatedAt: now() })
@@ -430,12 +435,17 @@ export async function approveForMarketing(id: string): Promise<{ ok: boolean; me
   await db.insert(activityLog).values({
     actor: "joe",
     eventType: "forge_marketing_approved",
-    summary: `Approved ${site.businessName} for marketing — now a lead, outreach can begin.`,
+    summary: `Approved ${site.businessName} for marketing — outreach can begin${site.preview ? "" : " once its preview is ready"}.`,
     metadata: { auto: true, target: site.slug, detail: { siteId: site.id } },
   });
   revalidatePath("/command/prospects");
   revalidatePath("/command/leads");
-  return { ok: true, message: `${site.businessName} is now a lead — it's in the call room and outreach can start.` };
+  return {
+    ok: true,
+    message: site.preview
+      ? `${site.businessName} approved — outreach starts on its preview.`
+      : `${site.businessName} approved — outreach begins once the preview engine generates its preview.`,
+  };
 }
 
 /** Pull a lead back out of marketing (e.g. to revise it further). */
