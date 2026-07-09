@@ -275,6 +275,25 @@ export async function sendResetPasswordEmail(to: string, url: string, name?: str
   });
 }
 
+/** Verify-your-email link sent on sign-up (better-auth emailVerification). */
+export async function sendVerificationEmail(to: string, url: string, name?: string | null) {
+  const firstName = name?.split(" ")[0];
+  return sendEmail({
+    to,
+    subject: "Verify your email — ThinkBigJoe",
+    html: layout(`
+      <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;">Confirm your email${firstName ? `, ${escapeHtml(firstName)}` : ""}</h1>
+      <p style="margin:0;font-size:15px;line-height:1.6;color:#5b616e;">
+        Welcome to ThinkBigJoe! Tap the button to verify your email address and finish securing your account.
+      </p>
+      ${button(url, "Verify my email")}
+      <p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#9aa0ad;">
+        If you didn't create a ThinkBigJoe account, you can safely ignore this email.
+      </p>
+    `),
+  });
+}
+
 /**
  * Generic notification email for product events (e.g. a new design or store
  * was created). Call this from those features as they're built.

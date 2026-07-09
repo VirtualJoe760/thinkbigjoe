@@ -3,7 +3,7 @@ import { nextCookies } from "better-auth/next-js";
 import { captcha } from "better-auth/plugins";
 import { Pool } from "pg";
 
-import { sendResetPasswordEmail, sendWelcomeEmail, sendAdminAlert } from "./email";
+import { sendResetPasswordEmail, sendWelcomeEmail, sendAdminAlert, sendVerificationEmail } from "./email";
 import { notifyTelegram } from "./telegram";
 
 const baseURL =
@@ -85,6 +85,22 @@ export const auth = betterAuth({
         await sendResetPasswordEmail(user.email, url, user.name);
       } catch (err) {
         console.error("[auth] reset-password email failed:", err);
+      }
+    },
+    // NOTE: not requiring verification to sign in (would lock out unverified users +
+    // add signup friction). Flip requireEmailVerification: true here to make it mandatory.
+  },
+  // Email verification — sends a "verify your email" link on sign-up. Better-auth
+  // handles the verify endpoint + marks emailVerified; the link auto-signs them in.
+  emailVerification: {
+    sendOnSignUp: true,
+    autoSignInAfterVerification: true,
+    expiresIn: 60 * 60 * 24, // 24h
+    sendVerificationEmail: async ({ user, url }) => {
+      try {
+        await sendVerificationEmail(user.email, url, user.name);
+      } catch (err) {
+        console.error("[auth] verification email failed:", err);
       }
     },
   },
