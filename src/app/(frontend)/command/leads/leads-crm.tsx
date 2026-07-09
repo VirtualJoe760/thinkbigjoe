@@ -455,6 +455,7 @@ export function LeadsCRM({
   const [openId, setOpenId] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<LeadStage | "all">("all");
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "reviews_high" | "reviews_low">("newest");
   const [local, setLocal] = useState<Record<string, AttemptStat>>(attempts);
 
   const stat = (id: string): AttemptStat => local[id] || { call: 0, text: 0, email: 0, total: 0, lastAt: null };
@@ -484,6 +485,24 @@ export function LeadsCRM({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leads, q, filter, meta]);
+
+  const sorted = useMemo(() => {
+    const rc = (l: ForgeSiteItem) => Number(l.reviewCount || 0);
+    const created = (l: ForgeSiteItem) => l.createdAt || "";
+    const arr = [...filtered];
+    if (sortBy === "oldest") arr.sort((a, b) => created(a).localeCompare(created(b)));
+    else if (sortBy === "reviews_high") arr.sort((a, b) => rc(b) - rc(a) || created(b).localeCompare(created(a)));
+    else if (sortBy === "reviews_low") arr.sort((a, b) => rc(a) - rc(b) || created(b).localeCompare(created(a)));
+    else arr.sort((a, b) => created(b).localeCompare(created(a))); // newest
+    return arr;
+  }, [filtered, sortBy]);
+
+  const SORTS: Array<{ key: typeof sortBy; label: string }> = [
+    { key: "newest", label: "Newest" },
+    { key: "oldest", label: "Oldest" },
+    { key: "reviews_high", label: "Most reviews" },
+    { key: "reviews_low", label: "Fewest reviews" },
+  ];
 
   const open = leads.find((l) => l.id === openId) || null;
 
@@ -517,8 +536,23 @@ export function LeadsCRM({
         })}
       </div>
 
+      {/* sort */}
+      <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
+        <span className="text-ink-soft">Sort:</span>
+        {SORTS.map((s) => (
+          <button
+            key={s.key}
+            onClick={() => setSortBy(s.key)}
+            className={`rounded-full px-2.5 py-1 font-medium transition-colors ${sortBy === s.key ? "bg-brand-tint text-brand" : "text-ink-soft hover:text-ink"}`}
+          >
+            {s.label}
+          </button>
+        ))}
+        <span className="ml-auto text-ink-soft">{sorted.length} contact{sorted.length === 1 ? "" : "s"}</span>
+      </div>
+
       {/* contact list */}
-      {filtered.length === 0 ? (
+      {sorted.length === 0 ? (
         <p className="py-8 text-sm text-ink-soft">No contacts match.</p>
       ) : (
         <div className="overflow-x-auto">
@@ -532,7 +566,7 @@ export function LeadsCRM({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((item) => {
+              {sorted.map((item) => {
                 const m = metaOf(item.id);
                 const a = stat(item.id);
                 const st = STAGE[m.stage];
