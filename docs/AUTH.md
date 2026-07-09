@@ -172,9 +172,12 @@ flies blind on what came back.
   `enrich_forge_contact` saves a new channel, the bounce clears (`outreach_status='none'`) and it's
   emailable again. In the call room the lead shows a red **Bounced** pill + a "scanning for new contact"
   banner, and Joe can still phone/text it meanwhile.
-- **Reply** (From = a lead) → logs `email_reply`, inserts a **`forge_replies`** row, and **pre-drafts a
-  warm response with Gemini** (`gemini-2.5-flash`), then pings Telegram. The draft lands in the
-  **"Replies to respond to"** panel at the top of `/command/leads`.
+- **Reply** (From = a lead) → logs `email_reply`, inserts a **`forge_replies`** row, **pre-drafts a
+  warm response with Gemini** (`gemini-2.5-flash`), pings Telegram, and **forwards a copy of the reply
+  to Joe's inbox** (`REPLY_FORWARD_TO`, default `josephsardella@gmail.com`) via SMTP — replies only, no
+  bounce noise. The draft lands in the **"Replies to respond to"** panel at the top of `/command/leads`.
+  (Outreach `reply-to` is the monitored mailbox `joe@thinkbigjoe.com`, so replies route here in the
+  first place — see the outreach messaging note above.)
 - **The gate:** draft → **Joe edits & sends** (server action `sendReply`, `src/lib/email.ts` →
   `sendReplyEmail`, reply-to Joe, threaded on `Re:`) → row marked `sent` + logged `email_reply_sent`.
   **Nothing emails automatically** — same human gate as every outbound. `dismissReply` clears one without

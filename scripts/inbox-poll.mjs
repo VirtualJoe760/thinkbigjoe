@@ -15,6 +15,7 @@ import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
+import nodemailer from "nodemailer";
 import pg from "pg";
 
 const ENVF = path.join(process.env.HOME, "code/thinkbigjoe/.env.local");
@@ -26,7 +27,23 @@ const USER = readEnv("SMTP_USER"), PASS = readEnv("SMTP_PASS");
 const DB = readEnv("DATABASE_URL_UNPOOLED") || readEnv("DATABASE_URL");
 const GKEY = readEnv("GEMINI_API_KEY");
 const TG_TOKEN = readEnv("TELEGRAM_BOT_TOKEN"), TG_CHAT = readEnv("TELEGRAM_CHAT_ID");
+// Where to forward a copy of REAL prospect replies (never bounces) so Joe sees them in his inbox.
+const REPLY_FORWARD_TO = readEnv("REPLY_FORWARD_TO") || "josephsardella@gmail.com";
 if (!USER || !PASS || !DB) { console.error("missing SMTP_USER/SMTP_PASS/DATABASE_URL in .env.local"); process.exit(1); }
+
+// SMTP transport (same Zoho creds) — used only to forward replies to Joe's inbox.
+const mailer = nodemailer.createTransport({ host: "smtp.zoho.com", port: 465, secure: true, auth: { user: USER, pass: PASS } });
+async function forwardReply({ businessName, from, subject, body, siteId }) {
+  try {
+    await mailer.sendMail({
+      from: USER,
+      to: REPLY_FORWARD_TO,
+      replyTo: from, // hit reply → answers the prospect directly
+      subject: `↩️ Reply from ${businessName}: ${subject || "(no subject)"}`,
+      text: `${businessName} <${from}> replied:\n\n${body}\n\n— Draft + send from the CRM: https://thinkbigjoe.com/command/leads (site #${siteId})`,
+    });
+  } catch (e) { log("reply forward failed:", e.message); }
+}
 
 async function tg(text) {
   if (!TG_TOKEN || !TG_CHAT) return;
@@ -129,6 +146,8 @@ try {
             [lead.id, from, subject.slice(0, 200), cleanBody.slice(0, 4000), draft],
           );
           await tg(`↩️ <b>Reply</b> from ${lead.business_name} &lt;${from}&gt;\n"${cleanBody.slice(0, 160)}"\n\n${draft ? "✍️ A draft response is ready for your review" : "⚠️ Couldn't auto-draft — write one"} → command/leads (reply #${ins.rows[0].id}).`);
+          // Forward a copy of the real reply to Joe's inbox (replies only — bounces never get here).
+          await forwardReply({ businessName: lead.business_name, from, subject, body: parsed.text || cleanBody, siteId: lead.id });
           replies++;
         }
       }
