@@ -9,14 +9,15 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Batch owner-outreach for BUILT + marketing-approved sites (the "your new site is live —
- * claim it" first-touch). Fired by the 7am launchd job (com.thinkbigjoe.outreach7am) which
- * curls this with CRON_SECRET. Sends the branded template (reply-to Joe) to each eligible site,
- * marks it sent, logs forge_outreach_sent.
+ * Owner-outreach for BUILT + marketing-approved sites (the "your new site is live — claim it"
+ * first-touch). Fired FREQUENTLY (every ~20 min, weekday business hours) by launchd, NOT once at a
+ * cron time: each run DRIPS out a small jittered number of emails so outreach trickles like a human
+ * instead of blasting — better deliverability + looks like real use. Sends the branded template
+ * (reply-to the monitored mailbox), marks sent, logs forge_outreach_sent.
  *
- * Guards: master kill-switch (outreach_engine.enabled), daily_goal cap, only sites with a real
- * email + claim code + not already contacted. Idempotent. `?dry=1` composes without sending —
- * used to preview exactly who/what goes out.
+ * Guards: master kill-switch (outreach_engine.enabled), daily_goal cap, weekday 9am–6pm PT window,
+ * a minimum gap between sends, and only sites with a real email + claim code + not already contacted.
+ * Idempotent. `?dry=1` composes without sending (and bypasses pacing) to preview who/what goes out.
  */
 function authed(req: Request): boolean {
   const expected = process.env.CRON_SECRET;
@@ -77,7 +78,29 @@ export async function POST(req: Request) {
     .where(sql`event_type = 'forge_outreach_sent' AND created_at >= date_trunc('day', now())`)
     .then((r) => r[0]?.n ?? 0);
   const room = Math.max(0, dailyGoal - sentToday);
-  const batch = eligible.slice(0, room);
+
+  // Drip pacing: instead of blasting the whole day's allowance at cron time, send a SMALL, jittered
+  // number per invocation so outreach trickles out like a human. The launchd job fires every ~20 min;
+  // gated to weekday business hours (Pacific) with a minimum gap between sends. `dry` previews the full
+  // eligible list (no pacing). Same model will drive the paced GV texting.
+  let perRun = room;
+  if (!dry) {
+    const pt = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
+    const hour = pt.getHours(), dow = pt.getDay();
+    if (!(dow >= 1 && dow <= 5 && hour >= 9 && hour < 18)) {
+      return NextResponse.json({ ok: true, skipped: "outside sending window (Mon–Fri 9am–6pm PT)", sent: 0, sentToday, dailyGoal });
+    }
+    const lastAt = await db
+      .select({ at: sql<string | null>`max(created_at)` })
+      .from(activityLog)
+      .where(sql`event_type = 'forge_outreach_sent'`)
+      .then((r) => r[0]?.at ?? null);
+    const sinceMin = lastAt ? (Date.now() - new Date(lastAt).getTime()) / 60000 : Infinity;
+    const MIN_GAP_MIN = 8; // never two sends closer than this, even on adjacent runs
+    const jitter = [0, 1, 1, 1, 2][Math.floor(Math.random() * 5)]; // mostly 1, sometimes 0 or 2
+    perRun = sinceMin < MIN_GAP_MIN ? 0 : Math.min(jitter, room);
+  }
+  const batch = eligible.slice(0, perRun);
 
   const results: { businessName: string; email: string; subject: string; ok?: boolean; error?: string; bounced?: boolean }[] = [];
   // A permanent SMTP rejection (5xx / rejected recipient) means the address is dead — retire it and
@@ -139,7 +162,7 @@ export async function POST(req: Request) {
     ? "no eligible sites (need built + approved + email + claim code + not yet contacted)"
     : undefined;
   return NextResponse.json({
-    ok: true, dry, dailyGoal, sentToday, eligible: eligible.length,
+    ok: true, dry, dailyGoal, sentToday, eligible: eligible.length, perRun,
     attempted: batch.length, sent: dry ? 0 : results.filter((r) => r.ok).length,
     results, skippedNoContact,
   });
