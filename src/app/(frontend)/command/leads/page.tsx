@@ -40,6 +40,7 @@ export default async function LeadsPage() {
       phone: r.phone || "",
       email: r.email || "",
       existingWebsiteUrl: r.existingWebsiteUrl || "",
+      hasPreview: !!r.preview,
       brandColor: r.brandColor || "",
       theme: r.theme || "",
       googleRating: r.googleRating || "",

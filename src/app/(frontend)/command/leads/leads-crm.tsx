@@ -246,10 +246,12 @@ function ContactDetail({
   const st = STAGE[meta.stage];
   const isUser = meta.stage === "claimed" || meta.stage === "customer";
   const script = opener(item);
-  // Hero imagery = the site we built (that's our work). Stored screenshot if we have one, else a
-  // live scaled iframe of the deployed URL; fall back to the business photo, then a branded gradient.
+  // Hero imagery = the site we made for them. Stored screenshot if we have one, else a live
+  // scaled iframe of the deployed site OR — for a preview-stage lead not yet built — the
+  // personalized /s/<slug> preview; fall back to the business photo, then a branded gradient.
+  const heroUrl = item.liveUrl || (item.hasPreview && item.slug ? `/s/${item.slug}` : null);
   const heroShot = item.screenshotUrl || null;
-  const heroFrame = !item.screenshotUrl && item.liveUrl ? item.liveUrl : null;
+  const heroFrame = !item.screenshotUrl && heroUrl ? heroUrl : null;
   const heroSite = !!(heroShot || heroFrame);
 
   // Lock body scroll while the sheet is open.
@@ -301,9 +303,9 @@ function ContactDetail({
                 {initialsOf(item)}
               </div>
             )}
-            {heroSite && item.liveUrl && (
-              <a href={item.liveUrl} target="_blank" rel="noreferrer" className="absolute bottom-2 right-2 rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white backdrop-blur transition-colors hover:bg-black/85">
-                Open live site ↗
+            {heroSite && heroUrl && (
+              <a href={heroUrl} target="_blank" rel="noreferrer" className="absolute bottom-2 right-2 rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white backdrop-blur transition-colors hover:bg-black/85">
+                {item.liveUrl ? "Open live site ↗" : "Open preview ↗"}
               </a>
             )}
           </div>
