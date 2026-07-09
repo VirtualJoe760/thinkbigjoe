@@ -144,6 +144,7 @@ export default async function ProspectsPage({
     phone: r.phone || "",
     email: r.email || "",
     existingWebsiteUrl: r.existingWebsiteUrl || "",
+    hasPreview: !!r.preview,
     brandColor: r.brandColor || "",
     theme: r.theme || "",
     googleRating: r.googleRating || "",

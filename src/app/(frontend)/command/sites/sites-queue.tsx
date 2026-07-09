@@ -14,6 +14,7 @@ export type ForgeSiteItem = {
   phone: string;
   email: string;
   existingWebsiteUrl: string;
+  hasPreview?: boolean;
   brandColor: string;
   theme: string;
   googleRating: string;
@@ -170,12 +171,12 @@ function mapsSearchUrl(item: ForgeSiteItem) {
 /** The one-glance contact card: owner + click-to-call + click-to-email + socials,
  *  so Joe can start dialing straight from the lead. */
 function ContactCard({ item }: { item: ForgeSiteItem }) {
+  const previewUrl = item.hasPreview && item.slug ? `/s/${item.slug}` : null;
   const socials: Array<{ label: string; href: string }> = [
     { label: "Maps", href: mapsSearchUrl(item) },
     item.instagramUrl && { label: "Instagram", href: item.instagramUrl },
     item.facebookUrl && { label: "Facebook", href: item.facebookUrl },
     item.linkedinUrl && { label: "LinkedIn", href: item.linkedinUrl },
-    item.existingWebsiteUrl && { label: "Site", href: item.existingWebsiteUrl },
   ].filter(Boolean) as Array<{ label: string; href: string }>;
   return (
     <div className="mt-2 rounded-xl border border-line bg-surface px-3 py-2.5">
@@ -196,6 +197,25 @@ function ContactCard({ item }: { item: ForgeSiteItem }) {
           <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">no email — enriching</span>
         )}
       </div>
+
+      {/* The site we built (their preview) vs their existing site — compare both. */}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {previewUrl ? (
+          <a href={previewUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white hover:bg-brand-dark">
+            🔎 Site preview ↗
+          </a>
+        ) : (
+          <span className="rounded-full bg-background px-2.5 py-1 text-xs font-medium text-ink-soft">preview generating…</span>
+        )}
+        {item.existingWebsiteUrl ? (
+          <a href={item.existingWebsiteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border border-line bg-background px-3 py-1 text-xs font-semibold text-ink hover:bg-surface">
+            🌐 Existing site ↗
+          </a>
+        ) : (
+          <span className="rounded-full bg-background px-2.5 py-1 text-xs font-medium text-ink-soft">no existing site</span>
+        )}
+      </div>
+
       <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         {socials.map((s) => (
           <a key={s.label} href={s.href} target="_blank" rel="noreferrer" className="font-medium text-brand underline underline-offset-2">
