@@ -52,7 +52,7 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   );
 }
 
-export function ShowroomPanel({ stats }: { stats: ShowroomStats }) {
+export function ShowroomPanel({ stats, bare = false }: { stats: ShowroomStats; bare?: boolean }) {
   const [goal, setGoal] = useState(stats.outreachGoal);
   const [budget, setBudget] = useState(stats.previewBudget);
   const [oEnabled, setOEnabled] = useState(stats.outreachEnabled);
@@ -72,7 +72,7 @@ export function ShowroomPanel({ stats }: { stats: ShowroomStats }) {
   }
 
   return (
-    <section className="rounded-2xl border border-line bg-background p-5">
+    <section className={bare ? "" : "rounded-2xl border border-line bg-background p-5"}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">

@@ -4,8 +4,9 @@ import { desc, eq, sql } from "drizzle-orm";
 import { db, forgeSites, leadEngine, outreachEngine, previewEngine } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { SitesQueue, type ForgeSiteItem } from "../sites/sites-queue";
-import { LeadEnginePanel, type LeadEngineStats } from "./lead-engine-panel";
-import { ShowroomPanel, type ShowroomStats } from "./showroom-panel";
+import { type LeadEngineStats } from "./lead-engine-panel";
+import { type ShowroomStats } from "./showroom-panel";
+import { EnginesPanel } from "./engines-panel";
 import { AutoRefresh } from "@/components/auto-refresh";
 
 export const dynamic = "force-dynamic";
@@ -256,15 +257,9 @@ export default async function ProspectsPage({
           </a>
         </div>
 
-        {showroomStats && (
+        {(showroomStats || engineStats) && (
           <div className="mt-6">
-            <ShowroomPanel stats={showroomStats} />
-          </div>
-        )}
-
-        {engineStats && (
-          <div className="mt-6">
-            <LeadEnginePanel stats={engineStats} />
+            <EnginesPanel showroom={showroomStats} lead={engineStats} />
           </div>
         )}
 

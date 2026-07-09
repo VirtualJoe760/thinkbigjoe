@@ -27,7 +27,7 @@ function Bar({ value, max, tone }: { value: number; max: number; tone: string })
   );
 }
 
-export function LeadEnginePanel({ stats }: { stats: LeadEngineStats }) {
+export function LeadEnginePanel({ stats, bare = false }: { stats: LeadEngineStats; bare?: boolean }) {
   const [goal, setGoal] = useState(stats.monthlyLeadGoal);
   const [budget, setBudget] = useState(stats.monthlyBudgetUsd);
   const [enabled, setEnabled] = useState(stats.enabled);
@@ -60,7 +60,7 @@ export function LeadEnginePanel({ stats }: { stats: LeadEngineStats }) {
   }
 
   return (
-    <section className="rounded-2xl border border-line bg-background p-5">
+    <section className={bare ? "" : "rounded-2xl border border-line bg-background p-5"}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
