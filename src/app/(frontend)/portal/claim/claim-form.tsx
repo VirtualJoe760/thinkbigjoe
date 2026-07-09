@@ -1,55 +1,28 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { claimSite, type ClaimState } from "../actions";
 
 const initial: ClaimState = { ok: false, message: "" };
 
-/** Kick off the Stripe Identity check for a just-claimed site. */
-function VerifyIdentityButton({ siteId }: { siteId: number }) {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  async function start() {
-    setBusy(true);
-    setErr(null);
-    try {
-      const res = await fetch("/api/identity/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ siteId }),
-      });
-      const data = await res.json();
-      if (data.url) window.location.href = data.url;
-      else if (data.verified) setErr("Already verified ✓");
-      else setErr(data.error || "Couldn't start verification.");
-    } catch {
-      setErr("Couldn't start verification.");
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <div className="mt-6 rounded-xl border border-line bg-background p-4">
-      <p className="text-sm font-semibold text-ink">One quick security step</p>
-      <p className="mt-1 text-sm text-ink-soft">
-        Verify your identity so no one else can ever take over your site — a fast photo of your ID + a selfie.
-      </p>
-      <button
-        onClick={start}
-        disabled={busy}
-        className="mt-3 inline-flex items-center justify-center rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-      >
-        {busy ? "Starting…" : "Verify my identity →"}
-      </button>
-      {err && <p className="mt-2 text-sm text-ink-soft">{err}</p>}
-    </div>
-  );
-}
-
 export function ClaimForm() {
   const [state, action, pending] = useActionState(claimSite, initial);
+  const router = useRouter();
+
+  // On a successful claim, drop them straight into the portal (with a beat to read the
+  // confirmation). The "Go to your portal" button is the manual fallback.
+  useEffect(() => {
+    if (state.ok && state.site) {
+      const t = setTimeout(() => {
+        router.push("/portal");
+        router.refresh();
+      }, 1800);
+      return () => clearTimeout(t);
+    }
+  }, [state.ok, state.site, router]);
 
   if (state.ok && state.site) {
     return (
@@ -67,23 +40,13 @@ export function ClaimForm() {
             Your site is being built now — track it in your portal.
           </div>
         )}
-        <VerifyIdentityButton siteId={state.site.id} />
-        <div className="mt-6 flex flex-wrap gap-3">
-          {state.site.liveUrl && (
-            <a
-              href={state.site.liveUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
-            >
-              View your site →
-            </a>
-          )}
+        <p className="mt-4 text-sm text-ink-soft">Taking you to your portal&hellip;</p>
+        <div className="mt-4">
           <Link
             href="/portal"
-            className="inline-flex items-center justify-center rounded-full border border-line bg-background px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+            className="inline-flex items-center justify-center rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
           >
-            Go to your portal
+            Go to your portal →
           </Link>
         </div>
       </div>
