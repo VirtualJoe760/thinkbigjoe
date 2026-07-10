@@ -37,7 +37,7 @@ The nav follows the funnel: **Build → Prospect → Sell.**
 | **Overview** | `/command` | Dashboard — appointments, calendar connection status, top-line stats. |
 | **Engine** | `/command/engine` | The **engine room / ops cockpit** — run + monitor the forge. **Weekly spend gauge** (run-budget used vs remaining, 75/90% color states), **14-day activity chart** (builds/edits/outreach) + throughput cards, **granular controls** (master + new-site-builds / customer-edits / idle-templates toggles + a settable `weekly_run_budget`), the **build queue** (elapsed + ETA) and **customer edit queue** (with live "view site" links), "Clear stuck builds", and a forge **activity feed** with live-site links. All numbers come from `getForgeDigest()` (`src/lib/forge-stats.ts`). Controls gate `forge-poll`/`edit-poll` per-capability — see FORGE.md's "Granular controls + weekly run-budget" note. The same digest surfaces on the **Overview** ("Engine flow" card) and via the **`forge_digest` MCP tool**. Also here: the **Template designer** (`requestTemplateDesign` → `job_requests(kind='design_template')` → `trigger-poll` → `forge-template.sh`, builds the next Brand-Lead-proposed design, human-gated) and **Design research** — the Brand Lead's accumulating research reports (`design_reports` table, written by `save_design_report`), each citing the sites it studied; Joe verifies/rejects via `setDesignReportStatus`. See OPENCLAW.md's brand-lead cron. |
 | **Prospecting** | `/command/prospects` | The pipeline: web-dev leads (find → review → **Built**, gated behind marketing approval) + the showroom preview/outreach dials. Cross-links to the call room. |
-| **Leads** | `/command/leads` | The **call room** — only sites Joe has approved for marketing. Photo, reviews, a ready calling script, click-to-call/text/email. Cross-links back to Prospecting. |
+| **Leads** | `/command/leads` | The **contact book** — every site approved for marketing OR built, INCLUDING the ones that claimed + signed up (kept visible as "User"/"Customer" so conversions are tracked, not lost). A **"Signed up" scoreboard** (acct #, plan, paying-count) sits above the call list. Each contact card shows the site we built, reviews, an **Online-presence pill row** (their current site · Google Business · Instagram/Facebook/LinkedIn, all clickable), the AI's fit-reason, a ready calling script, click-to-call/text/email, and — for signed-up users — a **User Profile block** (account #, plan, real subscription/billing state, receptionist + domain status). Cross-links back to Prospecting. |
 | **Appointments** | `/command/appointments` | DB-enriched booked-call detail (role/industry/team-size/timeline, calendar links). |
 | **Venus** | `/command/crons` (+ sub-nav: Crons / Audit log / Team) | Cron manifest + last-run, the audit log (`activity_log`), and the OpenClaw team roster. |
 | **Settings** | `/command/settings` | Automation on/off, calendar connection, analytics link. |
@@ -67,22 +67,29 @@ lifecycle diagram; this table is the UI-to-data mapping.
 
 ---
 
-## `/command/leads` — the call room
+## `/command/leads` — the contact book
 
-**Gated to `marketing_approved_at IS NOT NULL`.** A built-but-unapproved site never appears here —
-it's still "in review" on Prospecting. Each card (`LeadCallCard`) shows a business photo
-(Maps/Facebook, monogram fallback), star rating + real review quotes, social follower reach, and a
-generated **calling script** (a personalized opener + the per-lead "angle" from call-prep). Buttons:
-📞 Call, 💬 Text the link, 🔗 Live site, ✉️ Email.
+**Shows every site `marketing_approved_at IS NOT NULL` OR `status='built'`, minus denied/deleted —
+INCLUDING claimed/signed-up rows.** A built-but-unapproved-and-unclaimed site never appears (still "in
+review" on Prospecting). Crucially it does **not** filter out `claimed_by_user_id` rows: once a business
+signs up we keep it visible as a **User** (claimed, no plan) or **Customer** (paying), so conversions are
+tracked instead of vanishing. A **"Signed up" scoreboard** (`signedUp` in `leads-crm.tsx`) sits atop the
+list — every claimed contact with its account # + plan, newest claim first, click-to-open.
 
-The room is a **CRM**: a table of contacts by pipeline stage (`new → contacted → replied → bad-contact
-→ user → customer`), each row with a **business thumbnail** (`photo_url`, sourced by the enrichment cron
-from Maps/social) and rich at-a-glance data (rating, activity). Tapping opens a contact screen led by a
-**dominant business image**, plus a **preview of the site we built** — the stored `screenshot_url` if
-present, else a live (scaled) iframe of the deployed URL (our Vercel sites allow framing; no third-party
-screenshot service, so nothing brands the image). Deliverability
-is honored: a **bounced email is a failed attempt, never a "touch"** (see [AUTH.md](AUTH.md) →
-"Deliverability principle").
+Each contact card (`ContactDetail`) shows the **site we built** (stored `screenshot_url`, else a scaled
+live iframe of the deployed/preview URL — our Vercel sites allow framing, so nothing brands the image),
+star rating + real review quotes, the **Online-presence pill row** (existing site · Google Business via
+`google_maps_url` or a name+city Maps search fallback · Instagram/Facebook/LinkedIn — each gated on
+presence, clickable), the AI **fit-reason**, and a generated **calling script** (personalized opener +
+the per-lead call-prep "angle"). Actions: 📞 Call, 💬 Text link, ✉️ Email, 🔗 site, then a divided
+cluster — **Copy claim text for Google Voice** (un-signed-up leads only; the text drops the claim code
+once claimed) + **Book an appointment**.
+
+For a signed-up user the card adds a **User Profile block**: account # (from `better_auth.user`), plan,
+real subscription/billing state (`subscription_status` / `one_time_paid` / `paid_at`, not just a boolean),
+and live-service status (receptionist, domain). Pipeline stages: `new → contacted → replied → bad-contact
+→ user → customer`. Deliverability is honored: a **bounced email is a failed attempt, never a "touch"**
+(see [AUTH.md](AUTH.md) → "Deliverability principle").
 
 **Replies to respond to** (top of the page, when any): inbound email replies caught by the inbox
 poller (`scripts/inbox-poll.mjs` → `forge_replies` table). Each arrives with a Gemini-drafted response

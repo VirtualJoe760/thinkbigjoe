@@ -27,9 +27,10 @@ export default async function LeadsPage() {
     .where(and(sql`status NOT IN ('denied','deleted')`, or(isNotNull(forgeSites.marketingApprovedAt), eq(forgeSites.status, "built"))))
     .orderBy(desc(forgeSites.createdAt));
 
-  // Built businesses we haven't converted yet — callable leads.
+  // The full contact book — every marketing-approved / built business, INCLUDING the ones that
+  // claimed + signed up. We keep converted contacts visible (as "User"/"Customer" stages) so Joe
+  // can see who actually signed up; the pipeline stage is computed per-row below.
   const webDevLeads: ForgeSiteItem[] = webDevRows
-    .filter((r) => !r.claimedByUserId)
     .map((r) => ({
       id: String(r.id),
       slug: r.slug,
@@ -129,7 +130,9 @@ export default async function LeadsPage() {
     const row = rowById.get(lead.id);
     const a = attempts[lead.id];
     const hist = histories[lead.id] || [];
-    const paid = !!row?.oneTimePaid;
+    // Paying = a real recurring subscription OR a one-time payment (not just the legacy boolean).
+    const subActive = row?.subscriptionStatus === "active" || row?.subscriptionStatus === "trialing";
+    const paid = !!row?.oneTimePaid || subActive;
     const claimed = !!row?.claimedByUserId;
     let stage: LeadStage;
     if (paid) stage = "customer";
@@ -143,6 +146,12 @@ export default async function LeadsPage() {
       accountNumber: row?.claimedByUserId ? acctByUser[row.claimedByUserId] ?? null : null,
       plan: row?.plan ? PLANS[row.plan as PlanKey]?.label ?? row.plan : null,
       paid,
+      subscriptionStatus: row?.subscriptionStatus ?? null,
+      paidAt: row?.paidAt ?? null,
+      receptionistStatus: row?.receptionistStatus && row.receptionistStatus !== "none" ? row.receptionistStatus : null,
+      domain: row?.domain ?? null,
+      domainStatus: row?.domainStatus ?? null,
+      claimedAt: row?.claimedAt ?? null,
     };
   }
 

@@ -13,7 +13,18 @@ export type AttemptStat = { call: number; text: number; email: number; failed: n
 // The CRM pipeline: a lead becomes a contact (we reach out), then a user profile once they set up
 // on the site (claim), then a paying customer. Each stage is computed server-side (see page.tsx).
 export type LeadStage = "new" | "contacted" | "replied" | "bounced" | "claimed" | "customer";
-export type LeadMeta = { stage: LeadStage; accountNumber: string | null; plan: string | null; paid: boolean };
+export type LeadMeta = {
+  stage: LeadStage;
+  accountNumber: string | null;
+  plan: string | null;
+  paid: boolean;
+  subscriptionStatus: string | null;
+  paidAt: string | null;
+  receptionistStatus: string | null;
+  domain: string | null;
+  domainStatus: string | null;
+  claimedAt: string | null;
+};
 
 const STAGE: Record<LeadStage, { label: string; dot: string; chip: string; blurb: string }> = {
   new: { label: "New", dot: "bg-emerald-500", chip: "bg-emerald-50 text-emerald-700", blurb: "Not contacted yet" },
@@ -27,6 +38,12 @@ const STAGE_ORDER: LeadStage[] = ["new", "contacted", "replied", "bounced", "cla
 
 const tel = (p: string) => p.replace(/[^\d+]/g, "");
 const firstName = (n: string) => (n || "").trim().split(/\s+/)[0] || "";
+// Deep-link to the business on Google Maps / Business Profile. Prefer the URL the prospector
+// captured; otherwise a Maps search on name + city so every contact has a working link.
+const mapsSearchUrl = (i: ForgeSiteItem) =>
+  i.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([i.businessName, i.city].filter(Boolean).join(", "))}`;
+const fmtDate = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
 const fmtNum = (n?: number) => (n == null ? "" : n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
 const US_STATES = new Set(["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"]);
 function stateFrom(s: string): string {
@@ -232,20 +249,35 @@ function ContactDetail({
   const [copiedMsg, setCopiedMsg] = useState(false);
   const [showBook, setShowBook] = useState(false);
   const s = item.socialStats || {};
-  const reach: string[] = [];
-  if (s.instagram?.followers) reach.push(`📷 ${fmtNum(s.instagram.followers)}`);
-  if (s.facebook?.followers) reach.push(`👍 ${fmtNum(s.facebook.followers)}`);
+  const igF = s.instagram?.followers ? fmtNum(s.instagram.followers) : "";
+  const fbF = s.facebook?.followers ? fmtNum(s.facebook.followers) : "";
+  // The business's real online footprint — their current site, Google Business, and socials,
+  // each a clickable pill (follower counts fold into the IG/FB label). Only rendered when present;
+  // Google Business always resolves (captured URL, else a name+city Maps search).
+  const presence: Array<{ label: string; href: string; icon: string }> = [
+    item.existingWebsiteUrl ? { label: "Current site", href: item.existingWebsiteUrl, icon: "🌐" } : null,
+    { label: "Google Business", href: mapsSearchUrl(item), icon: "📍" },
+    item.instagramUrl ? { label: igF ? `Instagram · ${igF}` : "Instagram", href: item.instagramUrl, icon: "📷" } : null,
+    item.facebookUrl ? { label: fbF ? `Facebook · ${fbF}` : "Facebook", href: item.facebookUrl, icon: "👍" } : null,
+    item.linkedinUrl ? { label: "LinkedIn", href: item.linkedinUrl, icon: "💼" } : null,
+  ].filter(Boolean) as Array<{ label: string; href: string; icon: string }>;
   const quotes = (item.reviewQuotes || []).filter((q) => q.text).slice(0, 2);
   const isApple = typeof navigator !== "undefined" && /(iphone|ipad|mac)/i.test(navigator.userAgent);
   const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com";
   const previewLink = item.liveUrl || (item.slug ? `${SITE}/s/${item.slug}` : SITE);
-  // The message the rep texts from their Google Voice — carries the preview link AND the claim code
-  // so the prospect can create an account and claim (then pay for) the site.
-  const claimMsg = `Hi${firstName(item.ownerName) ? ` ${firstName(item.ownerName)}` : ""}, it's Joe — here's the website preview I built for ${item.businessName}: ${previewLink}${item.claimCode ? `. To make it yours, create a free account and enter code ${item.claimCode} at ${SITE}/portal/claim` : ""}. Text me back with any questions!`;
-  const smsBody = encodeURIComponent(claimMsg);
   const st = STAGE[meta.stage];
   const isUser = meta.stage === "claimed" || meta.stage === "customer";
+  // The message the rep texts from Google Voice — the preview link plus, for an un-claimed lead,
+  // the claim code. Once they've signed up the claim instructions are dropped (it's just a link).
+  const claimMsg = `Hi${firstName(item.ownerName) ? ` ${firstName(item.ownerName)}` : ""}, it's Joe — here's the website preview I built for ${item.businessName}: ${previewLink}${!isUser && item.claimCode ? `. To make it yours, create a free account and enter code ${item.claimCode} at ${SITE}/portal/claim` : ""}. Text me back with any questions!`;
+  const smsBody = encodeURIComponent(claimMsg);
   const script = opener(item);
+  // Real billing truth: a recurring subscription state wins; else the one-time flag; else nothing.
+  const billingLabel = meta.subscriptionStatus
+    ? meta.subscriptionStatus.replace(/_/g, " ")
+    : meta.paid ? "paid (one-time)" : "not active";
+  const billingGood = meta.paid || meta.subscriptionStatus === "active" || meta.subscriptionStatus === "trialing";
+  const domainLabel = meta.domain ? (meta.domainStatus && meta.domainStatus !== "live" ? `${meta.domain} · ${meta.domainStatus}` : meta.domain) : null;
   // Hero imagery = the site we made for them. Stored screenshot if we have one, else a live
   // scaled iframe of the deployed site OR — for a preview-stage lead not yet built — the
   // personalized /s/<slug> preview; fall back to the business photo, then a branded gradient.
@@ -283,9 +315,9 @@ function ContactDetail({
           <div className="relative -mx-4 -mt-4 mb-4">
             {heroShot ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={heroShot} alt={`${item.businessName} website`} className="h-52 w-full bg-surface object-cover object-top" />
+              <img src={heroShot} alt={`${item.businessName} website`} className="h-48 w-full bg-surface object-cover object-top" />
             ) : heroFrame ? (
-              <div className="relative w-full overflow-hidden bg-surface" style={{ aspectRatio: "1280 / 800" }}>
+              <div className="relative h-48 w-full overflow-hidden bg-surface">
                 <iframe
                   src={heroFrame}
                   title={`${item.businessName} website`}
@@ -297,10 +329,11 @@ function ContactDetail({
               </div>
             ) : item.photoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={item.photoUrl} alt={item.businessName} className="h-44 w-full bg-surface object-cover" />
+              <img src={item.photoUrl} alt={item.businessName} className="h-48 w-full bg-surface object-cover" />
             ) : (
-              <div className="flex h-28 w-full items-center justify-center text-3xl font-extrabold text-white" style={{ background: item.brandColor || "#64748b" }}>
-                {initialsOf(item)}
+              <div className="flex h-48 w-full flex-col items-center justify-center gap-2 text-white" style={{ background: item.brandColor || "#64748b" }}>
+                <span className="text-4xl font-extrabold">{initialsOf(item)}</span>
+                <span className="px-4 text-center text-sm font-semibold text-white/85">{item.businessName}</span>
               </div>
             )}
             {heroSite && heroUrl && (
@@ -310,11 +343,40 @@ function ContactDetail({
             )}
           </div>
 
-          {/* rating + reach */}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-soft">
-            {item.googleRating && <span className="flex items-center gap-1"><Stars rating={item.googleRating} /> {Number(item.googleRating).toFixed(1)}{item.reviewCount ? ` (${item.reviewCount})` : ""}</span>}
-            {reach.length > 0 && <span>{reach.join("  ·  ")}</span>}
-          </div>
+          {/* rating */}
+          {item.googleRating && (
+            <div className="flex items-center gap-1.5 text-sm text-ink">
+              <Stars rating={item.googleRating} />
+              <span className="font-semibold">{Number(item.googleRating).toFixed(1)}</span>
+              {item.reviewCount && <span className="text-ink-soft">· {item.reviewCount} reviews</span>}
+            </div>
+          )}
+
+          {/* why this lead — the AI's fit reasoning (highest-signal one-liner) */}
+          {item.fitReason && (
+            <p className="mt-1.5 text-sm leading-snug text-ink-soft">
+              <span className="font-medium text-ink">Why: </span>{item.fitReason}
+            </p>
+          )}
+
+          {/* online presence — current site · Google Business · socials, all clickable */}
+          {presence.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {presence.map((p) => (
+                <a
+                  key={p.label}
+                  href={p.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 rounded-full border border-line bg-background px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-surface"
+                >
+                  <span aria-hidden>{p.icon}</span>
+                  {p.label}
+                  <span className="text-ink-soft">↗</span>
+                </a>
+              ))}
+            </div>
+          )}
 
           {/* bounced banner */}
           {meta.stage === "bounced" && (
@@ -323,19 +385,25 @@ function ContactDetail({
             </div>
           )}
 
-          {/* user-profile block — the contact enriched into a user */}
+          {/* user-profile block — the contact who claimed + signed up (Joe's "did they sign up?" view) */}
           {isUser && (
             <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3">
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-violet-700">
-                <span>👤 User profile</span>
-                {meta.paid && <span className="rounded-full bg-brand-tint px-2 py-0.5 text-[11px] font-semibold text-brand">paying</span>}
+                <span>👤 Signed-up user</span>
+                {billingGood && <span className="rounded-full bg-brand-tint px-2 py-0.5 text-[11px] font-semibold text-brand">paying</span>}
+                {meta.claimedAt && <span className="ml-auto text-[11px] font-medium normal-case text-violet-500">claimed {fmtDate(meta.claimedAt)}</span>}
               </div>
-              <dl className="mt-2 grid grid-cols-2 gap-y-1 text-sm">
+              <dl className="mt-2 grid grid-cols-[auto,1fr] gap-x-4 gap-y-1 text-sm">
                 {meta.accountNumber && (<><dt className="text-ink-soft">Account #</dt><dd className="text-right font-mono font-semibold text-ink">{meta.accountNumber}</dd></>)}
                 <dt className="text-ink-soft">Plan</dt><dd className="text-right font-medium text-ink">{meta.plan || "not chosen"}</dd>
-                <dt className="text-ink-soft">Billing</dt><dd className={`text-right font-medium ${meta.paid ? "text-emerald-700" : "text-ink"}`}>{meta.paid ? "active" : "not active"}</dd>
+                <dt className="text-ink-soft">Billing</dt>
+                <dd className={`text-right font-medium capitalize ${billingGood ? "text-emerald-700" : "text-ink"}`}>
+                  {billingLabel}{meta.paidAt ? <span className="text-ink-soft"> · since {fmtDate(meta.paidAt)}</span> : null}
+                </dd>
+                {meta.receptionistStatus && (<><dt className="text-ink-soft">Receptionist</dt><dd className="text-right font-medium capitalize text-ink">{meta.receptionistStatus}</dd></>)}
+                {domainLabel && (<><dt className="text-ink-soft">Domain</dt><dd className="text-right font-medium text-ink">{domainLabel}</dd></>)}
               </dl>
-              {!meta.paid && <p className="mt-2 text-xs text-violet-700">They claimed their site but haven&apos;t picked a plan — nudge them to activate.</p>}
+              {!billingGood && <p className="mt-2 text-xs text-violet-700">They claimed their site but haven&apos;t activated a plan — nudge them to subscribe.</p>}
             </div>
           )}
 
@@ -363,31 +431,33 @@ function ContactDetail({
             )}
           </div>
 
-          {/* Text the claim code from Google Voice — copy the ready message + paste into GV. */}
-          {item.claimCode && (
-            <button
-              onClick={() => {
-                onContact(item.id, "text");
-                navigator.clipboard?.writeText(claimMsg).then(() => {
-                  setCopiedMsg(true);
-                  setTimeout(() => setCopiedMsg(false), 1800);
-                });
-              }}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-3 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-dark active:scale-[0.98]"
-            >
-              {copiedMsg ? "✓ Copied — paste into Google Voice" : "📋 Copy claim text (preview + code) for Google Voice"}
-            </button>
-          )}
-          <p className="mt-1.5 text-[11px] text-ink-soft">
-            Text the code from your <b>Google Voice</b> — copy the message, then paste + send in GV. The
-            phone/📱 buttons use your device. Every tap is logged as an attempt below.
-          </p>
+          {/* secondary cluster — claim-text (un-signed-up only) + booking, set apart by a divider */}
+          <div className="mt-4 border-t border-line pt-4">
+            {!isUser && item.claimCode && (
+              <>
+                <button
+                  onClick={() => {
+                    onContact(item.id, "text");
+                    navigator.clipboard?.writeText(claimMsg).then(() => {
+                      setCopiedMsg(true);
+                      setTimeout(() => setCopiedMsg(false), 1800);
+                    });
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-3 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-dark active:scale-[0.98]"
+                >
+                  {copiedMsg ? "✓ Copied — paste into Google Voice" : "📋 Copy claim text for Google Voice"}
+                </button>
+                <p className="mt-1.5 text-[11px] text-ink-soft">
+                  Text the code from your <b>Google Voice</b> — copy, then paste + send in GV. The Call/Text
+                  buttons above use your device. Every tap is logged below.
+                </p>
+              </>
+            )}
 
-          {/* Book an appointment for this prospect (onto Joe's calendar). */}
-          <div className="mt-3">
+            {/* Book an appointment for this contact (onto Joe's calendar). */}
             <button
               onClick={() => setShowBook((v) => !v)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-line px-3 py-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+              className={`flex w-full items-center justify-center gap-2 rounded-xl border border-line px-3 py-3 text-sm font-semibold text-ink transition-colors hover:bg-surface ${!isUser && item.claimCode ? "mt-2" : ""}`}
             >
               📅 {showBook ? "Hide booking" : "Book an appointment"}
             </button>
@@ -395,11 +465,12 @@ function ContactDetail({
           </div>
 
           {/* contact facts */}
-          <dl className="mt-4 grid grid-cols-[auto,1fr] gap-x-3 gap-y-1.5 text-sm">
-            {item.ownerName && (<><dt className="text-ink-soft">Owner</dt><dd className="text-ink">{item.ownerName}</dd></>)}
-            {item.phone && (<><dt className="text-ink-soft">Phone</dt><dd className="text-ink">{item.phone}</dd></>)}
-            {item.email && (<><dt className="text-ink-soft">Email</dt><dd className="truncate text-ink">{item.email}</dd></>)}
-            {item.claimCode && (<><dt className="text-ink-soft">Claim code</dt><dd className="font-mono text-ink">{item.claimCode}</dd></>)}
+          <dl className="mt-4 grid grid-cols-[7rem,1fr] items-baseline gap-x-3 gap-y-2 text-sm">
+            {item.ownerName && (<><dt className="text-xs uppercase tracking-wide text-ink-soft">Owner</dt><dd className="font-medium text-ink">{item.ownerName}</dd></>)}
+            {item.phone && (<><dt className="text-xs uppercase tracking-wide text-ink-soft">Phone</dt><dd className="font-medium text-ink">{item.phone}</dd></>)}
+            {item.email && (<><dt className="text-xs uppercase tracking-wide text-ink-soft">Email</dt><dd className="truncate font-medium text-ink">{item.email}</dd></>)}
+            {[niche1(item), cityState(item)].filter(Boolean).length > 0 && (<><dt className="text-xs uppercase tracking-wide text-ink-soft">Business</dt><dd className="font-medium text-ink">{[niche1(item), cityState(item)].filter(Boolean).join(" · ")}</dd></>)}
+            {!isUser && item.claimCode && (<><dt className="text-xs uppercase tracking-wide text-ink-soft">Claim code</dt><dd className="font-mono font-medium text-ink">{item.claimCode}</dd></>)}
           </dl>
 
           {/* communication timeline */}
@@ -461,7 +532,8 @@ export function LeadsCRM({
   const [local, setLocal] = useState<Record<string, AttemptStat>>(attempts);
 
   const stat = (id: string): AttemptStat => local[id] || { call: 0, text: 0, email: 0, total: 0, lastAt: null };
-  const metaOf = (id: string): LeadMeta => meta[id] || { stage: "new", accountNumber: null, plan: null, paid: false };
+  const metaOf = (id: string): LeadMeta =>
+    meta[id] || { stage: "new", accountNumber: null, plan: null, paid: false, subscriptionStatus: null, paidAt: null, receptionistStatus: null, domain: null, domainStatus: null, claimedAt: null };
 
   const record = (id: string, channel: "call" | "text" | "email") => {
     setLocal((m) => {
@@ -477,6 +549,16 @@ export function LeadsCRM({
     return c;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leads, meta]);
+
+  // Conversions scoreboard — everyone who claimed + signed up, newest claim first. A glance answer
+  // to "did anyone actually sign up?" that stays visible above the cold-call list.
+  const signedUp = useMemo(() => {
+    return leads
+      .filter((l) => { const st = metaOf(l.id).stage; return st === "claimed" || st === "customer"; })
+      .sort((a, b) => (metaOf(b.id).claimedAt || "").localeCompare(metaOf(a.id).claimedAt || ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads, meta]);
+  const payingCount = signedUp.filter((l) => metaOf(l.id).stage === "customer").length;
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -510,6 +592,38 @@ export function LeadsCRM({
 
   return (
     <div>
+      {/* conversions scoreboard — who actually signed up (claimed) + who's paying */}
+      {signedUp.length > 0 && (
+        <div className="mb-4 rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
+          <div className="mb-2.5 flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-bold text-violet-800">🎉 Signed up</h3>
+            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-700">{signedUp.length}</span>
+            {payingCount > 0 && <span className="rounded-full bg-brand-tint px-2 py-0.5 text-xs font-semibold text-brand">{payingCount} paying</span>}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {signedUp.map((l) => {
+              const m = metaOf(l.id);
+              return (
+                <button
+                  key={l.id}
+                  onClick={() => setOpenId(l.id)}
+                  className="flex items-center gap-3 rounded-xl border border-violet-100 bg-background px-3 py-2 text-left transition-colors hover:bg-surface"
+                >
+                  <Thumb item={l} size={32} rounded="rounded-md" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-ink">{l.businessName}</div>
+                    <div className="truncate text-xs text-ink-soft">
+                      {m.accountNumber ? `#${m.accountNumber}` : "no acct #"} · {m.plan || "no plan yet"}
+                    </div>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${STAGE[m.stage].chip}`}>{STAGE[m.stage].label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* search */}
       <div className="relative mb-3">
         <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -584,7 +698,6 @@ export function LeadsCRM({
                   >
                     <td className="py-2.5 pr-3">
                       <div className="flex items-center gap-3">
-                        <span className={`h-2 w-2 shrink-0 rounded-full ${st.dot}`} title={st.label} />
                         <Thumb item={item} size={44} />
                         <div className="min-w-0">
                           <div className="truncate font-semibold text-ink">{item.businessName}</div>
