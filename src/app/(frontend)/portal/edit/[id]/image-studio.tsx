@@ -33,6 +33,9 @@ export function ImageStudio({ siteId }: { siteId: number }) {
   const [editPrompt, setEditPrompt] = useState("");
   const [rot, setRot] = useState(0);
   const [adj, setAdj] = useState({ brightness: 100, contrast: 100, saturate: 100 });
+  // Mobile: show one control group at a time (segmented sub-nav) so the canvas stays visible.
+  const [mtab, setMtab] = useState<"create" | "type" | "enhance" | "adjust">("create");
+  const grp = (k: typeof mtab) => (mtab === k ? "space-y-4" : "hidden space-y-4 md:block");
 
   useEffect(() => {
     fetch(`/api/site-assets/${siteId}`).then((r) => r.json()).then((d) => setAssets(d.assets || [])).catch(() => {});
@@ -108,85 +111,123 @@ export function ImageStudio({ siteId }: { siteId: number }) {
     const a = document.createElement("a"); a.href = url; a.download = `${assetType.key}.png`; a.click();
   }
 
+  const MOBILE_TABS: { key: typeof mtab; label: string }[] = [
+    { key: "create", label: "Create" },
+    { key: "type", label: "Type" },
+    { key: "enhance", label: "Enhance" },
+    { key: "adjust", label: "Adjust" },
+  ];
+
   return (
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-      <aside className="w-full shrink-0 space-y-4 overflow-y-auto border-b border-line bg-surface p-4 text-sm md:w-72 md:border-b-0 md:border-r">
-        <Section title="Asset type">
-          <div className="flex flex-wrap gap-1.5">
-            {ASSET_TYPES.map((t) => (
-              <button key={t.key} onClick={() => setAssetType(t)} className={`rounded-full border px-2.5 py-1 text-xs font-medium ${assetType.key === t.key ? "border-brand bg-brand text-white" : "border-line bg-background hover:bg-brand-tint"}`}>{t.label}</button>
-            ))}
-          </div>
-        </Section>
-
-        <Section title="Generate">
-          {assetType.shape && (
-            <p className="mb-1.5 text-[11px] text-ink-soft">
-              Shape: <span className="font-medium text-ink">{assetType.shape}</span>
-              {assetType.key === "logo" && " — fills a navbar without shrinking"}
-            </p>
-          )}
-          <textarea value={genPrompt} onChange={(e) => setGenPrompt(e.target.value)} placeholder={`Describe a ${assetType.label.toLowerCase()}…`} className="w-full rounded-xl border border-line bg-background px-3 py-2 text-sm" rows={2} />
-          {src && (
-            <label className="mt-1.5 flex items-center gap-1.5 text-xs text-ink-soft"><input type="checkbox" checked={useRef_} onChange={(e) => setUseRef(e.target.checked)} /> build from the current image</label>
-          )}
-          <button onClick={generate} disabled={busy} className="mt-2 w-full rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50">Generate</button>
-        </Section>
-
-        <Section title="Start from">
-          <label className="block cursor-pointer rounded-full border border-line bg-background px-4 py-2 text-center text-xs font-semibold hover:bg-surface">Upload an image<input type="file" accept="image/*" onChange={onUpload} className="hidden" /></label>
-          {assets.length > 0 && (
-            <>
-              <p className="mt-2 text-xs text-ink-soft">Your site&apos;s assets:</p>
-              <div className="mt-1 grid grid-cols-3 gap-1.5">
-                {assets.map((a, i) => (
-                  <button key={i} onClick={() => loadFromUrl(a.url)} title={a.label} className="group relative aspect-square overflow-hidden rounded-lg border border-line bg-background hover:border-brand">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={a.url} alt={a.label} className="h-full w-full object-contain p-1" />
-                    <span className="absolute inset-x-0 bottom-0 bg-ink/70 py-0.5 text-center text-[9px] text-white opacity-0 group-hover:opacity-100">{a.label}</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </Section>
-
-        <Section title="AI enhance">
-          <div className="flex flex-wrap gap-1.5">
-            {PRESETS.map((p) => (<button key={p.label} onClick={() => aiEdit(p.prompt)} disabled={busy} className="rounded-full border border-line bg-background px-2.5 py-1 text-xs font-medium hover:bg-brand-tint disabled:opacity-50">{p.label}</button>))}
-          </div>
-          <textarea value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} placeholder="Or describe an edit…" className="mt-2 w-full rounded-xl border border-line bg-background px-3 py-2 text-sm" rows={2} />
-          <button onClick={() => aiEdit(editPrompt)} disabled={busy} className="mt-2 w-full rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90 disabled:opacity-50">AI edit</button>
-        </Section>
-
-        <Section title="Adjust">
-          <Slider label="Brightness" value={adj.brightness} onChange={(v) => setAdj((a) => ({ ...a, brightness: v }))} />
-          <Slider label="Contrast" value={adj.contrast} onChange={(v) => setAdj((a) => ({ ...a, contrast: v }))} />
-          <Slider label="Saturation" value={adj.saturate} onChange={(v) => setAdj((a) => ({ ...a, saturate: v }))} />
-          <div className="mt-2 flex gap-2">
-            <button onClick={() => setRot((r) => (r + 90) % 360)} className="flex-1 rounded-full border border-line bg-background px-3 py-1.5 text-xs font-semibold hover:bg-surface">↻ Rotate</button>
-            <button onClick={() => { setRot(0); setAdj({ brightness: 100, contrast: 100, saturate: 100 }); }} className="flex-1 rounded-full border border-line bg-background px-3 py-1.5 text-xs font-semibold hover:bg-surface">Reset</button>
-          </div>
-        </Section>
-
-        <button onClick={download} disabled={!src} className="w-full rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-40">⬇ Download {assetType.label}</button>
-      </aside>
-
-      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[repeating-conic-gradient(#e9edf3_0%_25%,#f6f8fb_0%_50%)] bg-[length:24px_24px] p-6">
+      {/* Canvas — a fixed strip on top on phones (always visible while you work), big panel on the
+          right on desktop (order-last on md keeps the controls on the left, as before). */}
+      <div className="relative order-first flex h-[38vh] shrink-0 items-center justify-center overflow-auto bg-[repeating-conic-gradient(#e9edf3_0%_25%,#f6f8fb_0%_50%)] bg-[length:24px_24px] p-4 md:order-last md:h-auto md:min-h-0 md:flex-1 md:p-6">
         {src ? (
           <canvas ref={canvasRef} className="max-h-full max-w-full rounded-lg shadow-lg" />
         ) : (
           <div className="max-w-sm text-center text-ink-soft">
-            <p className="text-lg font-semibold">🎨 Brand-asset studio</p>
-            <p className="mt-1 text-sm">Pick an asset type, then generate one from a prompt, load your site&apos;s current asset, or upload an image to edit.</p>
+            <p className="text-base font-semibold md:text-lg">🎨 Brand-asset studio</p>
+            <p className="mt-1 text-xs md:text-sm">Pick an asset type, then generate one from a prompt, load your site&apos;s current asset, or upload an image to edit.</p>
           </div>
         )}
         {status && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-ink px-4 py-2 text-sm font-medium text-white shadow-lg">
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-ink px-4 py-2 text-sm font-medium text-white shadow-lg">
             {busy && <span className="mr-2 inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white align-middle" />}{status}
           </div>
         )}
       </div>
+
+      <aside className="flex min-h-0 flex-1 flex-col border-t border-line bg-surface text-sm md:w-72 md:flex-none md:border-r md:border-t-0">
+        {/* Mobile-only segmented sub-nav — one control group at a time */}
+        <div className="flex gap-1 border-b border-line p-2 md:hidden">
+          {MOBILE_TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setMtab(t.key)}
+              className={`flex-1 rounded-lg py-2 text-xs font-semibold transition-colors ${mtab === t.key ? "bg-ink text-white" : "text-ink-soft"}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+          <div className={grp("type")}>
+            <Section title="Asset type">
+              <div className="flex flex-wrap gap-1.5">
+                {ASSET_TYPES.map((t) => (
+                  <button key={t.key} onClick={() => setAssetType(t)} className={`rounded-full border px-3 py-1.5 text-xs font-medium md:px-2.5 md:py-1 ${assetType.key === t.key ? "border-brand bg-brand text-white" : "border-line bg-background hover:bg-brand-tint"}`}>{t.label}</button>
+                ))}
+              </div>
+            </Section>
+          </div>
+
+          <div className={grp("create")}>
+            <Section title="Generate">
+              {assetType.shape && (
+                <p className="mb-1.5 text-[11px] text-ink-soft">
+                  Shape: <span className="font-medium text-ink">{assetType.shape}</span>
+                  {assetType.key === "logo" && " — fills a navbar without shrinking"}
+                </p>
+              )}
+              <textarea value={genPrompt} onChange={(e) => setGenPrompt(e.target.value)} placeholder={`Describe a ${assetType.label.toLowerCase()}…`} className="w-full rounded-xl border border-line bg-background px-3 py-2 text-sm" rows={2} />
+              {src && (
+                <label className="mt-1.5 flex items-center gap-1.5 text-xs text-ink-soft"><input type="checkbox" checked={useRef_} onChange={(e) => setUseRef(e.target.checked)} /> build from the current image</label>
+              )}
+              <button onClick={generate} disabled={busy} className="mt-2 w-full rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50">Generate</button>
+            </Section>
+
+            <Section title="Start from">
+              <label className="block cursor-pointer rounded-full border border-line bg-background px-4 py-2.5 text-center text-xs font-semibold hover:bg-surface">Upload an image<input type="file" accept="image/*" onChange={onUpload} className="hidden" /></label>
+              {assets.length > 0 && (
+                <>
+                  <p className="mt-2 text-xs text-ink-soft">Your site&apos;s assets:</p>
+                  <div className="mt-1 grid grid-cols-3 gap-1.5">
+                    {assets.map((a, i) => (
+                      <button key={i} onClick={() => loadFromUrl(a.url)} title={a.label} className="group relative aspect-square overflow-hidden rounded-lg border border-line bg-background hover:border-brand">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={a.url} alt={a.label} className="h-full w-full object-contain p-1" />
+                        <span className="absolute inset-x-0 bottom-0 bg-ink/70 py-0.5 text-center text-[9px] text-white opacity-0 group-hover:opacity-100">{a.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </Section>
+          </div>
+
+          <div className={grp("enhance")}>
+            <Section title="AI enhance">
+              <div className="flex flex-wrap gap-1.5">
+                {PRESETS.map((p) => (<button key={p.label} onClick={() => aiEdit(p.prompt)} disabled={busy} className="rounded-full border border-line bg-background px-3 py-1.5 text-xs font-medium hover:bg-brand-tint disabled:opacity-50 md:px-2.5 md:py-1">{p.label}</button>))}
+              </div>
+              <textarea value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} placeholder="Or describe an edit…" className="mt-2 w-full rounded-xl border border-line bg-background px-3 py-2 text-sm" rows={2} />
+              <button onClick={() => aiEdit(editPrompt)} disabled={busy} className="mt-2 w-full rounded-full bg-ink px-4 py-2.5 text-sm font-semibold text-white hover:bg-ink/90 disabled:opacity-50">AI edit</button>
+            </Section>
+          </div>
+
+          <div className={grp("adjust")}>
+            <Section title="Adjust">
+              <Slider label="Brightness" value={adj.brightness} onChange={(v) => setAdj((a) => ({ ...a, brightness: v }))} />
+              <Slider label="Contrast" value={adj.contrast} onChange={(v) => setAdj((a) => ({ ...a, contrast: v }))} />
+              <Slider label="Saturation" value={adj.saturate} onChange={(v) => setAdj((a) => ({ ...a, saturate: v }))} />
+              <div className="mt-2 flex gap-2">
+                <button onClick={() => setRot((r) => (r + 90) % 360)} className="flex-1 rounded-full border border-line bg-background px-3 py-2 text-xs font-semibold hover:bg-surface">↻ Rotate</button>
+                <button onClick={() => { setRot(0); setAdj({ brightness: 100, contrast: 100, saturate: 100 }); }} className="flex-1 rounded-full border border-line bg-background px-3 py-2 text-xs font-semibold hover:bg-surface">Reset</button>
+              </div>
+            </Section>
+          </div>
+
+          {/* Desktop: Download flows at the end of the controls (unchanged from before). */}
+          <button onClick={download} disabled={!src} className="hidden w-full rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-40 md:block">⬇ Download {assetType.label}</button>
+        </div>
+
+        {/* Mobile: pinned action bar so Download is always reachable without scrolling. */}
+        <div className="border-t border-line bg-surface p-3 md:hidden">
+          <button onClick={download} disabled={!src} className="w-full rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-40">⬇ Download {assetType.label}</button>
+        </div>
+      </aside>
     </div>
   );
 }
