@@ -66,8 +66,14 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     "header.sticky,header[class*='top-0']{background-color:var(--color-background,#fff)!important;border-bottom-color:var(--color-border,rgba(0,0,0,.1))!important;-webkit-backdrop-filter:saturate(1.3) blur(8px)!important;backdrop-filter:saturate(1.3) blur(8px)!important}" +
     "</style>";
 
+  // Ensure the iframed site is mobile-scaled — if the page has no viewport meta,
+  // add one so a phone renders it at device width instead of a zoomed-out desktop.
+  const viewportTag = /<meta[^>]+name=["']?viewport["']?/i.test(html)
+    ? ""
+    : '<meta name="viewport" content="width=device-width, initial-scale=1">';
+
   // <base> so the site's relative CSS/images still resolve against its real host.
-  const baseTag = `<base href="${base}">` + fixCss;
+  const baseTag = `<base href="${base}">` + viewportTag + fixCss;
   if (/<head[^>]*>/i.test(html)) {
     html = html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
   } else {

@@ -1,10 +1,33 @@
-/* ThinkBigJoe live site editor (v3) — injected into a client's site via the edit
+/* ThinkBigJoe live site editor (v4) — injected into a client's site via the edit
  * proxy. Goals: forgiving (auto-revert previews, undo), focused (only highlight
  * meaningful elements), contextual (controls fit the element), and clear
- * (spotlight the target, keep the dialog in view). Sends edits as markdown. */
+ * (spotlight the target, keep the dialog in view). Sends edits as markdown.
+ * v4: mobile-first — panels become a bottom sheet on phones, tap-to-select
+ * (no hover), 44px targets, safe-area insets; our chrome is CSS-isolated from
+ * the host page. (The host is always a forge template — our own CSS — so a
+ * scoped all:revert is enough; escalate to a shadow root only if that changes.) */
 (function () {
   if (window.__tbjEditorLoaded) return;
   window.__tbjEditorLoaded = true;
+
+  // ---- viewport awareness ------------------------------------------------
+  // A phone (or any coarse-pointer / narrow screen): bottom-sheet UI + tap-select.
+  var mq = window.matchMedia("(max-width: 640px), (hover: none)");
+  function isMobile() { return mq.matches; }
+  // Only do hover-highlight where there's a real pointer; touch uses tap-to-select.
+  var CAN_HOVER = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+  // ---- CSS isolation -----------------------------------------------------
+  // Keep the host page's generic tag rules / resets from leaking into our chrome.
+  // Scoped, non-!important (so it never fights our own inline styles); the host is
+  // our own template CSS, so this is belt-and-suspenders, not a hostile-site shield.
+  var reset = document.createElement("style");
+  reset.id = "__tbj-reset";
+  reset.textContent =
+    "#__tbj-editor,#__tbj-pop,#__tbj-hl,#__tbj-editor *,#__tbj-pop *{all:revert;box-sizing:border-box}" +
+    "#__tbj-editor,#__tbj-pop{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:13px;line-height:1.4;-webkit-text-size-adjust:100%}" +
+    "@media (max-width:640px){#__tbj-pop button,#__tbj-pop textarea,#__tbj-pop input:not([type=checkbox]):not([type=radio]),#__tbj-pop select{min-height:44px}#__tbj-pop input[type=color]{height:44px}#__tbj-editor button{min-height:40px}}";
+  document.documentElement.appendChild(reset);
 
   var CFG = window.__TBJ_EDIT || {};
   var SITE_ID = CFG.siteId;
@@ -144,6 +167,7 @@
     hl.style.width = r.width + 4 + "px"; hl.style.height = r.height + 4 + "px";
   }
   document.addEventListener("pointerover", function (e) {
+    if (!CAN_HOVER) return;                                 // touch: tap-to-select instead
     if (document.getElementById("__tbj-pop")) return;      // frozen while editing
     if (isOurs(e.target)) { hoveredEl = null; hl.style.display = "none"; return; }
     var t = mode === "section" ? ((sectionTarget(e.target) || {}).el) : editableTarget(e.target);
@@ -154,6 +178,19 @@
     var t = document.getElementById("__tbj-pop") ? selectedEl : hoveredEl;
     if (t) moveHl(t);
   }, true);
+  // Re-flow an open panel across the mobile/desktop breakpoint (rotate/resize mid-edit).
+  var reflowT;
+  window.addEventListener("resize", function () {
+    if (!document.getElementById("__tbj-pop") || !selectedEl) return;
+    clearTimeout(reflowT);
+    reflowT = setTimeout(function () {
+      var p = document.getElementById("__tbj-pop");
+      if (!p || !selectedEl) return;
+      var mobile = isMobile();
+      p.style.cssText = panelCss(mobile);
+      placePanel(p, selectedEl, mobile);
+    }, 120);
+  });
 
   // ---- click to select --------------------------------------------------
   var selectedEl = null;
@@ -175,9 +212,57 @@
   }
 
   // ---- edit panel -------------------------------------------------------
+  var SHEET_VH = 62; // mobile bottom sheet height — leaves the top ~38vh to see the element
+  // Panel chrome: a right/left popover on desktop, a bottom sheet on phones.
+  function panelCss(mobile) {
+    var base = "z-index:2147483001;overflow:auto;background:#fff;border:1px solid #e6e9ef;" +
+      "font-family:system-ui,-apple-system,sans-serif;color:#0a0a0b;box-sizing:border-box;";
+    if (mobile) return "position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;max-width:none;max-height:" +
+      SHEET_VH + "vh;border-bottom:0;border-radius:18px 18px 0 0;box-shadow:0 -12px 40px rgba(0,0,0,.28);" +
+      "padding:10px 16px calc(16px + env(safe-area-inset-bottom));" + base;
+    return "position:fixed;left:-9999px;top:0;width:300px;max-height:82vh;border-radius:14px;" +
+      "box-shadow:0 20px 60px rgba(0,0,0,.35);padding:14px;" + base;
+  }
+  // A grab-handle so the bottom sheet reads as a sheet.
+  function handleHtml(mobile) {
+    return mobile ? '<div style="width:36px;height:4px;border-radius:999px;background:#e0e3ea;margin:0 auto 10px;"></div>' : "";
+  }
+  // While a mobile sheet is open, add page bottom-padding equal to the sheet so bottom-of-page
+  // elements can scroll up into the visible strip (browsers clamp scroll at the doc's max).
+  var savedBodyPad = null;
+  function addSheetSpacer() {
+    if (savedBodyPad === null) savedBodyPad = document.body.style.paddingBottom || "";
+    document.body.style.paddingBottom = "calc(" + SHEET_VH + "vh + 24px)";
+  }
+  function removeSheetSpacer() {
+    if (savedBodyPad !== null) { document.body.style.paddingBottom = savedBodyPad; savedBodyPad = null; }
+  }
+  // Scroll the target into the visible strip above the sheet so it isn't hidden.
+  function ensureVisible(el) {
+    var visH = window.innerHeight * (1 - SHEET_VH / 100);
+    var r = el.getBoundingClientRect();
+    var target = Math.max(10, (visH - Math.min(r.height, visH)) / 2);
+    try { window.scrollBy(0, r.top - target); } catch (e) { /* ignore */ }
+  }
+  // Place a freshly-appended panel: bottom sheet (hide the toolbar so it can't cover the sheet's
+  // action buttons; add a scroll spacer) vs the desktop popover positioned by the element.
+  function placePanel(pop, el, mobile) {
+    if (mobile) {
+      bar.style.display = "none";
+      addSheetSpacer();
+      ensureVisible(el);
+      moveHl(el); hl.style.boxShadow = "0 0 0 9999px rgba(10,10,11,.55)";
+    } else {
+      bar.style.display = "";
+      removeSheetSpacer();
+      positionPanel(pop, el.getBoundingClientRect());
+    }
+  }
+
   function openPanel(el) {
     closePanel();
     selectedEl = el;
+    var mobile = isMobile();
     var snap = snapshot(el);
     var type = elType(el);
     var selector = cssPath(el), origText = textOf(el), change = {};
@@ -189,12 +274,9 @@
 
     var pop = document.createElement("div");
     pop.id = "__tbj-pop";
-    pop.style.cssText =
-      "position:fixed;z-index:2147483001;width:300px;max-height:82vh;overflow:auto;background:#fff;" +
-      "border:1px solid #e6e9ef;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.35);padding:14px;" +
-      "font-family:system-ui,sans-serif;color:#0a0a0b;left:-9999px;top:0;";
+    pop.style.cssText = panelCss(mobile);
 
-    var h =
+    var h = handleHtml(mobile) +
       '<div style="display:flex;justify-content:space-between;align-items:center;">' +
       '<span style="font-size:11px;font-weight:700;color:#2f6bff;text-transform:uppercase;letter-spacing:.04em;">Edit ' +
       (type === "image" ? "image" : type === "graphic" ? "graphic" : type === "button" ? "button" : el.nodeName.toLowerCase()) + "</span>" +
@@ -234,7 +316,7 @@
 
     pop.innerHTML = h;
     document.documentElement.appendChild(pop);
-    positionPanel(pop, el.getBoundingClientRect());
+    placePanel(pop, el, mobile);
 
     // wiring — live preview
     var ta = pop.querySelector("#__tbj-text");
@@ -283,24 +365,23 @@
   function closePanel() {
     var p = document.getElementById("__tbj-pop"); if (p) p.remove();
     hl.style.boxShadow = "none"; hl.style.display = "none"; selectedEl = null;
+    bar.style.display = ""; removeSheetSpacer();   // un-hide the toolbar + drop the scroll spacer
   }
 
   // ---- section panel (layout / component swaps — applied by the forge) --
   function openSectionPanel(info) {
     closePanel();
     selectedEl = info.el;
+    var mobile = isMobile();
     moveHl(info.el);
     hl.style.boxShadow = "0 0 0 9999px rgba(10,10,11,.55)";
     var chosen = { variant: null };
 
     var pop = document.createElement("div");
     pop.id = "__tbj-pop";
-    pop.style.cssText =
-      "position:fixed;z-index:2147483001;width:300px;max-height:82vh;overflow:auto;background:#fff;" +
-      "border:1px solid #e6e9ef;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.35);padding:14px;" +
-      "font-family:system-ui,sans-serif;color:#0a0a0b;left:-9999px;top:0;";
+    pop.style.cssText = panelCss(mobile);
 
-    var h =
+    var h = handleHtml(mobile) +
       '<div style="display:flex;justify-content:space-between;align-items:center;">' +
       '<span style="font-size:11px;font-weight:700;color:#2f6bff;text-transform:uppercase;letter-spacing:.04em;">' + info.label + " section</span>" +
       '<button id="__tbj-x" aria-label="close" style="border:0;background:#f5f7fb;border-radius:8px;width:26px;height:26px;cursor:pointer;font-size:15px;">✕</button></div>';
@@ -317,7 +398,7 @@
       '<div style="font-size:11px;color:#9aa0ad;margin-top:6px;text-align:center;">Layout changes are applied by our team.</div>';
     pop.innerHTML = h;
     document.documentElement.appendChild(pop);
-    positionPanel(pop, info.el.getBoundingClientRect());
+    placePanel(pop, info.el, mobile);
 
     Array.prototype.forEach.call(pop.querySelectorAll(".__tbj-v"), function (btn) {
       btn.onclick = function () {
@@ -342,9 +423,9 @@
   var bar = document.createElement("div");
   bar.id = "__tbj-editor";
   bar.style.cssText =
-    "position:fixed;z-index:2147483002;left:50%;bottom:20px;transform:translateX(-50%);" +
-    "background:#0a0a0b;color:#fff;border-radius:999px;padding:10px 16px;display:flex;align-items:center;gap:10px;" +
-    "font-family:system-ui,sans-serif;font-size:14px;box-shadow:0 12px 40px rgba(0,0,0,.3);max-width:92vw;";
+    "position:fixed;z-index:2147483002;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);" +
+    "background:#0a0a0b;color:#fff;border-radius:999px;padding:10px 16px;display:flex;align-items:center;justify-content:center;" +
+    "flex-wrap:wrap;gap:8px;font-family:system-ui,sans-serif;font-size:14px;box-shadow:0 12px 40px rgba(0,0,0,.3);max-width:92vw;";
   document.documentElement.appendChild(bar);
 
   function undo() {

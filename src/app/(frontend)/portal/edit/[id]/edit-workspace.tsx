@@ -8,6 +8,12 @@ import { TemplateGallery } from "./template-gallery";
 
 type Tab = "site" | "studio" | "design";
 
+const TABS: { key: Tab; label: string; short: string; icon: string }[] = [
+  { key: "site", label: "Site", short: "Site", icon: "✏️" },
+  { key: "studio", label: "🎨 Studio", short: "Studio", icon: "🎨" },
+  { key: "design", label: "🖼 Design", short: "Design", icon: "🖼" },
+];
+
 export function EditWorkspace({
   siteId,
   liveUrl,
@@ -31,25 +37,17 @@ export function EditWorkspace({
           <p className="truncate text-sm font-bold tracking-tight">{businessName}</p>
         </div>
 
-        <div className="inline-flex rounded-full bg-surface p-1">
-          <button
-            onClick={() => setTab("site")}
-            className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${tab === "site" ? "bg-ink text-white" : "text-ink-soft hover:text-ink"}`}
-          >
-            Site
-          </button>
-          <button
-            onClick={() => setTab("studio")}
-            className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${tab === "studio" ? "bg-ink text-white" : "text-ink-soft hover:text-ink"}`}
-          >
-            🎨 Studio
-          </button>
-          <button
-            onClick={() => setTab("design")}
-            className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${tab === "design" ? "bg-ink text-white" : "text-ink-soft hover:text-ink"}`}
-          >
-            🖼 Design
-          </button>
+        {/* Desktop: pill switcher in the header. On phones this hides — the bottom bar takes over. */}
+        <div className="hidden rounded-full bg-surface p-1 md:inline-flex">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${tab === t.key ? "bg-ink text-white" : "text-ink-soft hover:text-ink"}`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
         <Link
@@ -76,6 +74,24 @@ export function EditWorkspace({
           Your site isn&apos;t live yet — check back once it&apos;s built.
         </div>
       )}
+
+      {/* Mobile: thumb-reachable bottom tab bar (in-flow, so content sits above it). */}
+      <nav
+        className="flex border-t border-line bg-background md:hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            aria-current={tab === t.key ? "page" : undefined}
+            className={`flex flex-1 flex-col items-center justify-center gap-0.5 py-2.5 text-xs font-semibold transition-colors ${tab === t.key ? "text-brand" : "text-ink-soft"}`}
+          >
+            <span className="text-lg leading-none" aria-hidden>{t.icon}</span>
+            {t.short}
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
