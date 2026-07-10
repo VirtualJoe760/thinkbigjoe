@@ -4,7 +4,7 @@ import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { requestPasswordReset, signIn, signUp } from "@/lib/auth-client";
+import { requestPasswordReset, signIn, signUp, sendVerificationEmail } from "@/lib/auth-client";
 import { recordSignupConsent } from "@/lib/consent";
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
@@ -42,6 +42,8 @@ export function AuthCard({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [verifySent, setVerifySent] = useState(false);
+  const [resent, setResent] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const turnstileRef = useRef<TurnstileInstance>(null);
 
@@ -52,8 +54,21 @@ export function AuthCard({
     setMode(next);
     setError(null);
     setResetSent(false);
+    setVerifySent(false);
+    setResent(false);
     turnstileRef.current?.reset();
     setCaptchaToken(null);
+  }
+
+  async function handleResend() {
+    setResent(false);
+    try {
+      await sendVerificationEmail({ email, callbackURL: "/email-verified" });
+      setResent(true);
+    } catch {
+      /* best-effort — the original link still works */
+      setResent(true);
+    }
   }
 
   async function handleSocial(provider: "google" | "facebook") {
@@ -114,12 +129,22 @@ export function AuthCard({
           ? await signUp.email({ name, email, password }, fetchOptions)
           : await signIn.email({ email, password }, fetchOptions);
       if (res.error) {
-        setError(
-          res.error.message ??
-            (mode === "signup"
-              ? "Could not create your account."
-              : "Invalid email or password."),
-        );
+        const msg = res.error.message ?? "";
+        // An unverified user trying to sign in: better-auth 403s and resends the link.
+        // Guide them to their inbox instead of the useless "invalid credentials".
+        const unverified =
+          res.error.status === 403 ||
+          (res.error as { code?: string }).code === "EMAIL_NOT_VERIFIED" ||
+          /verif/i.test(msg);
+        if (mode === "signin" && unverified) {
+          setVerifySent(true);
+          setResent(true);
+        } else {
+          setError(
+            msg ||
+              (mode === "signup" ? "Could not create your account." : "Invalid email or password."),
+          );
+        }
         // Turnstile tokens are single-use — refresh for the next attempt.
         turnstileRef.current?.reset();
         setCaptchaToken(null);
@@ -128,6 +153,10 @@ export function AuthCard({
       if (mode === "signup") {
         // A2P / marketing consent audit trail (best-effort; doesn't block login).
         void recordSignupConsent(email, marketing);
+        // Verification is required — no session yet. Send them to check their inbox
+        // rather than navigating to a portal that would just bounce back to login.
+        setVerifySent(true);
+        return;
       }
       router.push("/portal");
       router.refresh();
@@ -204,6 +233,35 @@ export function AuthCard({
             </p>
           </>
         )}
+      </div>
+    );
+  }
+
+  if (verifySent) {
+    return (
+      <div className="w-full max-w-sm">
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand-tint text-2xl">📬</div>
+        <h1 className="text-3xl font-extrabold tracking-tight">Check your email</h1>
+        <p className="mt-3 text-sm text-ink-soft">
+          We sent a verification link to{" "}
+          <span className="font-medium text-ink">{email || "your inbox"}</span>. Click it to activate your
+          account — you&apos;ll be signed in and taken straight to your portal. The link expires in 24 hours.
+        </p>
+        <p className="mt-2 text-sm text-ink-soft">
+          Don&apos;t see it? Check your spam folder, or resend it below.
+        </p>
+        <button
+          onClick={handleResend}
+          className="mt-6 w-full rounded-full bg-brand px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
+        >
+          {resent ? "✓ Sent — check your inbox" : "Resend verification email"}
+        </button>
+        <button
+          onClick={() => switchMode("signin")}
+          className="mt-3 w-full rounded-full border border-line px-5 py-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+        >
+          Back to login
+        </button>
       </div>
     );
   }

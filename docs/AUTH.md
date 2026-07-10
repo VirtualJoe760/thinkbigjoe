@@ -66,6 +66,19 @@ belongs to a *built site*, the account number to a *person*.
   creates the sequence/column/default and numbers any account still missing one,
   oldest-first).
 
+### Email verification is mandatory
+
+`emailAndPassword.requireEmailVerification: true` + `autoSignIn: false` (`src/lib/auth.ts`).
+A password signup creates **no session** — better-auth sends a verify link
+(`emailVerification.sendOnSignUp`, `sendVerificationEmail` rewrites `callbackURL` → `/email-verified`).
+The signup UI (`auth-card.tsx`) then shows a **"Check your email"** screen (with a resend), *not* a
+redirect — the old code did `router.push("/portal")` on success, which bounced back to `/login` and
+looked like "nothing happened." An unverified user who tries to **sign in** gets a 403; better-auth
+resends the link and the same "Check your email" screen appears. Clicking the emailed link verifies +
+`autoSignInAfterVerification` signs them in → `/email-verified` → `/portal`. **Social logins
+(Google/Facebook) are provider-verified, so they skip this.** Flipping this on only affects
+*password* accounts that are still unverified.
+
 ### Admin gate (the command center)
 
 `/command/**` is gated by `requireAdmin()` / `assertAdmin()`
@@ -109,8 +122,9 @@ const { hashPassword } = require("better-auth/crypto"); // salt:hash format bett
   | `EMAIL_FROM` | `ThinkBigJoe <noreply@thinkbigjoe.com>` |
   | `EMAIL_BCC` *(optional)* | blind-copy every transactional email here |
 
-- **Emails sent:** welcome (on signup), password reset, and forge outreach — all
-  through the one `sendEmail()` transport.
+- **Emails sent:** welcome (on signup), **email verification** (required — see "Email
+  verification is mandatory" above), password reset, and forge outreach — all through
+  the one `sendEmail()` transport.
 
 ### It fails silently by design
 

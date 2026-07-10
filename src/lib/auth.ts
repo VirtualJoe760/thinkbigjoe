@@ -77,6 +77,12 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8, // 8-char minimum (enforced client-side too, with a strength meter)
+    // Verification is MANDATORY. Signup creates NO session, and an unverified user can't sign
+    // in — better-auth resends the verify link on the attempt. They must click the emailed link
+    // → /email-verified → auto-signed-in → into their account. This is the required flow; without
+    // it, signup silently "did nothing" (it navigated to a portal that bounced back to login).
+    requireEmailVerification: true,
+    autoSignIn: false,
     // Password recovery: better-auth generates a one-time token + link; we
     // email it. The link lands on /reset-password?token=… (see reset page).
     resetPasswordTokenExpiresIn: 60 * 60, // 1 hour
@@ -87,8 +93,6 @@ export const auth = betterAuth({
         console.error("[auth] reset-password email failed:", err);
       }
     },
-    // NOTE: not requiring verification to sign in (would lock out unverified users +
-    // add signup friction). Flip requireEmailVerification: true here to make it mandatory.
   },
   // Email verification — sends a "verify your email" link on sign-up. Better-auth
   // handles the verify endpoint + marks emailVerified; the link auto-signs them in.
