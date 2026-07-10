@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Jost } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { PwaRegister } from "@/components/pwa-register";
@@ -32,6 +32,13 @@ export const metadata: Metadata = {
   },
 };
 
+// viewport-fit=cover exposes the env(safe-area-inset-*) vars used by the mobile bottom bar and
+// headers, so the installed PWA doesn't collide with the notch / home indicator.
+export const viewport: Viewport = {
+  themeColor: "#0047ff",
+  viewportFit: "cover",
+};
+
 export default function FrontendLayout({
   children,
 }: Readonly<{
@@ -41,7 +48,6 @@ export default function FrontendLayout({
     <html lang="en" className={`${jost.variable} h-full antialiased`}>
       <head>
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-        <meta name="theme-color" content="#0047ff" />
       </head>
       {/* suppressHydrationWarning: browser extensions (Grammarly's data-gr-*,
           reader/theme extensions' data-rm-theme) mutate <body> before React

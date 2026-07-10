@@ -81,9 +81,18 @@ export function CommandHeader({ email }: { email: string }) {
           <Logo />
         </div>
         {current && (
-          <span className="text-sm font-medium text-ink-soft">{current.label}</span>
+          <span className="hidden text-sm font-medium text-ink-soft sm:block">{current.label}</span>
         )}
-        <div className="w-9" />
+        <Link
+          href="/portal"
+          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:bg-surface hover:text-ink"
+          aria-label="Back to portal"
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          Portal
+        </Link>
       </header>
 
       {/* Backdrop */}
