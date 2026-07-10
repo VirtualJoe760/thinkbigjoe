@@ -3,7 +3,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { PortalHeader } from "@/components/portal/portal-header";
 import { db, forgeSites } from "@/db";
@@ -82,6 +82,19 @@ export default async function PortalPage({
     .from(forgeSites)
     .where(eq(forgeSites.claimedByUserId, user.id));
 
+  // Surface a site whose LATEST edit failed, so the customer knows their change isn't live yet.
+  const siteIds = mySites.map((s) => s.id);
+  const failedSites = new Set<number>();
+  if (siteIds.length > 0) {
+    const res = await db.execute(sql`
+      SELECT DISTINCT ON (site_id) site_id, status FROM edit_requests
+      WHERE site_id IN (${sql.join(siteIds.map((i) => sql`${i}`), sql`, `)})
+      ORDER BY site_id, created_at DESC`);
+    for (const r of (Array.isArray(res) ? res : (res as { rows?: unknown[] }).rows ?? []) as Record<string, unknown>[]) {
+      if (r.status === "failed") failedSites.add(Number(r.site_id));
+    }
+  }
+
   return (
     <div className="flex flex-1 flex-col">
       <PortalHeader email={user.email} isAdmin={isAdmin} />
@@ -158,6 +171,12 @@ export default async function PortalPage({
                   <div className="mt-3 flex items-center gap-2 rounded-xl border border-brand/40 bg-brand-tint px-4 py-3 text-sm text-brand">
                     <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-brand" />
                     We&apos;re building your site now — it&apos;ll appear here shortly.
+                  </div>
+                )}
+
+                {failedSites.has(site.id) && (
+                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    ⚠️ Your last change didn&apos;t go live yet — we&apos;ll retry it automatically. If it sticks, reply to your welcome email and we&apos;ll sort it out.
                   </div>
                 )}
 

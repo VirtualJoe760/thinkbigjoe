@@ -54,6 +54,9 @@
   ];
   // The live theme being previewed (null = untouched). Sent as one token edit.
   var theme = { primary: null, secondary: null, font: null };
+  // The site's saved theme (Phase 4) — the proxy already applied it to the page; used to pre-fill
+  // the Brand panel on reopen + to know whether a "Revert to original" is offered.
+  var CFG_THEME = (CFG && CFG.theme) || null;
 
   // sRGB hex → OKLCH {L,C,h}. The token ramps are hue-driven, so we set --brand-h
   // from the picked color's hue (lossy on the exact swatch — we build a matching ramp).
@@ -514,10 +517,13 @@
     pop.style.cssText = panelCss(mobile);
     var lblCss = "display:block;font-size:12px;font-weight:600;margin-top:12px;";
     var swatchCss = "width:100%;height:38px;border:1px solid #e6e9ef;border-radius:8px;margin-top:4px;padding:0;cursor:pointer;";
-    var primHex = theme.primary || currentColorHex("--color-brand");
-    var secHex = theme.secondary || currentColorHex("--color-accent");
+    // Pre-fill from the pending edit, else the SAVED theme, else the site's current computed color.
+    var savedFontId = (CFG_THEME && CFG_THEME.fontId) || (CFG_THEME && CFG_THEME.font ? (FONT_SETS.filter(function (x) { return x.name === CFG_THEME.font; })[0] || {}).id : null);
+    var primHex = theme.primary || (CFG_THEME && CFG_THEME.primaryHex) || currentColorHex("--color-brand");
+    var secHex = theme.secondary || (CFG_THEME && CFG_THEME.secondaryHex) || currentColorHex("--color-accent");
+    var activeFont = theme.font || savedFontId;
     var fontsHtml = FONT_SETS.map(function (f) {
-      var on = theme.font === f.id;
+      var on = activeFont === f.id;
       return '<button type="button" class="__tbj-f" data-f="' + f.id + '" style="border:1px solid ' + (on ? "#2f6bff" : "#e6e9ef") +
         ";background:" + (on ? "#2f6bff" : "#fff") + ";color:" + (on ? "#fff" : "#0a0a0b") +
         ';border-radius:999px;padding:7px 12px;font-size:13px;cursor:pointer;font-family:' + f.head + '">' + f.name + "</button>";
@@ -536,7 +542,9 @@
       '<div style="display:flex;gap:8px;margin-top:14px;">' +
       '<button id="__tbj-brand-add" style="flex:1;background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:10px;font-weight:600;font-size:13px;cursor:pointer;">Apply to whole site</button>' +
       '<button id="__tbj-brand-reset" style="background:#f5f7fb;border:0;border-radius:999px;padding:10px 12px;font-size:13px;cursor:pointer;">Reset</button></div>' +
-      '<div style="font-size:11px;color:#9aa0ad;margin-top:6px;text-align:center;">Preview updates live. Reset clears it.</div>';
+      '<div style="font-size:11px;color:#9aa0ad;margin-top:6px;text-align:center;">Preview updates live. Reset clears your pending changes.' +
+      (CFG_THEME ? ' · <button id="__tbj-brand-revert" style="border:0;background:none;color:#2f6bff;font-size:11px;cursor:pointer;text-decoration:underline;padding:0;">Revert to original</button>' : "") +
+      "</div>";
     document.documentElement.appendChild(pop);
     if (mobile) { bar.style.display = "none"; } else positionPanelCenter(pop);
 
@@ -552,6 +560,21 @@
     });
     pop.querySelector("#__tbj-x").onclick = function () { closePanel(); };
     pop.querySelector("#__tbj-brand-reset").onclick = function () { resetTheme(); dropTokenEdit(); renderBar(); closePanel(); openBrandPanel(); };
+    var revertBtn = pop.querySelector("#__tbj-brand-revert");
+    if (revertBtn) revertBtn.onclick = function () {
+      // clearFont tells the forge the prior theme wired a font (next/font in layout.tsx), so the
+      // revert must route through the LLM to un-wire it — not just strip the color block.
+      var hadFont = !!(CFG_THEME && (CFG_THEME.font || CFG_THEME.fontId));
+      // Clear the SAVED theme: drop the proxy-injected theme + preview, queue a clearing edit.
+      resetTheme();
+      var ts = document.getElementById("__tbj-theme"); if (ts) ts.remove();
+      var tf = document.getElementById("__tbj-theme-font"); if (tf) tf.remove();
+      CFG_THEME = null;
+      dropTokenEdit();
+      edits.push({ kind: "token", tag: "theme", text: "Revert brand to original", changes: { clear: true, clearFont: hadFont } });
+      history.push({ theme: true });
+      closePanel(); renderBar();
+    };
     pop.querySelector("#__tbj-brand-add").onclick = function () {
       if (!theme.primary && !theme.secondary && !theme.font) { closePanel(); return; }
       var f = FONT_SETS.filter(function (x) { return x.id === theme.font; })[0];
@@ -565,6 +588,7 @@
         secondaryHex: theme.secondary || undefined,
         accentH: sO ? sO.h : undefined,
         font: f ? f.name : undefined,
+        fontId: f ? f.id : undefined,              // stable id (rename-proof pre-fill)
         fontGoogle: f ? f.g : undefined,           // the family spec the forge imports via next/font
         fontHeadingStack: f ? f.head : undefined,  // fallback CSS stack
         fontSansStack: f ? f.body : undefined,

@@ -324,6 +324,43 @@ export const jobRequests = pgTable("job_requests", {
 	finishedAt: timestamp("finished_at", { withTimezone: true, mode: 'string' }),
 });
 
+export const previewEngine = pgTable("preview_engine", {
+	id: serial().primaryKey().notNull(),
+	dailyBudget: integer("daily_budget").default(30).notNull(),
+	enabled: boolean().default(true).notNull(),
+	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
+	lastRunSummary: text("last_run_summary"),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+});
+
+export const outreachEngine = pgTable("outreach_engine", {
+	id: serial().primaryKey().notNull(),
+	dailyGoal: integer("daily_goal").default(15).notNull(),
+	enabled: boolean().default(true).notNull(),
+	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
+	lastRunSummary: text("last_run_summary"),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+});
+
+export const designReports = pgTable("design_reports", {
+	id: serial().primaryKey().notNull(),
+	vertical: text().notNull(),
+	archetype: text(),
+	title: text().notNull(),
+	summary: text().notNull(),
+	findings: jsonb(),
+	sources: jsonb(),
+	languageId: text("language_id"),
+	spec: jsonb(),
+	status: text().default('proposed').notNull(),
+	verifiedAt: timestamp("verified_at", { withTimezone: true, mode: 'string' }),
+	verifiedBy: text("verified_by"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("design_reports_created_idx").using("btree", table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
+]);
+
 export const forgeSites = pgTable("forge_sites", {
 	id: serial().primaryKey().notNull(),
 	slug: text().notNull(),
@@ -393,48 +430,12 @@ export const forgeSites = pgTable("forge_sites", {
 	previewExpiresAt: timestamp("preview_expires_at", { withTimezone: true, mode: 'string' }),
 	receptionistConfig: jsonb("receptionist_config"),
 	receptionistStatus: text("receptionist_status").default('none'),
+	themeOverrides: jsonb("theme_overrides"),
 }, (table) => [
 	uniqueIndex("forge_sites_claim_code_key").using("btree", table.claimCode.asc().nullsLast().op("text_ops")),
 	index("forge_sites_outreach_status_idx").using("btree", table.outreachStatus.asc().nullsLast().op("text_ops")),
 	index("forge_sites_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
 	unique("forge_sites_slug_key").on(table.slug),
-]);
-
-export const previewEngine = pgTable("preview_engine", {
-	id: serial().primaryKey().notNull(),
-	dailyBudget: integer("daily_budget").default(30).notNull(),
-	enabled: boolean().default(true).notNull(),
-	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
-	lastRunSummary: text("last_run_summary"),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-});
-
-export const outreachEngine = pgTable("outreach_engine", {
-	id: serial().primaryKey().notNull(),
-	dailyGoal: integer("daily_goal").default(15).notNull(),
-	enabled: boolean().default(true).notNull(),
-	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
-	lastRunSummary: text("last_run_summary"),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-});
-
-export const designReports = pgTable("design_reports", {
-	id: serial().primaryKey().notNull(),
-	vertical: text().notNull(),
-	archetype: text(),
-	title: text().notNull(),
-	summary: text().notNull(),
-	findings: jsonb(),
-	sources: jsonb(),
-	languageId: text("language_id"),
-	spec: jsonb(),
-	status: text().default('proposed').notNull(),
-	verifiedAt: timestamp("verified_at", { withTimezone: true, mode: 'string' }),
-	verifiedBy: text("verified_by"),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	index("design_reports_created_idx").using("btree", table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
 ]);
 
 export const forgeEngine = pgTable("forge_engine", {

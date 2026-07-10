@@ -89,18 +89,38 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     html = baseTag + html;
   }
 
+  // Saved theme (Phase 4): show the customer's durable theme_overrides on reopen — before the
+  // forge bakes it into the source. Injected LAST so it overrides the site's own :root tokens.
+  // Values are sanitized (they originate from a browser payload stored in the DB).
+  const theme = (site.themeOverrides as Record<string, unknown> | null) || null;
+  const num = (v: unknown, max: number) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : null; };
+  const cssVal = (s: unknown) => String(s).replace(/[^a-zA-Z0-9 '",\-]/g, "").slice(0, 200);
+  const googleVal = (s: unknown) => String(s).replace(/[^a-zA-Z0-9:;@.,+|_\-]/g, "").slice(0, 300);
+  let themeInject = "";
+  if (theme) {
+    const decls: string[] = [];
+    const bh = num(theme.brandH, 360); if (bh != null) decls.push(`--brand-h:${bh}`);
+    const bc = num(theme.brandC, 0.4); if (bc != null) decls.push(`--brand-c:${bc}`);
+    const ah = num(theme.accentH, 360); if (ah != null) decls.push(`--accent-h:${ah}`);
+    if (theme.fontHeadingStack) decls.push(`--font-heading-stack:${cssVal(theme.fontHeadingStack)}`);
+    if (theme.fontSansStack) decls.push(`--font-sans-stack:${cssVal(theme.fontSansStack)}`);
+    if (theme.fontGoogle) themeInject += `<link id="__tbj-theme-font" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=${googleVal(theme.fontGoogle)}&display=swap">`;
+    if (decls.length) themeInject += `<style id="__tbj-theme">:root{${decls.join(";")}}</style>`;
+  }
+
   // Our editor — absolute URLs to OUR origin (base href would otherwise send
-  // these to the client's domain).
+  // these to the client's domain). Pass the saved theme so the Brand panel pre-fills + Revert works.
   const editorTag =
     `<script>window.__TBJ_EDIT=${JSON.stringify({
       siteId,
       saveUrl: `${origin}/api/edit-requests`,
       genUrl: `${origin}/api/generate-image`,
+      theme,
     })};</script>` + `<script src="${origin}/editor.js?v=${editorVersion()}"></script>`;
   if (/<\/body>/i.test(html)) {
-    html = html.replace(/<\/body>/i, `${editorTag}</body>`);
+    html = html.replace(/<\/body>/i, `${themeInject}${editorTag}</body>`);
   } else {
-    html += editorTag;
+    html += themeInject + editorTag;
   }
 
   return new Response(html, {

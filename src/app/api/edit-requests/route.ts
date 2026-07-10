@@ -24,9 +24,12 @@ type EditChanges = {
   secondaryHex?: string;
   accentH?: number;
   font?: string;
+  fontId?: string;
   fontGoogle?: string;
   fontHeadingStack?: string;
   fontSansStack?: string;
+  clear?: boolean; // a Revert — wipe the saved theme
+  clearFont?: boolean; // the reverted theme had a font wired — needs LLM to un-wire next/font
 };
 type Edit = { kind?: string; selector?: string; tag?: string; text?: string; section?: string; changes?: EditChanges; note?: string };
 
@@ -65,6 +68,12 @@ export async function POST(req: Request) {
     // Brand theme change — move the template's OWN design tokens so the whole OKLCH ramp
     // shifts (NOT per-element styles). These land in the site's `app/globals.css` :root.
     if (e.kind === "token") {
+      if (c.clear) {
+        lines.push(`${i + 1}. **Revert brand to original** — remove the fenced \`/* TBJ-THEME-START */ … /* TBJ-THEME-END */\` block from \`app/globals.css\` (restores the template's default brand colors).`);
+        if (c.clearFont) lines.push(`   - Also un-wire the custom font: remove the added \`next/font\` import from \`app/layout.tsx\` and restore the template's default \`--font-heading-stack\` / \`--font-sans-stack\`.`);
+        lines.push(``);
+        return;
+      }
       lines.push(`${i + 1}. **Brand theme change** — edit the design tokens in \`app/globals.css\` \`:root\` (do NOT restyle individual elements; move the tokens so it applies site-wide):`);
       if (c.brandH != null) lines.push(`   - Primary color → \`--brand-h: ${c.brandH};\`${c.brandC != null ? ` \`--brand-c: ${c.brandC};\`` : ""}  (picked ${c.primaryHex})`);
       if (c.accentH != null) lines.push(`   - Secondary / accent → \`--accent-h: ${c.accentH};\`  (picked ${c.secondaryHex})`);
@@ -106,6 +115,30 @@ export async function POST(req: Request) {
     edits: edits,
     status: "requested",
   });
+
+  // Durably save the theme NOW (before the forge bakes it), so the proxy + portal reflect it
+  // on reopen and it survives rebuilds + template swaps. Merge into existing overrides; a
+  // `clear` token edit (Revert) wipes them.
+  const tokenEdit = edits.find((e) => e.kind === "token");
+  if (tokenEdit) {
+    const tc = tokenEdit.changes || {};
+    if (tc.clear) {
+      await db.update(forgeSites).set({ themeOverrides: null }).where(eq(forgeSites.id, siteId));
+    } else {
+      const patch: Record<string, unknown> = { ...((site.themeOverrides as Record<string, unknown> | null) || {}) };
+      if (tc.primaryHex != null) patch.primaryHex = tc.primaryHex;
+      if (tc.brandH != null) patch.brandH = tc.brandH;
+      if (tc.brandC != null) patch.brandC = tc.brandC;
+      if (tc.secondaryHex != null) patch.secondaryHex = tc.secondaryHex;
+      if (tc.accentH != null) patch.accentH = tc.accentH;
+      if (tc.font != null) patch.font = tc.font;
+      if (tc.fontId != null) patch.fontId = tc.fontId;
+      if (tc.fontGoogle != null) patch.fontGoogle = tc.fontGoogle;
+      if (tc.fontHeadingStack != null) patch.fontHeadingStack = tc.fontHeadingStack;
+      if (tc.fontSansStack != null) patch.fontSansStack = tc.fontSansStack;
+      await db.update(forgeSites).set({ themeOverrides: patch }).where(eq(forgeSites.id, siteId));
+    }
+  }
 
   notifyTelegram(
     `✏️ <b>Edit request</b> — ${site.businessName}\n${edits.length} change(s) from ${session.user.email}`,
