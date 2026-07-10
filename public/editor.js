@@ -87,12 +87,14 @@
     if (theme.primary) { var p = hexToOklch(theme.primary); if (p) { root.setProperty("--brand-h", String(p.h)); root.setProperty("--brand-c", Math.min(0.22, p.C).toFixed(3)); } }
     if (theme.secondary) { var s = hexToOklch(theme.secondary); if (s) root.setProperty("--accent-h", String(s.h)); }
     if (theme.font) { var f = FONT_SETS.filter(function (x) { return x.id === theme.font; })[0]; if (f) { loadFont(f.g); root.setProperty("--font-heading-stack", f.head); root.setProperty("--font-sans-stack", f.body); } }
+    clearHexCache();
   }
   function resetTheme() {
     theme = { primary: null, secondary: null, font: null };
     var root = document.documentElement.style;
     ["--brand-h", "--brand-c", "--accent-h", "--font-heading-stack", "--font-sans-stack"].forEach(function (v) { root.removeProperty(v); });
     var fl = document.getElementById("__tbj-font"); if (fl) fl.remove();
+    clearHexCache();
   }
   // The whole theme is ONE committed edit — drop any existing token edit (+ its Undo marker)
   // so Apply replaces rather than stacks, and Undo/Reset can't desync the preview from edits[].
@@ -156,6 +158,66 @@
     var m = (c || "").match(/\d+/g);
     if (!m) return "#000000";
     return "#" + m.slice(0, 3).map(function (n) { return ("0" + parseInt(n, 10).toString(16)).slice(-2); }).join("");
+  }
+  // Rasterize ANY CSS color string (rgb / oklch() / color() / named) to an sRGB hex — canvas
+  // fillStyle keeps oklch as-is, so we render one pixel and read it back.
+  function toHex(colorStr) {
+    try {
+      var cv = document.createElement("canvas"); cv.width = 1; cv.height = 1;
+      var ctx = cv.getContext("2d");
+      ctx.fillStyle = "#000000"; ctx.fillStyle = colorStr; ctx.fillRect(0, 0, 1, 1);
+      var px = ctx.getImageData(0, 0, 1, 1).data;
+      return "#" + [px[0], px[1], px[2]].map(function (v) { return ("0" + v.toString(16)).slice(-2); }).join("");
+    } catch (e) { return rgbToHex(colorStr); }
+  }
+  // Semantic design tokens an element's color can resolve to — editing the TOKEN recolors EVERY
+  // use of it (the modular default), vs. a per-element override (the escape hatch). Order = the
+  // label we show; brand/accent first so a link/button reads as "primary/accent", not "text".
+  var SEMANTIC = [
+    // Semantic roles first (best labels) — most element colors resolve to one of these.
+    { v: "--color-brand", label: "primary (links & buttons)" },
+    { v: "--color-accent", label: "accent" },
+    { v: "--color-foreground", label: "body text" },
+    { v: "--color-muted-foreground", label: "muted text" },
+    { v: "--color-card-foreground", label: "card text" },
+    { v: "--color-background", label: "the background" },
+    { v: "--color-card", label: "cards" },
+    { v: "--color-border", label: "borders" },
+  ];
+  // …then the raw ramps, so ANY themed shade an element uses (e.g. a nav link on --color-neutral-300)
+  // is still retargetable — "everywhere this exact color is used".
+  "50 100 200 300 400 500 600 700 800 900 950".split(" ").forEach(function (s) {
+    SEMANTIC.push({ v: "--color-neutral-" + s, label: "this color" });
+    SEMANTIC.push({ v: "--color-brand-" + s, label: "this primary shade" });
+  });
+  "300 400 500".split(" ").forEach(function (s) { SEMANTIC.push({ v: "--color-accent-" + s, label: "this accent shade" }); });
+  function tokenLabel(v) {
+    for (var i = 0; i < SEMANTIC.length; i++) if (SEMANTIC[i].v === v) return SEMANTIC[i].label;
+    return "this color";
+  }
+  // The token an element ACTUALLY uses for `prefix` (text-/bg-) — read from its OWN Tailwind classes,
+  // so we edit what it references (not a different token that merely shares the same value). Matching
+  // by value alone is ambiguous: a black nav link and a black h1 can use DIFFERENT black tokens.
+  function classColorVars(el, prefix) {
+    var cls = (el.getAttribute && el.getAttribute("class")) || (typeof el.className === "string" ? el.className : "") || "";
+    var out = [];
+    cls.split(/\s+/).forEach(function (c) {
+      var m = c.match(new RegExp("^" + prefix + "([a-z]+(?:-[0-9]{1,3})?|foreground|muted-foreground|card-foreground)$"));
+      if (m) out.push("--color-" + m[1]);
+    });
+    return out;
+  }
+  // prefix = "text-" (color) or "bg-" (background). Class-based first, value-match fallback.
+  function detectColorToken(el, hex, prefix) {
+    var h = (hex || "").toLowerCase();
+    var cands = classColorVars(el, prefix);
+    for (var i = 0; i < cands.length; i++) {
+      if (currentColorHex(cands[i]).toLowerCase() === h) return { v: cands[i], label: tokenLabel(cands[i]) };
+    }
+    for (var j = 0; j < SEMANTIC.length; j++) {
+      if (currentColorHex(SEMANTIC[j].v).toLowerCase() === h) return SEMANTIC[j];
+    }
+    return null;
   }
   function fileToDataUrl(file, cb) {
     var img = new Image(), url = URL.createObjectURL(file);
@@ -349,18 +411,38 @@
       (type === "image" ? "image" : type === "graphic" ? "graphic" : type === "button" ? "button" : el.nodeName.toLowerCase()) + "</span>" +
       '<button id="__tbj-x" aria-label="close" style="border:0;background:#f5f7fb;border-radius:8px;width:26px;height:26px;cursor:pointer;font-size:15px;">✕</button></div>';
 
+    // Scope toggle: "All <token>" (change everywhere that color is used — the modular default) vs
+    // "Just this" (per-element override — the escape hatch). Rendered only when a token is detected.
+    function scopeToggle(cls, tok) {
+      if (!tok) return "";
+      function b(s, lbl) {
+        var on = s === "all";
+        return '<button type="button" class="' + cls + '" data-scope="' + s + '" style="flex:1;border:1px solid ' +
+          (on ? "#2f6bff" : "#e6e9ef") + ";background:" + (on ? "#eaf0ff" : "#fff") + ";color:" + (on ? "#2f6bff" : "#5b616e") +
+          ';border-radius:8px;padding:6px;font-size:11px;font-weight:600;cursor:pointer;">' + lbl + "</button>";
+      }
+      return '<div style="display:flex;gap:6px;margin-top:6px;">' + b("all", "All " + tok.label) + b("one", "Just this") + "</div>";
+    }
+    var colorTok = null, bgTok = null;
     if (type === "text" || type === "button") {
       h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Text</label>' +
         '<textarea id="__tbj-text" style="width:100%;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;min-height:48px;">' +
         origText.replace(/</g, "&lt;") + "</textarea>";
-      var textHex = rgbToHex(cs.color);
+      var textHex = toHex(cs.color);
+      colorTok = detectColorToken(el, textHex, "text-");
       h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Text color <span id="__tbj-ch" style="font-weight:400;color:#9aa0ad;">' + textHex + "</span>" +
-        '<input id="__tbj-color" type="color" value="' + textHex + '" style="width:100%;height:30px;border:1px solid #e6e9ef;border-radius:6px;margin-top:4px;padding:0;"></label>';
+        '<input id="__tbj-color" type="color" value="' + textHex + '" style="width:100%;height:30px;border:1px solid #e6e9ef;border-radius:6px;margin-top:4px;padding:0;"></label>' +
+        scopeToggle("__tbj-cs", colorTok);
       if (type === "button") {
         var bgT = cs.backgroundColor === "transparent" || /rgba?\([^)]*,\s*0\s*\)\s*$/.test(cs.backgroundColor);
-        var bgHex = bgT ? "#ffffff" : rgbToHex(cs.backgroundColor);
+        var bgHex = bgT ? "#ffffff" : toHex(cs.backgroundColor);
+        if (!bgT) bgTok = detectColorToken(el, bgHex, "bg-");
+        // If text + background resolve to the SAME token, don't offer the token toggle twice —
+        // the two controls would fight over one :root var. Background falls back to per-element.
+        if (bgTok && colorTok && bgTok.v === colorTok.v) bgTok = null;
         h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Button color <span id="__tbj-bh" style="font-weight:400;color:#9aa0ad;">' + (bgT ? "none" : bgHex) + "</span>" +
-          '<input id="__tbj-bg" type="color" value="' + bgHex + '" style="width:100%;height:30px;border:1px solid #e6e9ef;border-radius:6px;margin-top:4px;padding:0;"></label>';
+          '<input id="__tbj-bg" type="color" value="' + bgHex + '" style="width:100%;height:30px;border:1px solid #e6e9ef;border-radius:6px;margin-top:4px;padding:0;"></label>' +
+          scopeToggle("__tbj-bs", bgTok);
       }
     }
     if (type === "image" || type === "graphic") {
@@ -386,12 +468,54 @@
     placePanel(pop, el, mobile);
 
     // wiring — live preview
+    // Token overrides are GLOBAL (on :root), so the element snapshot can't undo them — track the
+    // originals here and revert on Cancel.
+    var appliedTokens = {};
+    function setTokenLive(v, val) {
+      if (!(v in appliedTokens)) appliedTokens[v] = document.documentElement.style.getPropertyValue(v);
+      document.documentElement.style.setProperty(v, val); clearHexCache();
+    }
+    function revertToken(v) {
+      if (v in appliedTokens) { var o = appliedTokens[v]; if (o) document.documentElement.style.setProperty(v, o); else document.documentElement.style.removeProperty(v); delete appliedTokens[v]; clearHexCache(); }
+    }
+    function revertAllTokens() { for (var v in appliedTokens) revertToken(v); }
+
     var ta = pop.querySelector("#__tbj-text");
     if (ta) ta.addEventListener("input", function () { el.textContent = ta.value; change.newText = ta.value; });
-    var ci = pop.querySelector("#__tbj-color");
-    if (ci) { var chEl = pop.querySelector("#__tbj-ch"); ci.addEventListener("input", function (e2) { el.style.setProperty("color", e2.target.value, "important"); change.color = e2.target.value; if (chEl) chEl.textContent = e2.target.value; }); }
-    var bi = pop.querySelector("#__tbj-bg");
-    if (bi) { var bhEl = pop.querySelector("#__tbj-bh"); bi.addEventListener("input", function (e2) { el.style.setProperty("background-color", e2.target.value, "important"); change.background = e2.target.value; if (bhEl) bhEl.textContent = e2.target.value; }); }
+
+    // A color control that can target a TOKEN (all uses) or just this element, with a scope toggle.
+    function wireColor(inputId, hexSpanId, scopeCls, tok, cssProp, changeKey) {
+      var input = pop.querySelector("#" + inputId);
+      if (!input) return;
+      var span = pop.querySelector("#" + hexSpanId);
+      var scope = tok ? "all" : "one";
+      function apply(val) {
+        if (tok && scope === "all") {
+          el.style.removeProperty(cssProp);           // drop any per-element override
+          setTokenLive(tok.v, val);                   // recolor everywhere this token is used
+          change.semantic = change.semantic || {}; change.semantic[tok.v] = val;
+          delete change[changeKey];
+        } else {
+          if (tok) revertToken(tok.v);                // drop the global override
+          el.style.setProperty(cssProp, val, "important");
+          change[changeKey] = val;
+          if (change.semantic) { delete change.semantic[tok && tok.v]; if (!Object.keys(change.semantic).length) delete change.semantic; }
+        }
+        if (span) span.textContent = val;
+      }
+      input.addEventListener("input", function (e2) { apply(e2.target.value); });
+      Array.prototype.forEach.call(pop.querySelectorAll("." + scopeCls), function (b) {
+        b.onclick = function () {
+          scope = b.getAttribute("data-scope");
+          Array.prototype.forEach.call(pop.querySelectorAll("." + scopeCls), function (x) {
+            var on = x === b; x.style.borderColor = on ? "#2f6bff" : "#e6e9ef"; x.style.background = on ? "#eaf0ff" : "#fff"; x.style.color = on ? "#2f6bff" : "#5b616e";
+          });
+          apply(input.value);
+        };
+      });
+    }
+    wireColor("__tbj-color", "__tbj-ch", "__tbj-cs", colorTok, "color", "color");
+    wireColor("__tbj-bg", "__tbj-bh", "__tbj-bs", bgTok, "background-color", "background");
     var fi = pop.querySelector("#__tbj-img");
     if (fi) fi.addEventListener("change", function () {
       var f = fi.files[0]; if (!f) return;
@@ -409,15 +533,18 @@
         .catch(function () { gen.disabled = false; gs.textContent = "Generation failed."; });
     });
 
-    function cancel() { restore(el, snap); closePanel(); }
+    function cancel() { revertAllTokens(); restore(el, snap); closePanel(); }
     pop.querySelector("#__tbj-x").onclick = cancel;
     pop.querySelector("#__tbj-cancel").onclick = cancel;
     pop.querySelector("#__tbj-add").onclick = function () {
       var note = pop.querySelector("#__tbj-note").value.trim();
       if (note) change.note = note;
       if (Object.keys(change).length === 0) { pop.querySelector("#__tbj-note").focus(); return; }
+      // Keep the token preview applied, but remember the originals so Undo can revert them too.
+      var tks = null;
+      if (change.semantic) { tks = {}; for (var v in appliedTokens) tks[v] = appliedTokens[v]; }
       edits.push({ selector: selector, tag: el.nodeName.toLowerCase(), text: origText, changes: change });
-      history.push({ el: el, snapshot: snap });
+      history.push({ el: el, snapshot: snap, tokens: tks });
       closePanel(); renderBar();
     };
   }
@@ -488,22 +615,19 @@
 
   // ---- brand panel (modular theme — colors + fonts, applied site-wide) --
   // Read the site's CURRENT token value as a hex, so the picker starts from reality.
+  // Cached: resolving a token → hex is a probe + canvas read; detection runs it for ~30 tokens per
+  // click. Cache per var, cleared whenever a :root token value actually changes (clearHexCache).
+  var _hexCache = {};
   function currentColorHex(varName) {
+    if (varName in _hexCache) return _hexCache[varName];
     var probe = document.createElement("div");
     probe.style.cssText = "position:absolute;left:-9999px;top:0;width:1px;height:1px;background:var(" + varName + ")";
     document.body.appendChild(probe);
     var raw = getComputedStyle(probe).backgroundColor;   // may be oklch()/color() on modern browsers
     probe.remove();
-    // Rasterize the color to one sRGB pixel and read it back — handles oklch()/color()/named/rgb
-    // uniformly (canvas fillStyle keeps oklch as-is, so a round-trip alone wouldn't normalize it).
-    try {
-      var cv = document.createElement("canvas"); cv.width = 1; cv.height = 1;
-      var ctx = cv.getContext("2d");
-      ctx.fillStyle = raw; ctx.fillRect(0, 0, 1, 1);
-      var px = ctx.getImageData(0, 0, 1, 1).data;
-      return "#" + [px[0], px[1], px[2]].map(function (v) { return ("0" + v.toString(16)).slice(-2); }).join("");
-    } catch (e) { return rgbToHex(raw); }
+    return (_hexCache[varName] = toHex(raw));
   }
+  function clearHexCache() { _hexCache = {}; }
   function positionPanelCenter(pop) {
     var pw = 300, ph = pop.offsetHeight || 360;
     pop.style.left = Math.max(14, (innerWidth - pw) / 2) + "px";
@@ -609,7 +733,11 @@
 
   function undo() {
     var last = history.pop(); if (!last) return;
-    if (last.theme) resetTheme(); else restore(last.el, last.snapshot);
+    if (last.theme) resetTheme();
+    else {
+      restore(last.el, last.snapshot);
+      if (last.tokens) for (var v in last.tokens) { var o = last.tokens[v]; if (o) document.documentElement.style.setProperty(v, o); else document.documentElement.style.removeProperty(v); }
+    }
     edits.pop();
     renderBar();
   }
@@ -642,4 +770,25 @@
       .catch(function () { if (s) { s.disabled = false; s.textContent = "Retry"; } });
   }
   renderBar();
+
+  // Sticky/fixed headers: the site's JS normally turns a transparent nav solid on scroll. With JS
+  // stripped, ONLY fix truly-transparent headers — and only when their text is DARK (so it needs a
+  // light backdrop to be readable off the hero). A header with its OWN background (e.g. a dark
+  // bg-neutral-950 bar) is left untouched — force-whitening those made their light text invisible.
+  function fixHeaders() {
+    var heads = document.querySelectorAll("header");
+    for (var i = 0; i < heads.length; i++) {
+      var h = heads[i], cs = getComputedStyle(h);
+      if (cs.position !== "sticky" && cs.position !== "fixed") continue;
+      if (!(h.innerText || "").trim()) continue;                       // no text of its own → skip
+      var bg = cs.backgroundColor;
+      if (bg && bg !== "transparent" && !/rgba?\([^)]*,\s*0\s*\)\s*$/.test(bg)) continue;  // has its own bg → leave it
+      // Sample a REAL text node's color (a header often paints no text itself; its links do).
+      var txt = h.querySelector("a, button, span, li, p") || h;
+      var hex = toHex(getComputedStyle(txt).color);
+      var lum = 0.299 * parseInt(hex.slice(1, 3), 16) + 0.587 * parseInt(hex.slice(3, 5), 16) + 0.114 * parseInt(hex.slice(5, 7), 16);
+      if (lum < 150) { h.style.backgroundColor = "var(--color-background)"; h.style.borderBottom = "1px solid var(--color-border)"; }  // dark text → give it a light backdrop
+    }
+  }
+  fixHeaders();
 })();

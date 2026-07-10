@@ -30,6 +30,7 @@ type EditChanges = {
   fontSansStack?: string;
   clear?: boolean; // a Revert — wipe the saved theme
   clearFont?: boolean; // the reverted theme had a font wired — needs LLM to un-wire next/font
+  semantic?: Record<string, string>; // element→token color edits: { "--color-foreground": "#hex" }
 };
 type Edit = { kind?: string; selector?: string; tag?: string; text?: string; section?: string; changes?: EditChanges; note?: string };
 
@@ -93,8 +94,9 @@ export async function POST(req: Request) {
     }
     lines.push(`${i + 1}. **${e.tag || "element"}**${e.text ? ` — “${e.text}”` : ""}`);
     if (c.newText) lines.push(`   - New text: “${c.newText}”`);
-    if (c.color) lines.push(`   - Text color → ${c.color}`);
-    if (c.background) lines.push(`   - Background → ${c.background}`);
+    if (c.color) lines.push(`   - Text color (this element only) → ${c.color}`);
+    if (c.background) lines.push(`   - Background (this element only) → ${c.background}`);
+    if (c.semantic) for (const [k, v] of Object.entries(c.semantic)) lines.push(`   - Brand token \`${k}: ${v};\` — recolors everywhere this token is used. **Applied automatically** to the fenced TBJ-THEME block in \`app/globals.css\`; no manual edit needed.`);
     if (c.image?.dataUrl) {
       imageCount++;
       if (c.replaceGraphic) lines.push(`   - Replace this icon/graphic with the uploaded image: ${c.image.name || "image"} (attached in data)`);
@@ -120,12 +122,22 @@ export async function POST(req: Request) {
   // on reopen and it survives rebuilds + template swaps. Merge into existing overrides; a
   // `clear` token edit (Revert) wipes them.
   const tokenEdit = edits.find((e) => e.kind === "token");
-  if (tokenEdit) {
-    const tc = tokenEdit.changes || {};
+  // Element→token color edits carry a semantic map on a normal element edit — collect them all.
+  const semanticPatch: Record<string, string> = {};
+  for (const e of edits) {
+    const s = e.changes?.semantic;
+    if (s && typeof s === "object") for (const [k, v] of Object.entries(s)) {
+      if (/^--[a-z0-9-]+$/i.test(k) && typeof v === "string" && /^#[0-9a-f]{3,8}$/i.test(v)) semanticPatch[k] = v;
+    }
+  }
+  if (tokenEdit || Object.keys(semanticPatch).length > 0) {
+    const tc = tokenEdit?.changes || {};
     if (tc.clear) {
       await db.update(forgeSites).set({ themeOverrides: null }).where(eq(forgeSites.id, siteId));
     } else {
-      const patch: Record<string, unknown> = { ...((site.themeOverrides as Record<string, unknown> | null) || {}) };
+      const prev = (site.themeOverrides as Record<string, unknown> | null) || {};
+      const patch: Record<string, unknown> = { ...prev };
+      if (Object.keys(semanticPatch).length > 0) patch.semantic = { ...((prev.semantic as Record<string, string>) || {}), ...semanticPatch };
       if (tc.primaryHex != null) patch.primaryHex = tc.primaryHex;
       if (tc.brandH != null) patch.brandH = tc.brandH;
       if (tc.brandC != null) patch.brandC = tc.brandC;

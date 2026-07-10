@@ -69,10 +69,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     "[data-aos],[data-animate],[data-framer-appear-id],[class*='animate-']{opacity:1!important;visibility:visible!important;transform:none!important}" +
     "[style*='opacity:0'],[style*='opacity: 0'],[style*='visibility:hidden']{opacity:1!important;visibility:visible!important;transform:none!important}" +
     "img{opacity:1!important;visibility:visible!important}" +
-    // Sticky navbars turn solid on scroll via JS (base state is bg-transparent).
-    // With JS stripped they'd float transparently over content — give them the
-    // site's own background + border so the nav looks right, on any theme.
-    "header.sticky,header[class*='top-0']{background-color:var(--color-background,#fff)!important;border-bottom-color:var(--color-border,rgba(0,0,0,.1))!important;-webkit-backdrop-filter:saturate(1.3) blur(8px)!important;backdrop-filter:saturate(1.3) blur(8px)!important}" +
+    // NOTE: sticky navbars are handled in editor.js (fixHeaders) — NOT here. A blanket
+    // `background-color:var(--color-background)!important` force-whitened headers that already have
+    // their OWN solid (e.g. dark bg-neutral-950) background, turning their light text invisible. The
+    // JS version only touches truly-transparent headers, and only when their text is dark.
     "</style>";
 
   // Ensure the iframed site is mobile-scaled — if the page has no viewport meta,
@@ -104,6 +104,11 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     const ah = num(theme.accentH, 360); if (ah != null) decls.push(`--accent-h:${ah}`);
     if (theme.fontHeadingStack) decls.push(`--font-heading-stack:${cssVal(theme.fontHeadingStack)}`);
     if (theme.fontSansStack) decls.push(`--font-sans-stack:${cssVal(theme.fontSansStack)}`);
+    // Semantic token overrides (element→token color edits) — strict --token:#hex only.
+    const sem = theme.semantic as Record<string, string> | undefined;
+    if (sem) for (const [k, v] of Object.entries(sem)) {
+      if (/^--[a-z0-9-]+$/i.test(k) && /^#[0-9a-f]{3,8}$/i.test(v)) decls.push(`${k}:${v}`);
+    }
     if (theme.fontGoogle) themeInject += `<link id="__tbj-theme-font" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=${googleVal(theme.fontGoogle)}&display=swap">`;
     if (decls.length) themeInject += `<style id="__tbj-theme">:root{${decls.join(";")}}</style>`;
   }
