@@ -45,15 +45,23 @@ The nav follows the funnel: **Build → Prospect → Sell.**
 `/command/analyzer` (site analyzer) and `/command/sites` (deprecated — deleted) hang off
 Prospecting via the `match` array in `command-header.tsx`, not as top-level tabs.
 
-**Nav chrome (mobile + PWA).** `command-header.tsx` renders the tabs as a **hamburger drawer** (top-left
-menu → slide-in drawer with the tabs + email) and a top bar with the current tab + a prominent **"‹
-Portal"** back-link to the customer side. The customer **`/portal`** has its own responsive header
-(`components/portal/portal-header.tsx` — desktop links, mobile hamburger dropdown) and a **mobile PWA
-bottom bar** (`components/portal/portal-bottom-nav.tsx`: Home · Book · Billing · Account; `md:hidden`,
-safe-area-aware, hidden on the full-screen editor/receptionist, mounted via `portal/layout.tsx`). PWA
-safe-area insets come from the `viewport-fit=cover` viewport export in `(frontend)/layout.tsx`; the
-manifest's `start_url` is `/command` (admin-first — a customer install lands there and redirects to
-`/portal`).
+**Nav chrome — one unified navbar.** All three surfaces render the **same shell**,
+`components/app-nav.tsx` (`<AppHeader>`): a sticky `h-16` bar + a right-side slide-in drawer
+**portaled to `<body>`** (so a header's `backdrop-blur` can't trap the drawer's `fixed` positioning —
+that bug once collapsed the drawer to header height and caused a page-wide horizontal scrollbar). Each
+surface is just a config passed to `<AppHeader>`:
+> - **Public** (`components/site-nav.tsx`): marketing links + phone + **Login**; inline links on desktop.
+> - **Portal** (`components/portal/portal-header.tsx`): Overview · Agentic Solutions · Book a call ·
+>   Billing · Account (+ **Command** when `isAdmin`); email + **Sign out**; inline on desktop.
+> - **Command** (`command/command-header.tsx`): the 8 workflow groups with icons, `inlineOnDesktop=false`
+>   so it stays **drawer-primary at every width** (link-dense, admin-only), + a **"‹ Portal"** back-link
+>   and Sign out.
+>
+> The old per-surface chrome — the portal's push-down dropdown, the separate mobile **bottom bar**
+> (`portal-bottom-nav.tsx`), and `site-nav-mobile.tsx` — is **retired/deleted**; everything is `<AppHeader>`
+> now. PWA safe-area insets come from the `viewport-fit=cover` viewport export in `(frontend)/layout.tsx`;
+> the manifest's `start_url` is `/command` (admin-first — a customer install lands there and redirects to
+> `/portal`).
 
 > ⚠️ **DB data-transfer (egress) — command dashboards are `force-dynamic` + `<AutoRefresh>`.** A
 > `router.refresh()` re-runs *every* query on the page, so an open tab re-pulls its data on a timer. In

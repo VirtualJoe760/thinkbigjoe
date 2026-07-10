@@ -1,36 +1,25 @@
-import Link from "next/link";
-
-import { Logo } from "@/components/logo";
+import { AppHeader, type NavLink } from "@/components/app-nav";
 import { ButtonLink } from "@/components/ui/button";
-import { SiteNavMobile } from "@/components/site-nav-mobile";
 
-const links = [
-  { href: "/solutions", label: "Solutions" },
+const links: NavLink[] = [
   { href: "/#services", label: "Services" },
   { href: "/#approach", label: "Approach" },
   { href: "/#about", label: "About" },
   { href: "/#contact", label: "Contact" },
 ];
 
+const PhoneIcon = (
+  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012 4.2 2 2 0 014 2h3a2 2 0 012 1.7c.1.9.4 1.8.7 2.7a2 2 0 01-.5 2.1L8.1 9.9a16 16 0 006 6l1.4-1.1a2 2 0 012.1-.5c.9.3 1.8.6 2.7.7a2 2 0 011.7 2z" />
+  </svg>
+);
+
 export function SiteNav() {
   return (
-    <header className="sticky top-0 z-50 border-b border-line bg-background/80 backdrop-blur">
-      <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-        <Logo />
-
-        <div className="hidden items-center gap-8 md:flex">
-          {links.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              className="text-sm font-medium text-ink-soft transition-colors hover:text-ink"
-            >
-              {l.label}
-            </Link>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-4">
+    <AppHeader
+      links={links}
+      desktopRight={
+        <>
           <a
             href="tel:+14807642121"
             className="hidden text-sm font-semibold text-ink transition-colors hover:text-brand lg:block"
@@ -38,20 +27,25 @@ export function SiteNav() {
             (480) 764-2121
           </a>
           <span className="hidden h-5 w-px bg-line lg:block" aria-hidden="true" />
-          <Link
-            href="/login"
-            className="text-sm font-medium text-ink-soft transition-colors hover:text-ink"
-          >
+          <ButtonLink href="/login" size="sm">
             Login
-          </Link>
-          <span className="hidden md:inline-flex">
-            <ButtonLink href="/book-appointment" size="sm">
-              Book a call
-            </ButtonLink>
-          </span>
-          <SiteNavMobile links={links} />
-        </div>
-      </nav>
-    </header>
+          </ButtonLink>
+        </>
+      }
+      drawerFooter={
+        <>
+          <a
+            href="tel:+14807642121"
+            className="flex items-center justify-center gap-2 rounded-xl border border-line px-3 py-3 text-base font-semibold text-ink transition-colors hover:bg-surface"
+          >
+            {PhoneIcon}
+            (480) 764-2121
+          </a>
+          <ButtonLink href="/login" size="lg" fullWidth>
+            Login
+          </ButtonLink>
+        </>
+      }
+    />
   );
 }

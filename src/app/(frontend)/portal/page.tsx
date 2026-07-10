@@ -356,6 +356,49 @@ export default async function PortalPage({
 
         <section className="mt-12">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-ink-soft">
+            Your AI
+          </h2>
+          <div className="mt-4 grid gap-6 md:grid-cols-2">
+            <Link
+              href="/solutions"
+              className="group rounded-2xl border border-line bg-surface p-8 transition-colors hover:border-brand hover:bg-brand-tint"
+            >
+              <span className="text-2xl">🤖</span>
+              <h3 className="mt-2 text-xl font-bold tracking-tight group-hover:text-brand">
+                Build your agents
+              </h3>
+              <p className="mt-2 leading-relaxed text-ink-soft">
+                Custom AI agents built around how your business actually works — to
+                solve problems, scale the work, and close more sales.
+              </p>
+              <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand">
+                Explore agentic solutions
+                <span aria-hidden>→</span>
+              </span>
+            </Link>
+
+            <Link
+              href="/portal/receptionist"
+              className="group rounded-2xl border border-line bg-surface p-8 transition-colors hover:border-brand hover:bg-brand-tint"
+            >
+              <span className="text-2xl">🎙️</span>
+              <h3 className="mt-2 text-xl font-bold tracking-tight group-hover:text-brand">
+                Set up the voice receptionist
+              </h3>
+              <p className="mt-2 leading-relaxed text-ink-soft">
+                An AI receptionist that answers your phone, helps callers, and books
+                jobs around the clock — set it up in a few minutes.
+              </p>
+              <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand">
+                Set up your receptionist
+                <span aria-hidden>→</span>
+              </span>
+            </Link>
+          </div>
+        </section>
+
+        <section className="mt-12">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-ink-soft">
             {isAdmin ? "Client" : "Your account"}
           </h2>
           <div className="mt-4 grid gap-6 md:grid-cols-2">

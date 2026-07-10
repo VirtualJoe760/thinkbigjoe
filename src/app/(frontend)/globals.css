@@ -33,6 +33,13 @@
   border-color: var(--line);
 }
 
+/* Defense-in-depth against horizontal scroll: `clip` contains any element that
+   overhangs the right edge without establishing a scroll container, so the
+   sticky header keeps working (unlike `overflow-x: hidden`). */
+html {
+  overflow-x: clip;
+}
+
 body {
   background: var(--background);
   color: var(--ink);

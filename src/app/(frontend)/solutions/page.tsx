@@ -1,15 +1,35 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
-import { SiteFooter } from "@/components/site-footer";
-import { SiteNav } from "@/components/site-nav";
+import { PortalHeader } from "@/components/portal/portal-header";
+import { auth } from "@/lib/auth";
+import { isAdminEmail } from "@/lib/admin";
 import { SOLUTIONS } from "@/lib/solutions";
 
 export const metadata: Metadata = {
-  title: "How We Build",
+  title: "Agentic Solutions",
   description:
-    "What it looks like to have a custom AI solution developed for your business — from understanding the work, to building agents into your systems, to a long-term partnership that keeps them running.",
+    "How we build custom AI agents for your business — to solve the problems draining your team, to scale what you do without adding headcount, and to close more sales.",
 };
+
+// The three outcomes every agent we build is pointed at. The examples and
+// process below all ladder up to these.
+const PILLARS = [
+  {
+    title: "Solve problems",
+    body: "We find the work that quietly costs you — the manual follow-ups, the data re-entry, the leads that go cold — and build an agent that handles it inside the systems you already run on.",
+  },
+  {
+    title: "Scale the business",
+    body: "Agents let you take on more without adding headcount. The work that used to gate your growth — intake, scheduling, back-office ops — runs on its own, so your team spends its time where it counts.",
+  },
+  {
+    title: "Make more sales",
+    body: "Every lead answered in seconds, every quote followed up, every caller booked. We build agents that work your pipeline around the clock so revenue stops leaking through the cracks.",
+  },
+];
 
 const PHASES = [
   {
@@ -19,7 +39,7 @@ const PHASES = [
   },
   {
     n: "02",
-    title: "Design the solution",
+    title: "Design the agent",
     body: "We map the highest-leverage place to start and design an agent around it — what it does, where a human stays in the loop, and how it lives inside the tools you already use.",
   },
   {
@@ -34,10 +54,15 @@ const PHASES = [
   },
 ];
 
-export default function SolutionsPage() {
+export default async function SolutionsPage() {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) redirect("/login");
+
+  const { user } = session;
+
   return (
-    <>
-      <SiteNav />
+    <div className="flex flex-1 flex-col">
+      <PortalHeader email={user.email} isAdmin={isAdminEmail(user.email)} />
       <main className="flex-1">
         {/* Hero */}
         <section className="relative overflow-hidden">
@@ -55,20 +80,21 @@ export default function SolutionsPage() {
           <div className="relative mx-auto max-w-6xl px-6 pt-20 pb-16 md:pt-28 md:pb-20">
             <div className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-xs font-semibold tracking-wide text-ink-soft uppercase">
               <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-              How we build
+              Agentic Solutions
             </div>
             <h1 className="mt-8 max-w-4xl text-4xl font-extrabold leading-[1.05] tracking-tight text-balance md:text-6xl">
-              Custom AI, built for how your business actually works.
+              Agents that solve the problem, scale the business, and close more
+              sales.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft md:text-xl">
               We don&apos;t sell software seats or one-size-fits-all tools. We
-              develop agents tailored to your workflows and built into your
-              systems — then stay on to keep them running as your business
-              changes.
+              build custom AI agents around how your business actually works —
+              pointed at real outcomes and wired into your systems — then stay on
+              to keep them running as you grow.
             </p>
             <div className="mt-10">
               <Link
-                href="/book-appointment"
+                href="/portal/book"
                 className="inline-flex items-center justify-center rounded-full bg-brand px-7 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-dark"
               >
                 Book a strategy call
@@ -77,53 +103,38 @@ export default function SolutionsPage() {
           </div>
         </section>
 
-        {/* Principles */}
+        {/* The three outcomes */}
         <section className="border-t border-line bg-surface">
           <div className="mx-auto max-w-6xl px-6 py-16 md:py-20">
-            <div className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line md:grid-cols-3">
-              <div className="bg-background p-8">
-                <h3 className="text-lg font-bold tracking-tight">
-                  Built around your business
-                </h3>
-                <p className="mt-3 leading-relaxed text-ink-soft">
-                  Every engagement starts from your actual workflows and data —
-                  not a generic template you bend yourself to fit.
-                </p>
-              </div>
-              <div className="bg-background p-8">
-                <h3 className="text-lg font-bold tracking-tight">
-                  Embedded in your systems
-                </h3>
-                <p className="mt-3 leading-relaxed text-ink-soft">
-                  Agents connect into your CRM, ERP, PSA, or DMS through MCP, so
-                  they work inside the tools your team already runs on.
-                </p>
-              </div>
-              <div className="bg-background p-8">
-                <h3 className="text-lg font-bold tracking-tight">
-                  A partnership, not a handoff
-                </h3>
-                <p className="mt-3 leading-relaxed text-ink-soft">
-                  We don&apos;t ship and disappear. We stay on to keep accuracy
-                  high and grow the solution alongside you.
-                </p>
-              </div>
+            <p className="text-sm font-semibold tracking-wide text-brand uppercase">
+              What we build agents to do
+            </p>
+            <h2 className="mt-3 max-w-2xl text-3xl font-extrabold tracking-tight md:text-4xl">
+              Every agent earns its keep three ways.
+            </h2>
+            <div className="mt-10 grid gap-px overflow-hidden rounded-2xl border border-line bg-line md:grid-cols-3">
+              {PILLARS.map((p) => (
+                <div key={p.title} className="bg-background p-8">
+                  <h3 className="text-lg font-bold tracking-tight">{p.title}</h3>
+                  <p className="mt-3 leading-relaxed text-ink-soft">{p.body}</p>
+                </div>
+              ))}
             </div>
           </div>
         </section>
 
-        {/* What developing a solution looks like */}
+        {/* What building an agent looks like */}
         <section className="mx-auto max-w-6xl px-6 py-20 md:py-28">
           <p className="text-sm font-semibold tracking-wide text-brand uppercase">
             Examples of the work
           </p>
           <h2 className="mt-3 max-w-2xl text-3xl font-extrabold tracking-tight md:text-4xl">
-            What developing a solution looks like.
+            What building an agent looks like.
           </h2>
           <p className="mt-4 max-w-2xl leading-relaxed text-ink-soft">
             Every project is custom, but the shape is often familiar. Here are a
-            few of the problems we develop solutions for — and what building one
-            into your business actually involves.
+            few of the problems we build agents to solve — and what putting one to
+            work inside your business actually involves.
           </p>
 
           <div className="mt-12 space-y-12">
@@ -155,7 +166,7 @@ export default function SolutionsPage() {
 
                 <div>
                   <p className="text-sm font-semibold tracking-tight">
-                    What a solution like this does
+                    What an agent like this does
                   </p>
                   <ul className="mt-3 space-y-2.5">
                     {s.delivers.map((item) => (
@@ -190,8 +201,8 @@ export default function SolutionsPage() {
 
           <p className="mt-12 max-w-3xl leading-relaxed text-ink-soft">
             These are just starting points. The first conversation is about your
-            business — we figure out together where a custom solution earns its
-            keep, and what it would take to build it.
+            business — we figure out together where a custom agent earns its keep,
+            and what it would take to build it.
           </p>
         </section>
 
@@ -202,7 +213,7 @@ export default function SolutionsPage() {
               How we work together
             </p>
             <h2 className="mt-3 max-w-2xl text-3xl font-extrabold tracking-tight md:text-4xl">
-              From your workflows to a working solution.
+              From your workflows to a working agent.
             </h2>
             <div className="mt-12 grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
               {PHASES.map((phase) => (
@@ -235,14 +246,13 @@ export default function SolutionsPage() {
             We&apos;ll map the highest-leverage place to start — no pitch.
           </p>
           <Link
-            href="/book-appointment"
+            href="/portal/book"
             className="mt-8 inline-flex items-center justify-center rounded-full bg-brand px-7 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-dark"
           >
             Book a strategy call
           </Link>
         </section>
       </main>
-      <SiteFooter />
-    </>
+    </div>
   );
 }

@@ -1,15 +1,13 @@
-"use client";
-
-import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Logo } from "@/components/logo";
 
-// Consolidated to 6 workflow groups. `match` lists every path that should
-// highlight this item (Prospecting folds in the analyzer; Venus groups
-// crons/audit/team).
-const LINKS: Array<{ href: string; label: string; icon: string; match?: string[] }> = [
-  { href: "/command", label: "Overview", icon: "M3 12l9-9 9 9M5 10v10h14V10" },
+import { AppHeader, type NavLink } from "@/components/app-nav";
+import { SignOutButton } from "@/components/portal/sign-out-button";
+
+// The internal Command Center is admin-only and link-dense (8 workflow groups),
+// so it stays drawer-primary at every width — `inlineOnDesktop={false}`. Same
+// shell as the public site and the portal, just a different config.
+const LINKS: NavLink[] = [
+  { href: "/command", label: "Overview", icon: "M3 12l9-9 9 9M5 10v10h14V10", exact: true },
   {
     href: "/command/engine",
     label: "Engine",
@@ -38,51 +36,13 @@ const LINKS: Array<{ href: string; label: string; icon: string; match?: string[]
   },
 ];
 
-const isActive = (l: { href: string; match?: string[] }, path: string) =>
-  (l.match || [l.href]).some((m) => (m === "/command" ? path === "/command" : path.startsWith(m)));
-
-function Icon({ d }: { d: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d={d} />
-    </svg>
-  );
-}
-
 export function CommandHeader({ email }: { email: string }) {
-  const [open, setOpen] = useState(false);
-  const path = usePathname();
-
-  // Close on navigation
-  useEffect(() => { setOpen(false); }, [path]);
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open]);
-
-  const current = LINKS.find((l) => isActive(l, path));
-
   return (
-    <>
-      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-line bg-background px-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setOpen(true)}
-            className="grid h-9 w-9 place-items-center rounded-lg text-ink-soft transition-colors hover:bg-surface hover:text-ink"
-            aria-label="Open menu"
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <path d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <Logo />
-        </div>
-        {current && (
-          <span className="hidden text-sm font-medium text-ink-soft sm:block">{current.label}</span>
-        )}
+    <AppHeader
+      links={LINKS}
+      inlineOnDesktop={false}
+      highlightActive
+      leading={
         <Link
           href="/portal"
           className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:bg-surface hover:text-ink"
@@ -93,59 +53,17 @@ export function CommandHeader({ email }: { email: string }) {
           </svg>
           Portal
         </Link>
-      </header>
-
-      {/* Backdrop */}
-      {open && (
-        <div
-          className="fixed inset-0 z-40 bg-ink/30 backdrop-blur-sm"
-          onClick={() => setOpen(false)}
-        />
-      )}
-
-      {/* Drawer */}
-      <div className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-background shadow-2xl transition-transform duration-200 ${open ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="flex h-14 items-center justify-between border-b border-line px-4">
-          <Logo />
-          <button
-            onClick={() => setOpen(false)}
-            className="grid h-9 w-9 place-items-center rounded-lg text-ink-soft transition-colors hover:bg-surface hover:text-ink"
-            aria-label="Close menu"
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <nav className="flex-1 overflow-y-auto p-3">
-          <div className="flex flex-col gap-1">
-            {LINKS.map((l) => {
-              const active = isActive(l, path);
-              return (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                    active ? "bg-brand-tint text-brand" : "text-ink-soft hover:bg-surface hover:text-ink"
-                  }`}
-                >
-                  <Icon d={l.icon} />
-                  {l.label}
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
-
-        <div className="border-t border-line p-4">
+      }
+      drawerFooter={
+        <>
           <p className="truncate text-xs text-ink-soft">{email}</p>
-          <div className="mt-2 flex items-center gap-4 text-xs">
-            <a href="/portal" className="text-ink-soft hover:text-ink">Portal</a>
-            <a href="/" className="text-ink-soft hover:text-ink">Site</a>
+          <div className="flex items-center gap-4 text-xs">
+            <Link href="/portal" className="text-ink-soft hover:text-ink">Portal</Link>
+            <Link href="/" className="text-ink-soft hover:text-ink">Site</Link>
           </div>
-        </div>
-      </div>
-    </>
+          <SignOutButton />
+        </>
+      }
+    />
   );
 }

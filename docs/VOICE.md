@@ -106,7 +106,11 @@ The receptionist is a **product**, sold via the plan tiers ([`src/lib/plans.ts`]
 
 **Customer setup UI:** a claimed-site owner configures their receptionist at
 **`/portal/receptionist/[id]`** (`saveReceptionistSetup`) — greeting, services, hours, booking
-preference, escalation number, FAQs, guardrails. Saved to `forge_sites.receptionist_config` (jsonb)
+preference, escalation number, FAQs, guardrails. There's also a **standalone entry point**
+**`/portal/receptionist`** (no id — linked from the portal's "Your AI" section) that resolves the
+user's site (one → inline, several → `?site=` switcher, none → prompt to build/claim) and renders the
+**same `<ReceptionistForm>`**. *(Stripe gating for turning the voice add-on on from this page is still
+TODO — for now off-plan saves a draft, same as the per-site page.)* Saved to `forge_sites.receptionist_config` (jsonb)
 with `receptionist_status` `none → submitted → active`. **Gated on a paid Website+Voice (or Complete)
 plan:** off-plan, the form saves a **draft** (config only, status stays `none`) and the page shows a
 "choose a plan" upsell; on-plan, submitting flips status to `submitted`, logs

@@ -32,8 +32,8 @@ export const metadata: Metadata = {
   },
 };
 
-// viewport-fit=cover exposes the env(safe-area-inset-*) vars used by the mobile bottom bar and
-// headers, so the installed PWA doesn't collide with the notch / home indicator.
+// viewport-fit=cover exposes the env(safe-area-inset-*) vars so the installed PWA's sticky
+// header doesn't collide with the notch / home indicator.
 export const viewport: Viewport = {
   themeColor: "#0047ff",
   viewportFit: "cover",
