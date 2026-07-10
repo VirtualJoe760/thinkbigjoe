@@ -135,7 +135,58 @@ export default async function ProspectsPage({
   // --- Web-dev leads (the forge queue). Exclude soft-deleted sites so they vanish from
   // every view (bucketOf would otherwise fall them through to "archive"). Recoverable in
   // the DB by flipping status back. ---
-  const forgeRows = await db.select().from(forgeSites).where(sql`status != 'deleted'`).orderBy(desc(forgeSites.createdAt));
+  // Explicit projection, NOT `select()` (all 69 columns): the list only needs ~40 of them, and a
+  // `select()` shipped the ~1 KB/row `preview` jsonb blob (~696 KB across the table) on every refresh
+  // just to compute a boolean — a big chunk of the egress that blew the DB transfer quota. Select the
+  // fields the map below reads; `preview` collapses to a boolean; the 27 unused columns are dropped.
+  const forgeRows = await db
+    .select({
+      id: forgeSites.id,
+      slug: forgeSites.slug,
+      businessName: forgeSites.businessName,
+      niche: forgeSites.niche,
+      city: forgeSites.city,
+      serviceArea: forgeSites.serviceArea,
+      phone: forgeSites.phone,
+      email: forgeSites.email,
+      existingWebsiteUrl: forgeSites.existingWebsiteUrl,
+      hasPreview: sql<boolean>`${forgeSites.preview} is not null`,
+      brandColor: forgeSites.brandColor,
+      theme: forgeSites.theme,
+      googleRating: forgeSites.googleRating,
+      reviewCount: forgeSites.reviewCount,
+      googleMapsUrl: forgeSites.googleMapsUrl,
+      linkedinUrl: forgeSites.linkedinUrl,
+      status: forgeSites.status,
+      fitReason: forgeSites.fitReason,
+      source: forgeSites.source,
+      notes: forgeSites.notes,
+      liveUrl: forgeSites.liveUrl,
+      screenshotUrl: forgeSites.screenshotUrl,
+      buildStatus: forgeSites.buildStatus,
+      deniedReason: forgeSites.deniedReason,
+      claimCode: forgeSites.claimCode,
+      claimedByUserId: forgeSites.claimedByUserId,
+      createdAt: forgeSites.createdAt,
+      outreachStatus: forgeSites.outreachStatus,
+      outreachSubject: forgeSites.outreachSubject,
+      outreachDraft: forgeSites.outreachDraft,
+      contactedAt: forgeSites.contactedAt,
+      followupCount: forgeSites.followupCount,
+      ownerName: forgeSites.ownerName,
+      instagramUrl: forgeSites.instagramUrl,
+      facebookUrl: forgeSites.facebookUrl,
+      contactNotes: forgeSites.contactNotes,
+      socialStats: forgeSites.socialStats,
+      reviewQuotes: forgeSites.reviewQuotes,
+      callPrep: forgeSites.callPrep,
+      photoUrl: forgeSites.photoUrl,
+      marketingApprovedAt: forgeSites.marketingApprovedAt,
+      revisionNote: forgeSites.revisionNote,
+    })
+    .from(forgeSites)
+    .where(sql`status != 'deleted'`)
+    .orderBy(desc(forgeSites.createdAt));
   const forgeItems: ForgeSiteItem[] = forgeRows.map((r) => ({
     id: String(r.id),
     slug: r.slug,
@@ -146,7 +197,7 @@ export default async function ProspectsPage({
     phone: r.phone || "",
     email: r.email || "",
     existingWebsiteUrl: r.existingWebsiteUrl || "",
-    hasPreview: !!r.preview,
+    hasPreview: !!r.hasPreview,
     brandColor: r.brandColor || "",
     theme: r.theme || "",
     googleRating: r.googleRating || "",
@@ -238,7 +289,7 @@ export default async function ProspectsPage({
 
   return (
     <div className="px-4 py-6 sm:px-6 sm:py-8">
-      <AutoRefresh seconds={20} />
+      <AutoRefresh seconds={120} />
       <Toaster />
       <div className="mx-auto w-full max-w-5xl">
         <div className="flex flex-wrap items-baseline justify-between gap-2">

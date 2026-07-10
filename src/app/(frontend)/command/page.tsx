@@ -142,7 +142,7 @@ export default async function OverviewPage() {
 
   return (
     <div className="px-6 py-8">
-      <AutoRefresh seconds={30} />
+      <AutoRefresh seconds={90} />
       <div className="mx-auto w-full max-w-4xl">
         <h1 className="text-2xl font-extrabold tracking-tight">Overview</h1>
         <p className="mt-1 text-sm text-ink-soft">
