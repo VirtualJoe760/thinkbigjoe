@@ -75,6 +75,15 @@ tool-by-tool → UI-surface map):
 - **Outreach**: `list_forge_outreach_queue` (gated on `marketing_approved_at` — see
   [FORGE.md](FORGE.md)'s lifecycle), `save_forge_outreach_draft`, `mark_forge_outreach_sent`,
   `list_forge_followup_due`
+- **Design / brand (brand-lead)**: `save_design_report` + `list_design_reports` (v2.20.0) — the
+  Brand Lead's design-research loop. Each 2×/day run reads its prior reports (`list_design_reports`),
+  studies a vertical's best-in-class sites, authors a design-language spec in the forge's
+  `factory/design-languages.json`, then files a **report** (`save_design_report`) that MUST cite the
+  sites it studied (`sources[]` — required; that's how the report is verified). Reports render on
+  **/command/engine → Design research**, where Joe verifies/rejects them (`setDesignReportStatus`);
+  the design itself is built human-gated from the Template designer (`requestTemplateDesign` →
+  `job_requests(kind='design_template')` → `trigger-poll` → `forge-template.sh`). See
+  [FORGE.md](FORGE.md) + [OPENCLAW.md](OPENCLAW.md).
 - **Monitoring / spend**: `forge_digest` (v2.18.0) — the forge ops snapshot: master +
   per-capability switches, weekly RUN-budget used vs remaining (75/90% warnings), build + edit
   queue depth, 24h/7d throughput. Fetches `GET /api/forge/digest` (`getForgeDigest` — the same

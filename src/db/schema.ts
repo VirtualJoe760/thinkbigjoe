@@ -418,6 +418,25 @@ export const outreachEngine = pgTable("outreach_engine", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });
 
+export const designReports = pgTable("design_reports", {
+	id: serial().primaryKey().notNull(),
+	vertical: text().notNull(),
+	archetype: text(),
+	title: text().notNull(),
+	summary: text().notNull(),
+	findings: jsonb(),
+	sources: jsonb(),
+	languageId: text("language_id"),
+	spec: jsonb(),
+	status: text().default('proposed').notNull(),
+	verifiedAt: timestamp("verified_at", { withTimezone: true, mode: 'string' }),
+	verifiedBy: text("verified_by"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("design_reports_created_idx").using("btree", table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
+]);
+
 export const forgeEngine = pgTable("forge_engine", {
 	id: serial().primaryKey().notNull(),
 	enabled: boolean().default(false).notNull(),

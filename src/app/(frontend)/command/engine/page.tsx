@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import { desc, sql } from "drizzle-orm";
 
-import { db, activityLog } from "@/db";
+import { db, activityLog, designReports } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { getForgeDigest } from "@/lib/forge-stats";
 import { ClearBuildCache } from "./clear-cache";
 import { EngineControls } from "./engine-controls";
 import { ActivityChart } from "./activity-chart";
 import { TemplateDesigner } from "./template-designer";
+import { DesignReports, type DesignReport } from "./design-reports";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -90,6 +91,26 @@ export default async function EnginePage() {
     .orderBy(desc(activityLog.createdAt))
     .limit(60);
 
+  // Brand Lead design-research reports — the accumulating "what great looks like" per vertical.
+  const reportRows = await db
+    .select()
+    .from(designReports)
+    .orderBy(desc(designReports.createdAt))
+    .limit(12);
+  const reports: DesignReport[] = reportRows.map((r) => ({
+    id: r.id,
+    vertical: r.vertical,
+    archetype: r.archetype,
+    title: r.title,
+    summary: r.summary,
+    findings: (r.findings as Record<string, unknown> | null) ?? null,
+    sources: (r.sources as { label?: string; url?: string }[] | null) ?? null,
+    languageId: r.languageId,
+    status: r.status,
+    createdAt: r.createdAt,
+  }));
+  const proposedCount = reports.filter((r) => r.status === "proposed").length;
+
   // Budget gauge color + tone
   const pct = budget.pct;
   const barColor = pct >= 90 ? "bg-red-500" : pct >= 75 ? "bg-amber-500" : "bg-green-500";
@@ -168,6 +189,29 @@ export default async function EnginePage() {
         <div className="mt-4">
           <TemplateDesigner />
         </div>
+
+        {/* Design research — the Brand Lead's accumulating reports per vertical, each verifiable by its cited sources */}
+        <section className="mt-4 rounded-2xl border border-line bg-background p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-base font-bold tracking-tight">Design research</h2>
+            <span className="text-sm text-ink-soft">
+              {reports.length === 0 ? (
+                "nothing filed yet"
+              ) : (
+                <>
+                  <span className="font-semibold text-ink tabular-nums">{reports.length}</span> report{reports.length === 1 ? "" : "s"}
+                  {proposedCount > 0 && <span className="ml-2 text-amber-700">· {proposedCount} to verify</span>}
+                </>
+              )}
+            </span>
+          </div>
+          <p className="mt-1 text-[11px] text-ink-soft">
+            Twice a day the Brand Lead studies a vertical&apos;s best-in-class sites and files what it learned. Each report
+            cites the sites it studied — verify the ones whose direction is right, and that steers the next run and the
+            templates the forge builds.
+          </p>
+          <DesignReports reports={reports} />
+        </section>
 
         {/* Activity chart */}
         <section className="mt-4 rounded-2xl border border-line bg-background p-5">

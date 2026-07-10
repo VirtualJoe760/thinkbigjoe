@@ -1382,10 +1382,82 @@ async function toolListExpiringPreviews() {
 }
 
 // ---------------------------------------------------------------------------
+// Design research reports (brand-lead). A report is the ACCUMULATING artifact
+// of a design-research run: the vertical studied, the best-in-class sites it
+// looked at (sources = how we verify the claims), the patterns it found, and
+// the design-language spec it produced. list_design_reports lets the agent read
+// its prior research before writing new — so each run compounds, not repeats.
+// ---------------------------------------------------------------------------
+async function toolSaveDesignReport(args = {}) {
+  const {
+    vertical,
+    archetype = null,
+    title,
+    summary,
+    findings = null,
+    sources = null,
+    language_id = null,
+    spec = null,
+  } = args;
+  if (!vertical || !title || !summary) {
+    return { content: [{ type: "text", text: "❌ vertical, title, and summary are required." }], isError: true };
+  }
+  // Require at least one cited source so every report is auditable (verification floor).
+  const srcArr = Array.isArray(sources) ? sources.filter((s) => s && (s.url || s.label)) : [];
+  if (srcArr.length === 0) {
+    return { content: [{ type: "text", text: "❌ A report must cite at least one source (the site(s) you studied) so it can be verified. Add { label, url } entries to `sources`." }], isError: true };
+  }
+  const res = await query(
+    `INSERT INTO design_reports (vertical, archetype, title, summary, findings, sources, language_id, spec, status)
+     VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8::jsonb,'proposed') RETURNING id`,
+    [
+      vertical,
+      archetype,
+      title,
+      summary,
+      findings ? JSON.stringify(findings) : null,
+      JSON.stringify(srcArr),
+      language_id,
+      spec ? JSON.stringify(spec) : null,
+    ],
+  );
+  const id = res.rows[0].id;
+  await audit("brand_design_proposed", `Design report #${id}: ${title} (${vertical})`, {
+    detail: { report_id: id, vertical, language_id, sources: srcArr.length },
+  });
+  return { content: [{ type: "text", text: `✅ Design report #${id} saved for "${vertical}" with ${srcArr.length} cited source(s). It will appear in the Engine tab as "proposed" for Joe to verify.` }] };
+}
+
+async function toolListDesignReports(args = {}) {
+  const { vertical = null, status = null, limit = 12 } = args;
+  const where = [];
+  const params = [];
+  if (vertical) { params.push(vertical); where.push(`vertical = $${params.length}`); }
+  if (status) { params.push(status); where.push(`status = $${params.length}`); }
+  params.push(Math.min(Number(limit) || 12, 50));
+  const res = await query(
+    `SELECT id, vertical, archetype, title, summary, language_id, status, created_at,
+            jsonb_array_length(COALESCE(sources,'[]'::jsonb)) AS source_count
+       FROM design_reports
+       ${where.length ? "WHERE " + where.join(" AND ") : ""}
+       ORDER BY created_at DESC
+       LIMIT $${params.length}`,
+    params,
+  );
+  if (res.rows.length === 0) {
+    return { content: [{ type: "text", text: vertical ? `No prior design reports for "${vertical}" yet — you're breaking new ground. Study best-in-class sites, then save_design_report.` : "No design reports yet." }] };
+  }
+  const lines = res.rows.map(
+    (r) => `#${r.id} [${r.status}] ${r.vertical}${r.archetype ? " · " + r.archetype : ""} — ${r.title} (${r.source_count} sources${r.language_id ? ", lang=" + r.language_id : ""})\n   ${r.summary}`,
+  );
+  return { content: [{ type: "text", text: `Prior design research (${res.rows.length}), newest first — build on these, don't repeat:\n\n${lines.join("\n\n")}` }] };
+}
+
+// ---------------------------------------------------------------------------
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.19.0" },
+  { name: "tbj-mcp", version: "2.20.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1837,6 +1909,36 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["name", "email", "start_time", "end_time"],
       },
     },
+    {
+      name: "save_design_report",
+      description: "Save a design-research report (brand-lead). Call this at the END of a design-research run to record what you studied and produced, so the research compounds and Joe can review it in the Engine tab. A report MUST cite the actual sites you studied in `sources` (that's how we verify it). If you also authored a design-language spec, pass language_id + spec.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          vertical: { type: "string", description: "The business type / vertical studied, e.g. 'plumber', 'med spa', 'roofer'." },
+          archetype: { type: "string", description: "Optional dominant brand archetype/personality this design serves, e.g. 'Caregiver', 'Hero', 'Sage'." },
+          title: { type: "string", description: "Short report title, e.g. 'What great plumber sites do — trust-first, dispatch-fast'." },
+          summary: { type: "string", description: "1-3 sentence plain-English summary of the key insight, for the Engine tab." },
+          findings: { type: "object", description: "Structured findings: e.g. { layout, color, type, sections, conversion, distinct_from }. What separates great from generic." },
+          sources: { type: "array", description: "REQUIRED. The sites you studied — [{ label, url }]. This is how the report is verified. At least one.", items: { type: "object", properties: { label: { type: "string" }, url: { type: "string" } } } },
+          language_id: { type: "string", description: "If you authored/refined a design-language in factory/design-languages.json, its id (so Joe can build it from this report)." },
+          spec: { type: "object", description: "Optional copy of the design-language spec you wrote (for the record)." },
+        },
+        required: ["vertical", "title", "summary", "sources"],
+      },
+    },
+    {
+      name: "list_design_reports",
+      description: "Read prior design-research reports (brand-lead). ALWAYS call this before authoring a new report so you build on existing research instead of repeating it. Filter by vertical to see everything learned for one business type.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          vertical: { type: "string", description: "Optional: only reports for this vertical." },
+          status: { type: "string", description: "Optional: 'proposed' | 'verified' | 'rejected'." },
+          limit: { type: "number", description: "Max reports (default 12, cap 50)." },
+        },
+      },
+    },
   ],
 }));
 
@@ -1882,6 +1984,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "list_due_followups": return toolListDueFollowups();
     case "mark_followup_sent": return toolMarkFollowupSent(args);
     case "book_appointment": return toolBookAppointment(args);
+    case "save_design_report": return toolSaveDesignReport(args);
+    case "list_design_reports": return toolListDesignReports(args);
     default:
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }

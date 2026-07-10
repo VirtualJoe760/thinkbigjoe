@@ -165,18 +165,18 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
     agent: "brand-lead",
     schedule: "0 6,18 * * *",
     stagger: "5m",
-    summary: "Research a vertical's best-in-class sites + author/refine a structurally-distinct design-language spec for the forge to build — keep the template library growing so every business feels unique.",
-    tools: ["list_forge_queue", "forge_funnel_stats", "forge_digest", "log_activity"],
-    uiSurface: ["/command/engine (Template designer)"],
+    summary: "Study a vertical's best-in-class sites, then FILE A REPORT (save_design_report) that cites the sites you studied + author/refine a structurally-distinct design-language for the forge to build. Reports accumulate in the Engine tab; each run builds on the last.",
+    tools: ["list_forge_queue", "forge_funnel_stats", "forge_digest", "list_design_reports", "save_design_report", "log_activity"],
+    uiSurface: ["/command/engine (Template designer + Design research)"],
     eventTypes: ["brand_design_proposed"],
-    prompt: `This is your design-research run (2×/day). Your job: make the template LIBRARY better so every business can feel unique — you propose new designs, Joe greenlights the build.
+    prompt: `This is your design-research run (2×/day). Your job: make the template LIBRARY better so every business can feel unique. You produce a RESEARCH REPORT each run — the report is the artifact, it compounds, and Joe reviews it in the Engine tab. You propose; Joe greenlights the build.
 
-1. PICK A VERTICAL to study — a business type we serve a lot (read list_forge_queue / forge_funnel_stats) that our current designs serve weakly. Rotate; don't restudy the same one back-to-back.
-2. RESEARCH the best-in-class sites for that vertical + a brand archetype — what the best <trade> sites actually do (layout rhythm, color mood, type personality, the sections + conversion patterns that recur). Drive the browser.
+1. READ YOUR PRIOR RESEARCH FIRST — call list_design_reports. Build on what's there; don't repeat a vertical you already covered well. Pick a vertical we serve a lot (list_forge_queue / forge_funnel_stats) that we've studied least or serve weakly. Rotate.
+2. RESEARCH the best-in-class sites for that vertical + a brand archetype — drive the browser to REAL sites. Note their exact URLs (you must cite them). Study layout rhythm, color mood, type personality, the sections + conversion patterns that recur, and what separates great from generic.
 3. AUTHOR a design-language spec — add or sharpen ONE entry in ~/code/webdev-templates/factory/design-languages.json (fields: id, name, mood, bestFor, type, color, motion, composition, newSections, distinctFrom). It MUST be structurally distinct from what we already have — check templates/registry.json + the existing languages first. A new direction, never a re-skin. Content-agnostic and buildable.
-4. LOG it: log_activity, event_type "brand_design_proposed", summary = the language id + the one-sentence brand idea + why it's distinct from what we have.
+4. FILE THE REPORT — save_design_report with: vertical, archetype, a title, a 1-2 sentence summary, findings (an object: {layout, color, type, sections, conversion, distinct_from}), sources (REQUIRED — [{label,url}] of the 3-5 real sites you studied; this is how Joe verifies the report), and language_id = the design-language id you authored. This also logs brand_design_proposed automatically.
 
-NEVER run forge-template.sh yourself or mass-add languages — Joe builds proposed designs from /command/engine (Template designer), one at a time. You propose; he greenlights. One sharp, well-researched spec per run beats five vague ones — if nothing needs a new direction, refine an existing unbuilt spec instead and say so.`,
+NEVER run forge-template.sh yourself or mass-add languages — Joe builds proposed designs from /command/engine (Template designer), one at a time, after reviewing your report. One sharp, well-sourced report per run beats five vague ones — if nothing needs a new direction, deepen an existing vertical's research (still cite sources) and refine its unbuilt spec instead.`,
   },
 ];
 

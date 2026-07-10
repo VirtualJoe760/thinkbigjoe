@@ -5,7 +5,7 @@ import { eq, inArray } from "drizzle-orm";
 
 import { and, sql } from "drizzle-orm";
 
-import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine, jobRequests, outreachEngine, previewEngine, forgeEngine, forgeReplies } from "@/db";
+import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine, jobRequests, outreachEngine, previewEngine, forgeEngine, forgeReplies, designReports } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
 import { sendForgeOutreachEmail, sendReplyEmail, sendBookingConfirmationEmail } from "@/lib/email";
 import { notifyTelegram } from "@/lib/telegram";
@@ -434,6 +434,34 @@ export async function requestTemplateDesign(): Promise<{ ok: boolean; message: s
   await db.insert(jobRequests).values({ kind: "design_template", requestedBy: "joe" });
   revalidatePath("/command/engine");
   return { ok: true, message: "Queued — the forge will design the next new template in the background (~30 min). It registers disabled for your review." };
+}
+
+/**
+ * Verify or reject a Brand Lead design-research report. Verifying is Joe's sign-off
+ * that the report's sources check out and the design direction is sound — the agent
+ * reads these back on its next run, so verified reports steer future research and
+ * rejected ones stop being repeated.
+ */
+export async function setDesignReportStatus(
+  id: number,
+  status: "verified" | "rejected",
+): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  const rows = await db
+    .update(designReports)
+    .set({ status, verifiedAt: now(), verifiedBy: "joe", updatedAt: now() })
+    .where(eq(designReports.id, id))
+    .returning({ id: designReports.id, vertical: designReports.vertical, title: designReports.title });
+  if (!rows.length) return { ok: false, message: "Report not found." };
+  const r = rows[0];
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: status === "verified" ? "brand_design_verified" : "brand_design_rejected",
+    summary: `${status === "verified" ? "Verified" : "Rejected"} design report #${r.id}: ${r.title} (${r.vertical})`,
+    metadata: { detail: { report_id: r.id, vertical: r.vertical } },
+  });
+  revalidatePath("/command/engine");
+  return { ok: true, message: status === "verified" ? "Verified — this steers the next research run." : "Rejected — the Brand Lead won't repeat this direction." };
 }
 
 // --- Marketing-approval gate: a built site becomes a LEAD only when approved ---
