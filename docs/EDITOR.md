@@ -62,15 +62,34 @@ the entire mechanism. The editor should expose these named roles as **Primary / 
   editor injected).
 - **Studio** → `image-studio.tsx` (generate/edit a logo/hero image). Asset types, prompt fragments, and
   the per-type trim/pad + quality gates come from [`../src/lib/logo-spec.ts`](../src/lib/logo-spec.ts) —
-  the browser twin of the forge's `factory/logo-fix.mjs`. Spec: [`LOGOS.md`](LOGOS.md).
+  the browser twin of the forge's `factory/logo-fix.mjs`. Spec: [`LOGOS.md`](LOGOS.md). On a phone in
+  **portrait** it shows a *rotate-to-landscape* prompt (the canvas needs width; web can't force
+  rotation), and the controls panel is **collapsible** (a "Hide ⟩ / ⟨ Controls" toggle) so the canvas
+  can take the full width.
 - **Design** → `template-gallery.tsx` (pick a different template → `preferredTemplate`).
 
-### The inline editor (`public/editor.js`, ~384 lines, vanilla JS)
+### The inline editor (`public/editor.js`, vanilla JS)
 Injected into the proxied site by **`src/app/api/site-proxy/[id]/route.ts`** (which strips the site's
 own scripts, injects `<base>` + `window.__TBJ_EDIT` config + `editor.js`, and injects a few CSS
-variables). On element click it opens a panel with **per-element** controls: Text, Text color, Button
-color, image replace/generate, Note. Edits are collected client-side with an Undo history, then
-POSTed as a batch.
+variables).
+
+**Intent-first tool tiles.** Clicking an element opens a panel of **square tool tiles** contextual to
+the element — text/heading → **Text · Size · Color · Request**; button → Text · Color · Size · Request;
+image/graphic → Image · Request. Tapping a tile reveals only that tool's controls (with a `‹` back to
+the grid), so the panel is never a wall of inputs. Tools:
+- **Text** — edits the element's full text (not the truncated label).
+- **Size** — A−/A+ steppers (×1.1, 8–200px) → per-element `font-size`, with a Reset.
+- **Color** — text/button color, with the **reframed scope control** ("Apply to: *Everywhere it's
+  used* / *Just this*") — "everywhere" moves the design token (recolors every use), "just this" is a
+  per-element override. Replaces the old confusing "All body text / Just this" toggle.
+- **Request** — a free-text note the forge/team applies.
+- **Image** — upload or AI-generate a replacement (image/graphic elements).
+
+**Preview → Approve / discard, everywhere.** Every panel previews live; a primary **"Approve changes"**
+commits to the `edits[]` batch (surfaced by the bottom "Send N edits →" bar); **X / Cancel discard** —
+they revert the preview so nothing is saved unless approved. This holds across the element, **brand**
+(`openBrandPanel` snapshots `openTheme` on open; `discardBrand()` reverts the live theme to it), and
+section panels. Edits carry an Undo history and are POSTed as a batch.
 
 ### The apply loop (real — the Site tab genuinely changes the site)
 `editor.js` → **`POST /api/edit-requests`** → stored as markdown on the **`edit_requests`** table →

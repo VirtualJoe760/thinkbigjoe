@@ -32,6 +32,8 @@ export function ImageStudio({ siteId }: { siteId: number }) {
   const [adj, setAdj] = useState({ brightness: 100, contrast: 100, saturate: 100 });
   // Mobile: show one control group at a time (segmented sub-nav) so the canvas stays visible.
   const [mtab, setMtab] = useState<"create" | "type" | "enhance" | "adjust">("create");
+  // Collapse the controls so the canvas gets the full width (handy in landscape on a phone).
+  const [collapsed, setCollapsed] = useState(false);
   const grp = (k: typeof mtab) => (mtab === k ? "space-y-4" : "hidden space-y-4 md:block");
 
   useEffect(() => {
@@ -152,10 +154,28 @@ export function ImageStudio({ siteId }: { siteId: number }) {
   ];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+    <div className="relative flex min-h-0 flex-1 flex-col md:flex-row">
+      {/* Rotate-to-landscape gate — the Studio needs width; on a phone held portrait, cover it with
+          a prompt to turn sideways (web can't force rotation). Shows ONLY on a small portrait screen;
+          hidden in landscape and on tablet/desktop (md:!hidden). Covers just the Studio, so the tab
+          bar underneath stays reachable. */}
+      <div className="absolute inset-0 z-40 hidden flex-col items-center justify-center gap-3 bg-surface px-8 text-center portrait:flex md:!hidden">
+        <div className="text-4xl">📱↺</div>
+        <p className="text-base font-semibold text-ink">Rotate your phone to landscape</p>
+        <p className="max-w-xs text-sm text-ink-soft">The brand-asset studio works best on a wider screen. Turn your device sideways to keep editing.</p>
+      </div>
+
       {/* Canvas — a fixed strip on top on phones (always visible while you work), big panel on the
           right on desktop (order-last on md keeps the controls on the left, as before). */}
       <div className="relative order-first flex h-[38vh] shrink-0 items-center justify-center overflow-auto bg-[repeating-conic-gradient(#e9edf3_0%_25%,#f6f8fb_0%_50%)] bg-[length:24px_24px] p-4 md:order-last md:h-auto md:min-h-0 md:flex-1 md:p-6">
+        {/* Collapse toggle (side-by-side layouts only) — reclaim the controls' width for the canvas. */}
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          className="absolute right-3 top-3 z-10 hidden items-center gap-1 rounded-full border border-line bg-surface/90 px-3 py-1.5 text-xs font-semibold text-ink-soft shadow-sm backdrop-blur hover:text-ink md:inline-flex"
+          title={collapsed ? "Show controls" : "Hide controls"}
+        >
+          {collapsed ? "⟨ Controls" : "Hide ⟩"}
+        </button>
         {src ? (
           <canvas ref={canvasRef} className="max-h-full max-w-full rounded-lg shadow-lg" />
         ) : (
@@ -171,7 +191,7 @@ export function ImageStudio({ siteId }: { siteId: number }) {
         )}
       </div>
 
-      <aside className="flex min-h-0 flex-1 flex-col border-t border-line bg-surface text-sm md:w-72 md:flex-none md:border-r md:border-t-0">
+      <aside className={`flex min-h-0 flex-1 flex-col border-t border-line bg-surface text-sm md:w-72 md:flex-none md:border-r md:border-t-0 ${collapsed ? "md:hidden" : ""}`}>
         {/* Mobile-only segmented sub-nav — one control group at a time */}
         <div className="flex gap-1 border-b border-line p-2 md:hidden">
           {MOBILE_TABS.map((t) => (

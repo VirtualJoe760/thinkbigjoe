@@ -13,6 +13,7 @@ type EditChanges = {
   newText?: string;
   color?: string;
   background?: string;
+  fontSize?: string; // per-element text size, e.g. "34px"
   image?: { name?: string; dataUrl?: string };
   replaceGraphic?: boolean;
   variant?: string;
@@ -132,6 +133,7 @@ export async function POST(req: Request) {
     }
     lines.push(`${i + 1}. **${e.tag || "element"}**${e.text ? ` — “${e.text}”` : ""}`);
     if (c.newText) lines.push(`   - New text: “${c.newText}”`);
+    if (c.fontSize) lines.push(`   - Text size (this element only) → \`font-size: ${c.fontSize}\``);
     if (c.color) lines.push(`   - Text color (this element only) → ${c.color}`);
     if (c.background) lines.push(`   - Background (this element only) → ${c.background}`);
     if (c.semantic) for (const [k, v] of Object.entries(c.semantic)) lines.push(`   - Brand token \`${k}: ${v};\` — recolors everywhere this token is used. **Applied automatically** to the fenced TBJ-THEME block in \`app/globals.css\`; no manual edit needed.`);

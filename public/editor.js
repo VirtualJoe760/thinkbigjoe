@@ -395,6 +395,9 @@
     var snap = snapshot(el);
     var type = elType(el);
     var selector = cssPath(el), origText = textOf(el), change = {};
+    // origText is a TRUNCATED label (…); the Text tool must edit the element's FULL text, or a long
+    // paragraph gets silently cut to 120 chars on Approve. Collapse formatting whitespace for editing.
+    var origTextFull = (el.textContent || "").replace(/\s+/g, " ").trim();
     var cs = getComputedStyle(el);
 
     // spotlight: dim everything except the highlighted element
@@ -404,72 +407,10 @@
     var pop = document.createElement("div");
     pop.id = "__tbj-pop";
     pop.style.cssText = panelCss(mobile);
+    var origFontPx = Math.round(parseFloat(cs.fontSize) || 16); // true original size, for Reset
 
-    var h = handleHtml(mobile) +
-      '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-      '<span style="font-size:11px;font-weight:700;color:#2f6bff;text-transform:uppercase;letter-spacing:.04em;">Edit ' +
-      (type === "image" ? "image" : type === "graphic" ? "graphic" : type === "button" ? "button" : el.nodeName.toLowerCase()) + "</span>" +
-      '<button id="__tbj-x" aria-label="close" style="border:0;background:#f5f7fb;border-radius:8px;width:26px;height:26px;cursor:pointer;font-size:15px;">✕</button></div>';
-
-    // Scope toggle: "All <token>" (change everywhere that color is used — the modular default) vs
-    // "Just this" (per-element override — the escape hatch). Rendered only when a token is detected.
-    function scopeToggle(cls, tok) {
-      if (!tok) return "";
-      function b(s, lbl) {
-        var on = s === "all";
-        return '<button type="button" class="' + cls + '" data-scope="' + s + '" style="flex:1;border:1px solid ' +
-          (on ? "#2f6bff" : "#e6e9ef") + ";background:" + (on ? "#eaf0ff" : "#fff") + ";color:" + (on ? "#2f6bff" : "#5b616e") +
-          ';border-radius:8px;padding:6px;font-size:11px;font-weight:600;cursor:pointer;">' + lbl + "</button>";
-      }
-      return '<div style="display:flex;gap:6px;margin-top:6px;">' + b("all", "All " + tok.label) + b("one", "Just this") + "</div>";
-    }
-    var colorTok = null, bgTok = null;
-    if (type === "text" || type === "button") {
-      h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Text</label>' +
-        '<textarea id="__tbj-text" style="width:100%;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;min-height:48px;">' +
-        origText.replace(/</g, "&lt;") + "</textarea>";
-      var textHex = toHex(cs.color);
-      colorTok = detectColorToken(el, textHex, "text-");
-      h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Text color <span id="__tbj-ch" style="font-weight:400;color:#9aa0ad;">' + textHex + "</span>" +
-        '<input id="__tbj-color" type="color" value="' + textHex + '" style="width:100%;height:30px;border:1px solid #e6e9ef;border-radius:6px;margin-top:4px;padding:0;"></label>' +
-        scopeToggle("__tbj-cs", colorTok);
-      if (type === "button") {
-        var bgT = cs.backgroundColor === "transparent" || /rgba?\([^)]*,\s*0\s*\)\s*$/.test(cs.backgroundColor);
-        var bgHex = bgT ? "#ffffff" : toHex(cs.backgroundColor);
-        if (!bgT) bgTok = detectColorToken(el, bgHex, "bg-");
-        // If text + background resolve to the SAME token, don't offer the token toggle twice —
-        // the two controls would fight over one :root var. Background falls back to per-element.
-        if (bgTok && colorTok && bgTok.v === colorTok.v) bgTok = null;
-        h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Button color <span id="__tbj-bh" style="font-weight:400;color:#9aa0ad;">' + (bgT ? "none" : bgHex) + "</span>" +
-          '<input id="__tbj-bg" type="color" value="' + bgHex + '" style="width:100%;height:30px;border:1px solid #e6e9ef;border-radius:6px;margin-top:4px;padding:0;"></label>' +
-          scopeToggle("__tbj-bs", bgTok);
-      }
-    }
-    if (type === "image" || type === "graphic") {
-      var isGfx = type === "graphic";
-      h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">' + (isGfx ? "Replace this graphic with an image" : "Replace image") + "</label>" +
-        '<input id="__tbj-img" type="file" accept="image/*" style="width:100%;font-size:12px;margin-top:4px;">' +
-        '<div id="__tbj-in" style="font-size:11px;color:#9aa0ad;margin-top:2px;">Upload to preview it in place.</div>' +
-        '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">✨ Or generate with AI</label>' +
-        '<textarea id="__tbj-ai" placeholder="' + (isGfx ? "Describe an image to use here…" : "Describe the image/logo…") + '" style="width:100%;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;min-height:40px;"></textarea>' +
-        (isGfx ? "" : '<label style="display:flex;gap:6px;font-size:11px;color:#5b616e;margin-top:4px;"><input type="checkbox" id="__tbj-ar" checked> use current image as reference</label>') +
-        '<button id="__tbj-gen" style="margin-top:6px;width:100%;background:#0a0a0b;color:#fff;border:0;border-radius:999px;padding:8px;font-weight:600;font-size:13px;cursor:pointer;">Generate</button>' +
-        '<div id="__tbj-gs" style="font-size:11px;color:#9aa0ad;margin-top:4px;"></div>';
-    }
-    h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Note <span style="font-weight:400;color:#9aa0ad;">(optional)</span></label>' +
-      '<textarea id="__tbj-note" placeholder="Anything else? e.g. make it bigger…" style="width:100%;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;min-height:40px;"></textarea>' +
-      '<div style="display:flex;gap:8px;margin-top:10px;">' +
-      '<button id="__tbj-add" style="flex:1;background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:9px;font-weight:600;font-size:13px;cursor:pointer;">Add edit</button>' +
-      '<button id="__tbj-cancel" style="background:#f5f7fb;border:0;border-radius:999px;padding:9px 12px;font-size:13px;cursor:pointer;">Cancel</button></div>' +
-      '<div style="font-size:11px;color:#9aa0ad;margin-top:6px;text-align:center;">Cancel undoes this preview.</div>';
-
-    pop.innerHTML = h;
-    document.documentElement.appendChild(pop);
-    placePanel(pop, el, mobile);
-
-    // wiring — live preview
-    // Token overrides are GLOBAL (on :root), so the element snapshot can't undo them — track the
-    // originals here and revert on Cancel.
+    // Token overrides are GLOBAL (on :root); the element snapshot can't undo them, so track the
+    // originals and revert on discard. Shared by every tool.
     var appliedTokens = {};
     function setTokenLive(v, val) {
       if (!(v in appliedTokens)) appliedTokens[v] = document.documentElement.style.getPropertyValue(v);
@@ -480,67 +421,163 @@
     }
     function revertAllTokens() { for (var v in appliedTokens) revertToken(v); }
 
-    var ta = pop.querySelector("#__tbj-text");
-    if (ta) ta.addEventListener("input", function () { el.textContent = ta.value; change.newText = ta.value; });
+    // Intent-first: pick a tool tile, then only that tool's controls show. Tiles are per element type.
+    var TOOLS = { text: ["✏️", "Text"], size: ["🅰", "Size"], color: ["🎨", "Color"], image: ["🖼", "Image"], request: ["💬", "Request"] };
+    var tools = (type === "image" || type === "graphic") ? ["image", "request"]
+      : (type === "button") ? ["text", "color", "size", "request"]
+      : ["text", "size", "color", "request"];
+    var typeLabel = type === "graphic" ? "graphic" : type === "image" ? "image" : type === "button" ? "button" : el.nodeName.toLowerCase();
 
-    // A color control that can target a TOKEN (all uses) or just this element, with a scope toggle.
+    pop.innerHTML = handleHtml(mobile) +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">' +
+        '<span id="__tbj-title" style="font-size:11px;font-weight:700;color:#2f6bff;text-transform:uppercase;letter-spacing:.04em;">Edit ' + typeLabel + '</span>' +
+        '<button id="__tbj-x" aria-label="close" style="border:0;background:#f5f7fb;border-radius:8px;width:26px;height:26px;cursor:pointer;font-size:15px;flex:0 0 auto;">✕</button>' +
+      '</div>' +
+      '<div id="__tbj-body" style="margin-top:10px;"></div>' +
+      '<div style="display:flex;gap:8px;margin-top:12px;">' +
+        '<button id="__tbj-approve" style="flex:1;background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:10px;font-weight:600;font-size:13px;cursor:pointer;">Approve changes</button>' +
+        '<button id="__tbj-cancel" style="background:#f5f7fb;border:0;border-radius:999px;padding:10px 14px;font-size:13px;cursor:pointer;">Cancel</button>' +
+      '</div>' +
+      '<div style="font-size:11px;color:#9aa0ad;margin-top:6px;text-align:center;">Closing or Cancel discards these changes.</div>';
+
+    document.documentElement.appendChild(pop);
+    placePanel(pop, el, mobile);
+    var body = pop.querySelector("#__tbj-body");
+    var title = pop.querySelector("#__tbj-title");
+
+    function esc(s) { return String(s).replace(/</g, "&lt;"); }
+    function lbl(t) { return '<label style="display:block;font-size:12px;font-weight:600;">' + t + '</label>'; }
+    // Reframed scope control: "Everywhere it's used" (the modular token) vs "Just this" (per-element).
+    function scopeCtl(cls, tok) {
+      if (!tok) return "";
+      function b(s, l) { var on = s === "all"; return '<button type="button" class="' + cls + '" data-scope="' + s + '" style="flex:1;border:1px solid ' + (on ? "#2f6bff" : "#e6e9ef") + ";background:" + (on ? "#eaf0ff" : "#fff") + ";color:" + (on ? "#2f6bff" : "#5b616e") + ';border-radius:8px;padding:7px;font-size:11px;font-weight:600;cursor:pointer;">' + l + "</button>"; }
+      return '<div style="font-size:11px;color:#9aa0ad;margin:8px 0 4px;">Apply to</div><div style="display:flex;gap:6px;">' + b("all", "Everywhere it’s used") + b("one", "Just this") + "</div>";
+    }
+    // A color control that targets a TOKEN (all uses) or just this element, with the scope control.
     function wireColor(inputId, hexSpanId, scopeCls, tok, cssProp, changeKey) {
-      var input = pop.querySelector("#" + inputId);
+      var input = body.querySelector("#" + inputId);
       if (!input) return;
-      var span = pop.querySelector("#" + hexSpanId);
+      var span = body.querySelector("#" + hexSpanId);
       var scope = tok ? "all" : "one";
       function apply(val) {
         if (tok && scope === "all") {
-          el.style.removeProperty(cssProp);           // drop any per-element override
-          setTokenLive(tok.v, val);                   // recolor everywhere this token is used
-          change.semantic = change.semantic || {}; change.semantic[tok.v] = val;
-          delete change[changeKey];
+          el.style.removeProperty(cssProp); setTokenLive(tok.v, val);
+          change.semantic = change.semantic || {}; change.semantic[tok.v] = val; delete change[changeKey];
         } else {
-          if (tok) revertToken(tok.v);                // drop the global override
-          el.style.setProperty(cssProp, val, "important");
-          change[changeKey] = val;
+          if (tok) revertToken(tok.v); el.style.setProperty(cssProp, val, "important"); change[changeKey] = val;
           if (change.semantic) { delete change.semantic[tok && tok.v]; if (!Object.keys(change.semantic).length) delete change.semantic; }
         }
         if (span) span.textContent = val;
       }
       input.addEventListener("input", function (e2) { apply(e2.target.value); });
-      Array.prototype.forEach.call(pop.querySelectorAll("." + scopeCls), function (b) {
+      Array.prototype.forEach.call(body.querySelectorAll("." + scopeCls), function (b) {
         b.onclick = function () {
           scope = b.getAttribute("data-scope");
-          Array.prototype.forEach.call(pop.querySelectorAll("." + scopeCls), function (x) {
-            var on = x === b; x.style.borderColor = on ? "#2f6bff" : "#e6e9ef"; x.style.background = on ? "#eaf0ff" : "#fff"; x.style.color = on ? "#2f6bff" : "#5b616e";
-          });
+          Array.prototype.forEach.call(body.querySelectorAll("." + scopeCls), function (x) { var on = x === b; x.style.borderColor = on ? "#2f6bff" : "#e6e9ef"; x.style.background = on ? "#eaf0ff" : "#fff"; x.style.color = on ? "#2f6bff" : "#5b616e"; });
           apply(input.value);
         };
       });
     }
-    wireColor("__tbj-color", "__tbj-ch", "__tbj-cs", colorTok, "color", "color");
-    wireColor("__tbj-bg", "__tbj-bh", "__tbj-bs", bgTok, "background-color", "background");
-    var fi = pop.querySelector("#__tbj-img");
-    if (fi) fi.addEventListener("change", function () {
-      var f = fi.files[0]; if (!f) return;
-      pop.querySelector("#__tbj-in").textContent = "Loading preview…";
-      fileToDataUrl(f, function (d) { if (d) { applyImage(el, type, d); change.image = { name: f.name, dataUrl: d }; if (type === "graphic") change.replaceGraphic = true; pop.querySelector("#__tbj-in").textContent = "✓ Previewing " + f.name; } else pop.querySelector("#__tbj-in").textContent = "Couldn't read that image."; });
-    });
-    var gen = pop.querySelector("#__tbj-gen");
-    if (gen) gen.addEventListener("click", function () {
-      var pr = pop.querySelector("#__tbj-ai").value.trim(); if (pr.length < 3) { pop.querySelector("#__tbj-ai").focus(); return; }
-      var arEl = pop.querySelector("#__tbj-ar"), gs = pop.querySelector("#__tbj-gs");
-      gen.disabled = true; gs.textContent = "Generating… a few seconds.";
-      fetch(GEN_URL, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ prompt: pr, refUrl: type === "image" && arEl && arEl.checked ? el.src : undefined }) })
-        .then(function (r) { return r.json(); })
-        .then(function (res) { gen.disabled = false; if (res && res.ok && res.dataUrl) { applyImage(el, type, res.dataUrl); change.image = { name: "ai-generated.png", dataUrl: res.dataUrl, prompt: pr }; if (type === "graphic") change.replaceGraphic = true; gs.textContent = "✓ Generated — Add edit to keep it."; } else gs.textContent = (res && res.error) || "Couldn't generate."; })
-        .catch(function () { gen.disabled = false; gs.textContent = "Generation failed."; });
-    });
 
+    var toolBuilders = {
+      text: function () {
+        body.innerHTML = lbl("Text") + '<textarea id="__tbj-text" style="width:100%;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;min-height:64px;margin-top:4px;">' + esc(change.newText != null ? change.newText : origTextFull) + '</textarea>';
+        var ta = body.querySelector("#__tbj-text");
+        ta.addEventListener("input", function () { el.textContent = ta.value; change.newText = ta.value; });
+        try { ta.focus(); } catch (e) { /* */ }
+      },
+      size: function () {
+        var cur = Math.round(parseFloat(getComputedStyle(el).fontSize) || origFontPx);
+        body.innerHTML = lbl("Text size") +
+          '<div style="display:flex;align-items:center;gap:10px;margin-top:6px;">' +
+            '<button id="__tbj-smaller" style="width:44px;height:38px;border:1px solid #e6e9ef;background:#fff;border-radius:10px;font-size:13px;cursor:pointer;">A−</button>' +
+            '<span id="__tbj-sizeval" style="flex:1;text-align:center;font-size:13px;font-weight:600;">' + cur + 'px</span>' +
+            '<button id="__tbj-bigger" style="width:44px;height:38px;border:1px solid #e6e9ef;background:#fff;border-radius:10px;font-size:19px;cursor:pointer;">A+</button>' +
+          '</div>' +
+          '<button id="__tbj-sizereset" style="margin-top:8px;width:100%;border:0;background:#f5f7fb;border-radius:999px;padding:7px;font-size:12px;cursor:pointer;">Reset to ' + origFontPx + 'px</button>';
+        var out = body.querySelector("#__tbj-sizeval");
+        function setSize(n) { cur = Math.max(8, Math.min(200, Math.round(n))); el.style.setProperty("font-size", cur + "px", "important"); change.fontSize = cur + "px"; out.textContent = cur + "px"; }
+        body.querySelector("#__tbj-smaller").onclick = function () { setSize(cur / 1.1); };
+        body.querySelector("#__tbj-bigger").onclick = function () { setSize(cur * 1.1); };
+        body.querySelector("#__tbj-sizereset").onclick = function () { el.style.removeProperty("font-size"); delete change.fontSize; cur = origFontPx; out.textContent = origFontPx + "px"; };
+      },
+      color: function () {
+        var cs2 = getComputedStyle(el), textHex = toHex(cs2.color), colorTok = detectColorToken(el, textHex, "text-");
+        var html = lbl('Text color <span id="__tbj-ch" style="font-weight:400;color:#9aa0ad;">' + textHex + '</span>') +
+          '<input id="__tbj-color" type="color" value="' + textHex + '" style="width:100%;height:34px;border:1px solid #e6e9ef;border-radius:6px;margin-top:4px;padding:0;">' + scopeCtl("__tbj-cs", colorTok);
+        var bgTok = null;
+        if (type === "button") {
+          var bgT = cs2.backgroundColor === "transparent" || /rgba?\([^)]*,\s*0\s*\)\s*$/.test(cs2.backgroundColor);
+          var bgHex = bgT ? "#ffffff" : toHex(cs2.backgroundColor);
+          if (!bgT) bgTok = detectColorToken(el, bgHex, "bg-");
+          if (bgTok && colorTok && bgTok.v === colorTok.v) bgTok = null;
+          html += '<div style="height:1px;background:#eef0f4;margin:12px 0;"></div>' +
+            lbl('Button color <span id="__tbj-bh" style="font-weight:400;color:#9aa0ad;">' + (bgT ? "none" : bgHex) + '</span>') +
+            '<input id="__tbj-bg" type="color" value="' + bgHex + '" style="width:100%;height:34px;border:1px solid #e6e9ef;border-radius:6px;margin-top:4px;padding:0;">' + scopeCtl("__tbj-bs", bgTok);
+        }
+        body.innerHTML = html;
+        wireColor("__tbj-color", "__tbj-ch", "__tbj-cs", colorTok, "color", "color");
+        wireColor("__tbj-bg", "__tbj-bh", "__tbj-bs", bgTok, "background-color", "background");
+      },
+      image: function () {
+        var isGfx = type === "graphic";
+        body.innerHTML = lbl(isGfx ? "Replace this graphic with an image" : "Replace image") +
+          '<input id="__tbj-img" type="file" accept="image/*" style="width:100%;font-size:12px;margin-top:4px;">' +
+          '<div id="__tbj-in" style="font-size:11px;color:#9aa0ad;margin-top:2px;">Upload to preview it in place.</div>' +
+          lbl("✨ Or generate with AI") +
+          '<textarea id="__tbj-ai" placeholder="' + (isGfx ? "Describe an image to use here…" : "Describe the image/logo…") + '" style="width:100%;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;min-height:44px;margin-top:4px;"></textarea>' +
+          (isGfx ? "" : '<label style="display:flex;gap:6px;font-size:11px;color:#5b616e;margin-top:4px;"><input type="checkbox" id="__tbj-ar" checked> use current image as reference</label>') +
+          '<button id="__tbj-gen" style="margin-top:6px;width:100%;background:#0a0a0b;color:#fff;border:0;border-radius:999px;padding:8px;font-weight:600;font-size:13px;cursor:pointer;">Generate</button>' +
+          '<div id="__tbj-gs" style="font-size:11px;color:#9aa0ad;margin-top:4px;"></div>';
+        var fi = body.querySelector("#__tbj-img");
+        fi.addEventListener("change", function () {
+          var f = fi.files[0]; if (!f) return;
+          body.querySelector("#__tbj-in").textContent = "Loading preview…";
+          fileToDataUrl(f, function (d) { if (d) { applyImage(el, type, d); change.image = { name: f.name, dataUrl: d }; if (type === "graphic") change.replaceGraphic = true; body.querySelector("#__tbj-in").textContent = "✓ Previewing " + f.name; } else body.querySelector("#__tbj-in").textContent = "Couldn't read that image."; });
+        });
+        var gen = body.querySelector("#__tbj-gen");
+        gen.addEventListener("click", function () {
+          var pr = body.querySelector("#__tbj-ai").value.trim(); if (pr.length < 3) { body.querySelector("#__tbj-ai").focus(); return; }
+          var arEl = body.querySelector("#__tbj-ar"), gs = body.querySelector("#__tbj-gs");
+          gen.disabled = true; gs.textContent = "Generating… a few seconds.";
+          fetch(GEN_URL, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ prompt: pr, refUrl: type === "image" && arEl && arEl.checked ? el.src : undefined }) })
+            .then(function (r) { return r.json(); })
+            .then(function (res) { gen.disabled = false; if (res && res.ok && res.dataUrl) { applyImage(el, type, res.dataUrl); change.image = { name: "ai-generated.png", dataUrl: res.dataUrl, prompt: pr }; if (type === "graphic") change.replaceGraphic = true; gs.textContent = "✓ Generated — Approve to keep it."; } else gs.textContent = (res && res.error) || "Couldn't generate."; })
+            .catch(function () { gen.disabled = false; gs.textContent = "Generation failed."; });
+        });
+      },
+      request: function () {
+        body.innerHTML = lbl('Request a change <span style="font-weight:400;color:#9aa0ad;">(our team applies it)</span>') +
+          '<textarea id="__tbj-note" placeholder="Describe what you want… e.g. move this up, reword it, add a button." style="width:100%;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;min-height:72px;margin-top:4px;">' + esc(change.note || "") + '</textarea>';
+        var n = body.querySelector("#__tbj-note");
+        n.addEventListener("input", function () { var v = n.value.trim(); if (v) change.note = v; else delete change.note; });
+        try { n.focus(); } catch (e) { /* */ }
+      }
+    };
+
+    function showTiles() {
+      title.textContent = "Edit " + typeLabel;
+      var tiles = tools.map(function (t) {
+        var m = TOOLS[t];
+        return '<button type="button" class="__tbj-tile" data-tool="' + t + '" style="flex:1 1 calc(50% - 5px);min-width:84px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:1px solid #e6e9ef;background:#fff;border-radius:14px;cursor:pointer;padding:14px 6px;">' +
+          '<span style="font-size:22px;line-height:1;">' + m[0] + '</span><span style="font-size:12px;font-weight:600;color:#0a0a0b;">' + m[1] + '</span></button>';
+      }).join("");
+      body.innerHTML = '<div style="font-size:11px;color:#9aa0ad;margin-bottom:8px;">What do you want to change?</div><div style="display:flex;flex-wrap:wrap;gap:10px;">' + tiles + '</div>';
+      Array.prototype.forEach.call(body.querySelectorAll(".__tbj-tile"), function (b) { b.onclick = function () { showTool(b.getAttribute("data-tool")); }; });
+    }
+    function showTool(name) {
+      title.innerHTML = '<button type="button" id="__tbj-back" style="border:0;background:none;color:#2f6bff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;padding:0;">‹ ' + TOOLS[name][1] + '</button>';
+      toolBuilders[name]();
+      var back = pop.querySelector("#__tbj-back"); if (back) back.onclick = showTiles;
+    }
+    if (tools.length === 1) showTool(tools[0]); else showTiles();
+
+    // Discard (X / Cancel) reverts every previewed change — nothing is saved unless Approved.
     function cancel() { revertAllTokens(); restore(el, snap); closePanel(); }
     pop.querySelector("#__tbj-x").onclick = cancel;
     pop.querySelector("#__tbj-cancel").onclick = cancel;
-    pop.querySelector("#__tbj-add").onclick = function () {
-      var note = pop.querySelector("#__tbj-note").value.trim();
-      if (note) change.note = note;
-      if (Object.keys(change).length === 0) { pop.querySelector("#__tbj-note").focus(); return; }
-      // Keep the token preview applied, but remember the originals so Undo can revert them too.
+    pop.querySelector("#__tbj-approve").onclick = function () {
+      if (Object.keys(change).length === 0) { showTiles(); return; } // nothing changed → back to tiles
       var tks = null;
       if (change.semantic) { tks = {}; for (var v in appliedTokens) tks[v] = appliedTokens[v]; }
       edits.push({ selector: selector, tag: el.nodeName.toLowerCase(), text: origText, changes: change });
@@ -636,6 +673,14 @@
   function openBrandPanel() {
     closePanel();
     var mobile = isMobile();
+    // Snapshot the theme as it stands on open (the last saved/approved state) so X / Cancel revert the
+    // live preview back to it — closing must never leave an un-approved theme applied to the page.
+    var openTheme = { primary: theme.primary, secondary: theme.secondary, font: theme.font };
+    function discardBrand() {
+      resetTheme(); // strips the inline preview props → back to the saved theme
+      if (openTheme.primary || openTheme.secondary || openTheme.font) { theme.primary = openTheme.primary; theme.secondary = openTheme.secondary; theme.font = openTheme.font; applyTheme(); }
+      closePanel();
+    }
     var pop = document.createElement("div");
     pop.id = "__tbj-pop";
     pop.style.cssText = panelCss(mobile);
@@ -664,9 +709,9 @@
       '<label style="' + lblCss + '">Font</label>' +
       '<div id="__tbj-fonts" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">' + fontsHtml + "</div>" +
       '<div style="display:flex;gap:8px;margin-top:14px;">' +
-      '<button id="__tbj-brand-add" style="flex:1;background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:10px;font-weight:600;font-size:13px;cursor:pointer;">Apply to whole site</button>' +
-      '<button id="__tbj-brand-reset" style="background:#f5f7fb;border:0;border-radius:999px;padding:10px 12px;font-size:13px;cursor:pointer;">Reset</button></div>' +
-      '<div style="font-size:11px;color:#9aa0ad;margin-top:6px;text-align:center;">Preview updates live. Reset clears your pending changes.' +
+      '<button id="__tbj-brand-add" style="flex:1;background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:10px;font-weight:600;font-size:13px;cursor:pointer;">Approve changes</button>' +
+      '<button id="__tbj-brand-cancel" style="background:#f5f7fb;border:0;border-radius:999px;padding:10px 14px;font-size:13px;cursor:pointer;">Cancel</button></div>' +
+      '<div style="font-size:11px;color:#9aa0ad;margin-top:6px;text-align:center;">Preview updates live · Cancel discards it · <button id="__tbj-brand-reset" style="border:0;background:none;color:#2f6bff;font-size:11px;cursor:pointer;text-decoration:underline;padding:0;">Reset</button>' +
       (CFG_THEME ? ' · <button id="__tbj-brand-revert" style="border:0;background:none;color:#2f6bff;font-size:11px;cursor:pointer;text-decoration:underline;padding:0;">Revert to original</button>' : "") +
       "</div>";
     document.documentElement.appendChild(pop);
@@ -682,7 +727,8 @@
         });
       };
     });
-    pop.querySelector("#__tbj-x").onclick = function () { closePanel(); };
+    pop.querySelector("#__tbj-x").onclick = discardBrand;
+    pop.querySelector("#__tbj-brand-cancel").onclick = discardBrand;
     pop.querySelector("#__tbj-brand-reset").onclick = function () { resetTheme(); dropTokenEdit(); renderBar(); closePanel(); openBrandPanel(); };
     var revertBtn = pop.querySelector("#__tbj-brand-revert");
     if (revertBtn) revertBtn.onclick = function () {
