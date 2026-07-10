@@ -60,7 +60,9 @@ the entire mechanism. The editor should expose these named roles as **Primary / 
   trial-ended, unpaid site bounces to `/portal?locked`.
 - **Site** → an iframe of `/api/site-proxy/[id]` (the live site served from our origin with the
   editor injected).
-- **Studio** → `image-studio.tsx` (generate/edit a logo/hero image).
+- **Studio** → `image-studio.tsx` (generate/edit a logo/hero image). Asset types, prompt fragments, and
+  the per-type trim/pad + quality gates come from [`../src/lib/logo-spec.ts`](../src/lib/logo-spec.ts) —
+  the browser twin of the forge's `factory/logo-fix.mjs`. Spec: [`LOGOS.md`](LOGOS.md).
 - **Design** → `template-gallery.tsx` (pick a different template → `preferredTemplate`).
 
 ### The inline editor (`public/editor.js`, ~384 lines, vanilla JS)

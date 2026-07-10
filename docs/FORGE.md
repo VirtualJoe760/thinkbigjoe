@@ -282,6 +282,7 @@ foundation, not the ceiling.
 |---|---|
 | `factory/forge-build.sh` | Builds ONE site: clone template → brief (Gemini) → `claude -p` → `pnpm build` gate → screenshot → push (gated on clean build) → deploy → register. Non-blocking lock. |
 | `factory/forge-poll.mjs` | The queue worker. Peeks the lock, claims exactly one `approved` row per tick, runs forge-build.sh, POSTs the result to `/api/forge/register`. |
+| `factory/logo-fix.mjs` | Post-build geometry fix for `logo.png` / `logo-circle.png` — trims the transparent canvas back to the real mark, re-pads **per type**, and warns when the generation itself is wrong (a bare icon instead of a filled circle; a near-square instead of a wide lockup). Idempotent + non-fatal. Spec: [`LOGOS.md`](LOGOS.md). |
 | `factory/forge-template.sh` | The template-designer mode — builds a new reusable template + queues a real prospect on it. |
 | `templates/registry.json` | The template library forge-build picks from (`enabled: true/false`). |
 | `factory/design-languages.json` | The aesthetic specs the designer mode builds templates from. |

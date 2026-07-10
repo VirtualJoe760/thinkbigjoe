@@ -2,16 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type AssetType = { key: string; label: string; hint: string; round?: boolean; aspect?: string; shape?: string };
-const ASSET_TYPES: AssetType[] = [
-  // Logo defaults to a WIDE horizontal lockup (21:9) — a square/centered logo renders tiny in a
-  // navbar (same issue the forge fixes). Circular is the 1:1 emblem for favicons/avatars.
-  { key: "logo", label: "Logo", hint: "as a HORIZONTAL brand logo lockup — the icon on the LEFT and the business-name wordmark on the RIGHT, side by side, flat and crisp, on a transparent background, tightly framed with minimal margin (NOT a small mark centered in empty space)", aspect: "21:9", shape: "wide lockup" },
-  { key: "circle", label: "Circular logo", hint: "as a circular logo/badge — the icon or monogram centered inside a circle, on a transparent background", round: true, aspect: "1:1", shape: "1:1 circle" },
-  { key: "og", label: "OG image", hint: "as a wide social-share banner (Open Graph) with the brand feel, balanced, with room for text", aspect: "16:9", shape: "16:9 banner" },
-  { key: "hero", label: "Hero image", hint: "as a wide hero background photo, leaving clear space on the left for headline text", aspect: "16:9", shape: "16:9 wide" },
-  { key: "carousel", label: "Carousel image", hint: "as a clean gallery/carousel image", aspect: "4:3", shape: "4:3" },
-];
+import { ASSET_SPECS, normalizeAsset, type AssetSpec, type NormalizeMode } from "@/lib/logo-spec";
 
 const PRESETS = [
   { label: "✨ Enhance", prompt: "Enhance this image: improve lighting, sharpness, color and detail, keep the exact composition and subject." },
@@ -24,10 +15,13 @@ export function ImageStudio({ siteId }: { siteId: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [src, setSrc] = useState<string | null>(null);
-  const [assetType, setAssetType] = useState<AssetType>(ASSET_TYPES[0]);
+  const [assetType, setAssetType] = useState<AssetSpec>(ASSET_SPECS[0]);
   const [assets, setAssets] = useState<{ label: string; url: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  // A generation the trim couldn't rescue (bare icon instead of a circle, square instead of a
+  // lockup). Shown as a persistent banner — it needs a re-generate, not a nudge.
+  const [warn, setWarn] = useState<string | null>(null);
   const [genPrompt, setGenPrompt] = useState("");
   const [useRef_, setUseRef] = useState(true);
   const [editPrompt, setEditPrompt] = useState("");
@@ -73,28 +67,38 @@ export function ImageStudio({ siteId }: { siteId: number }) {
 
   const currentDataUrl = () => canvasRef.current?.toDataURL("image/png") || null;
 
-  async function post(prompt: string, ref?: string | null, aspect?: string) {
-    setBusy(true); setStatus(ref ? "Working on it…" : "Generating…");
+  async function post(prompt: string, ref?: string | null, aspect?: string, normalize?: NormalizeMode) {
+    setBusy(true); setStatus(ref ? "Working on it…" : "Generating…"); setWarn(null);
     try {
       const res = await fetch("/api/generate-image", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt, refDataUrl: ref || undefined, aspect }),
       }).then((r) => r.json());
-      if (res.ok && res.dataUrl) { setSrc(res.dataUrl); setStatus(""); } else setStatus(res.error || "Didn't work — try again.");
+      if (res.ok && res.dataUrl) {
+        // Logos come back centered in a big transparent canvas. Trim it back to the true mark and
+        // re-pad per type — the same geometry the forge bakes at build time (see src/lib/logo-spec.ts),
+        // so a Studio logo drops into a navbar at full size instead of a sliver.
+        const fixed = normalize ? await normalizeAsset(res.dataUrl, normalize) : null;
+        setSrc(fixed?.dataUrl ?? res.dataUrl);
+        setWarn(fixed?.warn ?? null);
+        setStatus("");
+      } else setStatus(res.error || "Didn't work — try again.");
     } catch { setStatus("Request failed."); }
     setBusy(false);
   }
-  // New generations honor the asset's aspect (wide lockup / circle / 16:9). AI edits omit it so
-  // they preserve the current image's shape.
-  const generate = () => genPrompt.trim().length >= 3 && post(`${genPrompt.trim()} — ${assetType.hint}`, useRef_ && src ? currentDataUrl() : undefined, assetType.aspect);
+  // New generations honor the asset's aspect (wide lockup / circle / 16:9). AI edits omit the aspect
+  // so they preserve the current image's shape — but they still get the per-type trim, because the
+  // edits that matter most for a logo ("Remove bg") are exactly the ones that re-introduce a big
+  // transparent margin. Trim+pad is idempotent, so it's a no-op on edits that don't.
+  const generate = () => genPrompt.trim().length >= 3 && post(`${genPrompt.trim()} — ${assetType.hint}`, useRef_ && src ? currentDataUrl() : undefined, assetType.aspect, assetType.normalize);
   const aiEdit = (instruction: string) => {
     const ref = currentDataUrl();
     if (!ref) { setStatus("Load or generate an image first."); return; }
-    if (instruction.trim().length >= 3) post(instruction.trim(), ref);
+    if (instruction.trim().length >= 3) post(instruction.trim(), ref, undefined, assetType.normalize);
   };
 
   function loadFromUrl(url: string) {
-    setStatus("Loading asset…"); setBusy(true);
+    setStatus("Loading asset…"); setBusy(true); setWarn(null);
     // Route through our proxy-free fetch → dataURL so it's editable + exportable.
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -104,6 +108,7 @@ export function ImageStudio({ siteId }: { siteId: number }) {
   }
   function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]; if (!f) return;
+    setWarn(null);
     const fr = new FileReader(); fr.onload = () => setSrc(String(fr.result)); fr.readAsDataURL(f);
   }
   function download() {
@@ -156,8 +161,10 @@ export function ImageStudio({ siteId }: { siteId: number }) {
           <div className={grp("type")}>
             <Section title="Asset type">
               <div className="flex flex-wrap gap-1.5">
-                {ASSET_TYPES.map((t) => (
-                  <button key={t.key} onClick={() => setAssetType(t)} className={`rounded-full border px-3 py-1.5 text-xs font-medium md:px-2.5 md:py-1 ${assetType.key === t.key ? "border-brand bg-brand text-white" : "border-line bg-background hover:bg-brand-tint"}`}>{t.label}</button>
+                {ASSET_SPECS.map((t) => (
+                  // The warning describes the LAST generation's shape — it's meaningless once the
+                  // target type changes, so drop it rather than misattribute it to the new type.
+                  <button key={t.key} onClick={() => { setAssetType(t); setWarn(null); }} className={`rounded-full border px-3 py-1.5 text-xs font-medium md:px-2.5 md:py-1 ${assetType.key === t.key ? "border-brand bg-brand text-white" : "border-line bg-background hover:bg-brand-tint"}`}>{t.label}</button>
                 ))}
               </div>
             </Section>
@@ -165,17 +172,20 @@ export function ImageStudio({ siteId }: { siteId: number }) {
 
           <div className={grp("create")}>
             <Section title="Generate">
-              {assetType.shape && (
-                <p className="mb-1.5 text-[11px] text-ink-soft">
-                  Shape: <span className="font-medium text-ink">{assetType.shape}</span>
-                  {assetType.key === "logo" && " — fills a navbar without shrinking"}
-                </p>
-              )}
+              <p className="mb-1.5 text-[11px] text-ink-soft">
+                Shape: <span className="font-medium text-ink">{assetType.shape}</span>
+                {assetType.note && ` — ${assetType.note}`}
+              </p>
               <textarea value={genPrompt} onChange={(e) => setGenPrompt(e.target.value)} placeholder={`Describe a ${assetType.label.toLowerCase()}…`} className="w-full rounded-xl border border-line bg-background px-3 py-2 text-sm" rows={2} />
               {src && (
                 <label className="mt-1.5 flex items-center gap-1.5 text-xs text-ink-soft"><input type="checkbox" checked={useRef_} onChange={(e) => setUseRef(e.target.checked)} /> build from the current image</label>
               )}
               <button onClick={generate} disabled={busy} className="mt-2 w-full rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50">Generate</button>
+              {warn && (
+                <p role="status" className="mt-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-900">
+                  ⚠️ {warn}
+                </p>
+              )}
             </Section>
 
             <Section title="Start from">
