@@ -3,12 +3,13 @@
 //
 // The Vercel app can't reach this machine, so its on-demand buttons drop a row in
 // job_requests. This poller (every ~90s) claims pending rows and runs the matching work:
-//   • find   → node scripts/lead-engine.mjs   (Apify Maps discovery)
-//   • enrich → openclaw cron run <id>          (the FREE browser agent: contacts + call-prep)
-import { readFileSync } from "node:fs";
+//   • find            → node scripts/lead-engine.mjs   (Apify Maps discovery)
+//   • enrich          → openclaw cron run <id>          (the FREE browser agent: contacts + call-prep)
+//   • design_template → forge-template.sh <next-unbuilt-language>  (the forge template designer)
+import { readFileSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { exec } from "node:child_process";
+import { exec, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import pg from "pg";
 
@@ -37,6 +38,26 @@ async function run(kind) {
   if (kind === "enrich") {
     const { stdout } = await pexec(`openclaw cron run ${ENRICH_CRON_ID}`, { cwd: ROOT, timeout: 60 * 1000, maxBuffer: 4 << 20 });
     return (stdout.trim().split("\n").pop() || "enrichment cron triggered").slice(0, 300);
+  }
+  if (kind === "design_template") {
+    // brand-lead authors design languages into the forge's design-languages.json; this builds the
+    // next one that hasn't been made into a template yet. The forge designer is a long (~30 min)
+    // --max-turns 160 run, so we SPAWN IT DETACHED and return immediately (its own forge lock
+    // guarantees one designer/build at a time). The new template registers enabled:false for review.
+    const FORGE = join(homedir(), "code/webdev-templates");
+    let langs = [], registry = [];
+    try { langs = JSON.parse(readFileSync(join(FORGE, "factory/design-languages.json"), "utf8")).languages || []; } catch { /* */ }
+    try { registry = JSON.parse(readFileSync(join(FORGE, "templates/registry.json"), "utf8")).templates || []; } catch { /* */ }
+    const built = new Set(registry.map((t) => t.id));
+    const next = langs.find((l) => l && l.id && !built.has(l.id));
+    if (!next) return "No unbuilt design languages queued — brand-lead adds them to design-languages.json.";
+    const logf = `/tmp/forge-template-${next.id}.log`;
+    const out = openSync(logf, "a");
+    const child = spawn("bash", ["factory/forge-template.sh", next.id], {
+      cwd: FORGE, detached: true, stdio: ["ignore", out, out],
+    });
+    child.unref();
+    return `Template designer started for "${next.name || next.id}" (${next.id}) — runs in the background (~30 min); review the preview when it registers. log: ${logf}`;
   }
   throw new Error(`unknown kind ${kind}`);
 }

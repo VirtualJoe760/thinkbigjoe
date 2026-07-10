@@ -417,6 +417,25 @@ export async function requestLeadJob(kind: "find" | "enrich"): Promise<{ ok: boo
   };
 }
 
+/**
+ * Queue a NEW TEMPLATE design run. brand-lead authors design languages into the forge's
+ * design-languages.json; this fires the forge template-designer on the next unbuilt one
+ * (a long ~30-min run; new template registers disabled for review). Human-gated + one at
+ * a time (the forge lock). Same job_requests → trigger-poll rails as the engine buttons.
+ */
+export async function requestTemplateDesign(): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  const pending = await db
+    .select({ id: jobRequests.id })
+    .from(jobRequests)
+    .where(and(eq(jobRequests.kind, "design_template"), sql`${jobRequests.status} in ('pending','running')`))
+    .limit(1);
+  if (pending.length) return { ok: true, message: "A template design run is already queued." };
+  await db.insert(jobRequests).values({ kind: "design_template", requestedBy: "joe" });
+  revalidatePath("/command/engine");
+  return { ok: true, message: "Queued — the forge will design the next new template in the background (~30 min). It registers disabled for your review." };
+}
+
 // --- Marketing-approval gate: a built site becomes a LEAD only when approved ---
 export async function approveForMarketing(id: string): Promise<{ ok: boolean; message: string }> {
   await assertAdmin();

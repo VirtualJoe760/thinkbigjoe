@@ -7,6 +7,7 @@ import { getForgeDigest } from "@/lib/forge-stats";
 import { ClearBuildCache } from "./clear-cache";
 import { EngineControls } from "./engine-controls";
 import { ActivityChart } from "./activity-chart";
+import { TemplateDesigner } from "./template-designer";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -162,6 +163,11 @@ export default async function EnginePage() {
             claims their preview.
           </p>
         </section>
+
+        {/* Template designer — brand-lead proposes designs; build them here (human-gated) */}
+        <div className="mt-4">
+          <TemplateDesigner />
+        </div>
 
         {/* Activity chart */}
         <section className="mt-4 rounded-2xl border border-line bg-background p-5">
