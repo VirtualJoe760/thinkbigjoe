@@ -17,8 +17,18 @@ type EditChanges = {
   replaceGraphic?: boolean;
   variant?: string;
   note?: string;
+  // Brand-theme (token) change — moves the template's design tokens.
+  primaryHex?: string;
+  brandH?: number;
+  brandC?: number;
+  secondaryHex?: string;
+  accentH?: number;
+  font?: string;
+  fontGoogle?: string;
+  fontHeadingStack?: string;
+  fontSansStack?: string;
 };
-type Edit = { selector?: string; tag?: string; text?: string; section?: string; changes?: EditChanges; note?: string };
+type Edit = { kind?: string; selector?: string; tag?: string; text?: string; section?: string; changes?: EditChanges; note?: string };
 
 /** Receives the batch of click-to-edit requests from editor.js, stores them as
  *  markdown for the forge to apply. Called same-origin from the injected editor. */
@@ -52,6 +62,16 @@ export async function POST(req: Request) {
   let imageCount = 0;
   edits.forEach((e, i) => {
     const c = e.changes || {};
+    // Brand theme change — move the template's OWN design tokens so the whole OKLCH ramp
+    // shifts (NOT per-element styles). These land in the site's `app/globals.css` :root.
+    if (e.kind === "token") {
+      lines.push(`${i + 1}. **Brand theme change** — edit the design tokens in \`app/globals.css\` \`:root\` (do NOT restyle individual elements; move the tokens so it applies site-wide):`);
+      if (c.brandH != null) lines.push(`   - Primary color → \`--brand-h: ${c.brandH};\`${c.brandC != null ? ` \`--brand-c: ${c.brandC};\`` : ""}  (picked ${c.primaryHex})`);
+      if (c.accentH != null) lines.push(`   - Secondary / accent → \`--accent-h: ${c.accentH};\`  (picked ${c.secondaryHex})`);
+      if (c.font) lines.push(`   - Font "${c.font}" → import via \`next/font/google\` in \`app/layout.tsx\` (Google families: \`${c.fontGoogle}\`), then point \`--font-heading-stack\` / \`--font-sans-stack\` at the next/font CSS variables (fallback stacks: \`${c.fontHeadingStack}\` / \`${c.fontSansStack}\`)`);
+      lines.push(``);
+      return;
+    }
     // Section / layout change (forge swaps a @webdev/ui variant prop or builds it).
     if (e.section || e.tag === "section") {
       lines.push(`${i + 1}. **Section: ${e.text || e.section}**`);

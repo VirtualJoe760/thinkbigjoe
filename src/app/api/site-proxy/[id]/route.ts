@@ -1,7 +1,16 @@
+import { statSync } from "node:fs";
+import path from "node:path";
+
 import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
 
 import { db, forgeSites } from "@/db";
+
+// Cache-buster for the injected editor.js — its mtime, so browsers pick up every
+// editor change instead of serving a stale cached copy.
+function editorVersion(): string {
+  try { return String(Math.round(statSync(path.join(process.cwd(), "public/editor.js")).mtimeMs)); } catch { return ""; }
+}
 import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
 
@@ -87,7 +96,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       siteId,
       saveUrl: `${origin}/api/edit-requests`,
       genUrl: `${origin}/api/generate-image`,
-    })};</script>` + `<script src="${origin}/editor.js"></script>`;
+    })};</script>` + `<script src="${origin}/editor.js?v=${editorVersion()}"></script>`;
   if (/<\/body>/i.test(html)) {
     html = html.replace(/<\/body>/i, `${editorTag}</body>`);
   } else {

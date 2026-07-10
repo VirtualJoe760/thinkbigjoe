@@ -36,6 +36,69 @@
   var edits = [];       // committed edits, sent on Send
   var history = [];     // { el, snapshot } for Undo
 
+  // ---- brand tokens (modular theming) -----------------------------------
+  // Editing the theme means moving the template's OWN design tokens, so the whole
+  // OKLCH ramp recolors harmoniously — not painting one element. Preview is instant
+  // (set the vars on :root); the token edit is sent for the forge to persist.
+  var FONT_SETS = [
+    { id: "inter", name: "Modern", head: "'Inter', ui-sans-serif, system-ui, sans-serif", body: "'Inter', ui-sans-serif, system-ui, sans-serif", g: "Inter:wght@400;600;800" },
+    { id: "poppins", name: "Friendly", head: "'Poppins', ui-sans-serif, sans-serif", body: "'Poppins', ui-sans-serif, sans-serif", g: "Poppins:wght@400;600;800" },
+    { id: "archivo", name: "Bold", head: "'Archivo', ui-sans-serif, sans-serif", body: "'Archivo', ui-sans-serif, sans-serif", g: "Archivo:wght@400;600;800" },
+    { id: "playfair", name: "Editorial", head: "'Playfair Display', Georgia, serif", body: "'Lora', Georgia, serif", g: "Playfair+Display:wght@600;800|Lora:wght@400;600" },
+    { id: "space", name: "Tech", head: "'Space Grotesk', ui-sans-serif, sans-serif", body: "'Inter', ui-sans-serif, sans-serif", g: "Space+Grotesk:wght@500;700|Inter:wght@400;600" },
+    { id: "fraunces", name: "Warm", head: "'Fraunces', Georgia, serif", body: "'Nunito Sans', ui-sans-serif, sans-serif", g: "Fraunces:opsz,wght@9..144,600;9..144,800|Nunito+Sans:wght@400;600" },
+    { id: "merri", name: "Classic", head: "'Merriweather', Georgia, serif", body: "'Source Sans 3', ui-sans-serif, sans-serif", g: "Merriweather:wght@700;900|Source+Sans+3:wght@400;600" },
+    { id: "franklin", name: "Corporate", head: "'Libre Franklin', ui-sans-serif, sans-serif", body: "'Libre Franklin', ui-sans-serif, sans-serif", g: "Libre+Franklin:wght@400;600;800" },
+    { id: "dm", name: "Crafted", head: "'DM Serif Display', Georgia, serif", body: "'DM Sans', ui-sans-serif, sans-serif", g: "DM+Serif+Display:ital@0;1|DM+Sans:wght@400;600" },
+    { id: "manrope", name: "Minimal", head: "'Manrope', ui-sans-serif, sans-serif", body: "'Manrope', ui-sans-serif, sans-serif", g: "Manrope:wght@400;600;800" },
+  ];
+  // The live theme being previewed (null = untouched). Sent as one token edit.
+  var theme = { primary: null, secondary: null, font: null };
+
+  // sRGB hex → OKLCH {L,C,h}. The token ramps are hue-driven, so we set --brand-h
+  // from the picked color's hue (lossy on the exact swatch — we build a matching ramp).
+  function hexToOklch(hex) {
+    var m = /^#?([0-9a-f]{6})$/i.exec(hex || ""); if (!m) return null;
+    var n = parseInt(m[1], 16), r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+    function lin(c) { return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+    r = lin(r); g = lin(g); b = lin(b);
+    var l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    var mm = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    var s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    var L = 0.2104542553 * l + 0.7936177850 * mm - 0.0040720468 * s;
+    var A = 1.9779984951 * l - 2.4285922050 * mm + 0.4505937099 * s;
+    var B = 0.0259040371 * l + 0.7827717662 * mm - 0.8086757660 * s;
+    var C = Math.sqrt(A * A + B * B), H = Math.atan2(B, A) * 180 / Math.PI;
+    if (H < 0) H += 360;
+    return { L: L, C: C, h: Math.round(H * 10) / 10 };
+  }
+  // Load the chosen font pairing into the previewed page (Google Fonts, preview only).
+  function loadFont(g) {
+    var link = document.getElementById("__tbj-font");
+    if (!link) { link = document.createElement("link"); link.id = "__tbj-font"; link.rel = "stylesheet"; document.head.appendChild(link); }
+    link.href = "https://fonts.googleapis.com/css2?family=" + g + "&display=swap";
+  }
+  // Apply the current theme to the live page by moving the template's own tokens.
+  function applyTheme() {
+    var root = document.documentElement.style;
+    if (theme.primary) { var p = hexToOklch(theme.primary); if (p) { root.setProperty("--brand-h", String(p.h)); root.setProperty("--brand-c", Math.min(0.22, p.C).toFixed(3)); } }
+    if (theme.secondary) { var s = hexToOklch(theme.secondary); if (s) root.setProperty("--accent-h", String(s.h)); }
+    if (theme.font) { var f = FONT_SETS.filter(function (x) { return x.id === theme.font; })[0]; if (f) { loadFont(f.g); root.setProperty("--font-heading-stack", f.head); root.setProperty("--font-sans-stack", f.body); } }
+  }
+  function resetTheme() {
+    theme = { primary: null, secondary: null, font: null };
+    var root = document.documentElement.style;
+    ["--brand-h", "--brand-c", "--accent-h", "--font-heading-stack", "--font-sans-stack"].forEach(function (v) { root.removeProperty(v); });
+    var fl = document.getElementById("__tbj-font"); if (fl) fl.remove();
+  }
+  // The whole theme is ONE committed edit — drop any existing token edit (+ its Undo marker)
+  // so Apply replaces rather than stacks, and Undo/Reset can't desync the preview from edits[].
+  function dropTokenEdit() {
+    for (var i = edits.length - 1; i >= 0; i--) {
+      if (edits[i].kind === "token") { edits.splice(i, 1); history.splice(i, 1); }
+    }
+  }
+
   var TEXT_TAGS = /^(H1|H2|H3|H4|H5|H6|P|SPAN|A|BUTTON|LI|BLOCKQUOTE|LABEL|STRONG|EM|SMALL|DD|DT|FIGCAPTION)$/;
 
   // Section mode: swap whole sections / component layouts (forge @webdev/ui variants).
@@ -196,6 +259,7 @@
   var selectedEl = null;
   document.addEventListener("click", function (e) {
     if (isOurs(e.target)) return;
+    if (mode === "brand") return;   // brand mode: leave page clicks alone (panel is toolbar-driven)
     e.preventDefault(); e.stopPropagation();
     if (mode === "section") { var si = sectionTarget(e.target); if (si) openSectionPanel(si); }
     else { var t = editableTarget(e.target); if (t) openPanel(t); }
@@ -419,6 +483,97 @@
     };
   }
 
+  // ---- brand panel (modular theme — colors + fonts, applied site-wide) --
+  // Read the site's CURRENT token value as a hex, so the picker starts from reality.
+  function currentColorHex(varName) {
+    var probe = document.createElement("div");
+    probe.style.cssText = "position:absolute;left:-9999px;top:0;width:1px;height:1px;background:var(" + varName + ")";
+    document.body.appendChild(probe);
+    var raw = getComputedStyle(probe).backgroundColor;   // may be oklch()/color() on modern browsers
+    probe.remove();
+    // Rasterize the color to one sRGB pixel and read it back — handles oklch()/color()/named/rgb
+    // uniformly (canvas fillStyle keeps oklch as-is, so a round-trip alone wouldn't normalize it).
+    try {
+      var cv = document.createElement("canvas"); cv.width = 1; cv.height = 1;
+      var ctx = cv.getContext("2d");
+      ctx.fillStyle = raw; ctx.fillRect(0, 0, 1, 1);
+      var px = ctx.getImageData(0, 0, 1, 1).data;
+      return "#" + [px[0], px[1], px[2]].map(function (v) { return ("0" + v.toString(16)).slice(-2); }).join("");
+    } catch (e) { return rgbToHex(raw); }
+  }
+  function positionPanelCenter(pop) {
+    var pw = 300, ph = pop.offsetHeight || 360;
+    pop.style.left = Math.max(14, (innerWidth - pw) / 2) + "px";
+    pop.style.top = Math.max(14, (innerHeight - ph) / 2) + "px";
+  }
+  function openBrandPanel() {
+    closePanel();
+    var mobile = isMobile();
+    var pop = document.createElement("div");
+    pop.id = "__tbj-pop";
+    pop.style.cssText = panelCss(mobile);
+    var lblCss = "display:block;font-size:12px;font-weight:600;margin-top:12px;";
+    var swatchCss = "width:100%;height:38px;border:1px solid #e6e9ef;border-radius:8px;margin-top:4px;padding:0;cursor:pointer;";
+    var primHex = theme.primary || currentColorHex("--color-brand");
+    var secHex = theme.secondary || currentColorHex("--color-accent");
+    var fontsHtml = FONT_SETS.map(function (f) {
+      var on = theme.font === f.id;
+      return '<button type="button" class="__tbj-f" data-f="' + f.id + '" style="border:1px solid ' + (on ? "#2f6bff" : "#e6e9ef") +
+        ";background:" + (on ? "#2f6bff" : "#fff") + ";color:" + (on ? "#fff" : "#0a0a0b") +
+        ';border-radius:999px;padding:7px 12px;font-size:13px;cursor:pointer;font-family:' + f.head + '">' + f.name + "</button>";
+    }).join("");
+    pop.innerHTML = handleHtml(mobile) +
+      '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+      '<span style="font-size:11px;font-weight:700;color:#2f6bff;text-transform:uppercase;letter-spacing:.04em;">🎨 Brand &amp; colors</span>' +
+      '<button id="__tbj-x" aria-label="close" style="border:0;background:#f5f7fb;border-radius:8px;width:26px;height:26px;cursor:pointer;font-size:15px;">✕</button></div>' +
+      '<p style="font-size:11px;color:#9aa0ad;margin:6px 0 0;line-height:1.4;">Changes apply <b>everywhere</b> this color or font is used — not just one spot.</p>' +
+      '<label style="' + lblCss + '">Primary color <span style="font-weight:400;color:#9aa0ad;">buttons, links, highlights</span></label>' +
+      '<input id="__tbj-prim" type="color" value="' + primHex + '" style="' + swatchCss + '">' +
+      '<label style="' + lblCss + '">Secondary color <span style="font-weight:400;color:#9aa0ad;">accents</span></label>' +
+      '<input id="__tbj-sec" type="color" value="' + secHex + '" style="' + swatchCss + '">' +
+      '<label style="' + lblCss + '">Font</label>' +
+      '<div id="__tbj-fonts" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">' + fontsHtml + "</div>" +
+      '<div style="display:flex;gap:8px;margin-top:14px;">' +
+      '<button id="__tbj-brand-add" style="flex:1;background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:10px;font-weight:600;font-size:13px;cursor:pointer;">Apply to whole site</button>' +
+      '<button id="__tbj-brand-reset" style="background:#f5f7fb;border:0;border-radius:999px;padding:10px 12px;font-size:13px;cursor:pointer;">Reset</button></div>' +
+      '<div style="font-size:11px;color:#9aa0ad;margin-top:6px;text-align:center;">Preview updates live. Reset clears it.</div>';
+    document.documentElement.appendChild(pop);
+    if (mobile) { bar.style.display = "none"; } else positionPanelCenter(pop);
+
+    pop.querySelector("#__tbj-prim").addEventListener("input", function (e) { theme.primary = e.target.value; applyTheme(); });
+    pop.querySelector("#__tbj-sec").addEventListener("input", function (e) { theme.secondary = e.target.value; applyTheme(); });
+    Array.prototype.forEach.call(pop.querySelectorAll(".__tbj-f"), function (btn) {
+      btn.onclick = function () {
+        theme.font = btn.getAttribute("data-f"); applyTheme();
+        Array.prototype.forEach.call(pop.querySelectorAll(".__tbj-f"), function (b) {
+          var on = b === btn; b.style.borderColor = on ? "#2f6bff" : "#e6e9ef"; b.style.background = on ? "#2f6bff" : "#fff"; b.style.color = on ? "#fff" : "#0a0a0b";
+        });
+      };
+    });
+    pop.querySelector("#__tbj-x").onclick = function () { closePanel(); };
+    pop.querySelector("#__tbj-brand-reset").onclick = function () { resetTheme(); dropTokenEdit(); renderBar(); closePanel(); openBrandPanel(); };
+    pop.querySelector("#__tbj-brand-add").onclick = function () {
+      if (!theme.primary && !theme.secondary && !theme.font) { closePanel(); return; }
+      var f = FONT_SETS.filter(function (x) { return x.id === theme.font; })[0];
+      var pO = theme.primary ? hexToOklch(theme.primary) : null;
+      var sO = theme.secondary ? hexToOklch(theme.secondary) : null;
+      dropTokenEdit();   // one token edit = the current full theme (replace, don't stack)
+      edits.push({ kind: "token", tag: "theme", text: "Brand & colors", changes: {
+        primaryHex: theme.primary || undefined,
+        brandH: pO ? pO.h : undefined,
+        brandC: pO ? Number(Math.min(0.22, pO.C).toFixed(3)) : undefined,
+        secondaryHex: theme.secondary || undefined,
+        accentH: sO ? sO.h : undefined,
+        font: f ? f.name : undefined,
+        fontGoogle: f ? f.g : undefined,           // the family spec the forge imports via next/font
+        fontHeadingStack: f ? f.head : undefined,  // fallback CSS stack
+        fontSansStack: f ? f.body : undefined,
+      } });
+      history.push({ theme: true });   // keep Undo consistent (undo resets the theme preview)
+      closePanel(); renderBar();
+    };
+  }
+
   // ---- toolbar ----------------------------------------------------------
   var bar = document.createElement("div");
   bar.id = "__tbj-editor";
@@ -430,7 +585,7 @@
 
   function undo() {
     var last = history.pop(); if (!last) return;
-    restore(last.el, last.snapshot);
+    if (last.theme) resetTheme(); else restore(last.el, last.snapshot);
     edits.pop();
     renderBar();
   }
@@ -442,7 +597,7 @@
     var canUndo = edits.length > 0;
     bar.innerHTML =
       '<span style="display:inline-flex;background:#2a2b31;border-radius:999px;padding:2px;">' +
-      modeBtn("__tbj-m-el", "Elements", mode === "element") + modeBtn("__tbj-m-sec", "Sections", mode === "section") + "</span>" +
+      modeBtn("__tbj-m-el", "Elements", mode === "element") + modeBtn("__tbj-m-sec", "Sections", mode === "section") + modeBtn("__tbj-m-brand", "🎨 Brand", mode === "brand") + "</span>" +
       // Undo lives right next to the mode toggle, always visible (dimmed when empty).
       '<button id="__tbj-undo"' + (canUndo ? "" : " disabled") +
       ' style="background:#33343a;color:#fff;border:0;border-radius:999px;padding:7px 12px;font-size:13px;' +
@@ -451,6 +606,7 @@
       (canUndo ? '<button id="__tbj-send" style="background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:8px 16px;font-weight:600;font-size:13px;cursor:pointer;">Send ' + edits.length + " edit" + (edits.length > 1 ? "s" : "") + " →</button>" : "");
     bar.querySelector("#__tbj-m-el").onclick = function () { mode = "element"; closePanel(); hl.style.display = "none"; renderBar(); };
     bar.querySelector("#__tbj-m-sec").onclick = function () { mode = "section"; closePanel(); hl.style.display = "none"; renderBar(); };
+    bar.querySelector("#__tbj-m-brand").onclick = function () { mode = "brand"; closePanel(); hl.style.display = "none"; renderBar(); openBrandPanel(); };
     var u = bar.querySelector("#__tbj-undo"); if (u && canUndo) u.onclick = undo;
     var s = bar.querySelector("#__tbj-send"); if (s) s.onclick = submit;
   }
@@ -458,7 +614,7 @@
     var s = bar.querySelector("#__tbj-send"); if (s) { s.disabled = true; s.textContent = "Sending…"; }
     fetch(SAVE_URL, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ siteId: SITE_ID, edits: edits }) })
       .then(function (r) { return r.json(); })
-      .then(function (res) { if (res && res.ok) { edits = []; history = []; bar.innerHTML = '<span style="font-weight:600;">✅ Sent! Our team will apply your changes and let you know.</span>'; } else if (s) { s.disabled = false; s.textContent = "Retry"; } })
+      .then(function (res) { if (res && res.ok) { edits = []; history = []; resetTheme(); bar.innerHTML = '<span style="font-weight:600;">✅ Sent! Our team will apply your changes and let you know.</span>'; } else if (s) { s.disabled = false; s.textContent = "Retry"; } })
       .catch(function () { if (s) { s.disabled = false; s.textContent = "Retry"; } });
   }
   renderBar();
