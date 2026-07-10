@@ -81,7 +81,9 @@ redeploys. Surfaces as the **"Customer edit queue"** on `/command/engine`.
 2. **The Studio dead-ends at Download.** `image-studio.tsx` can generate a great logo but has **no
    "apply to my site"** action; `/api/generate-image` returns a data URL and persists nothing. (See
    Roadmap — this needs a save+apply path too.)
-3. **Desktop-only.** The editor panels, Studio, and Design gallery assume a mouse + wide viewport.
+3. ~~**Desktop-only.**~~ **✅ Fixed (Phases 1–2).** The Site editor is now a bottom sheet with
+   tap-select on phones; the Studio (canvas strip + segmented nav) and Design gallery (swipe
+   carousel + full-screen preview) are mobile-first. Desktop layouts unchanged.
 
 ---
 
@@ -129,8 +131,8 @@ host-site CSS).
 
 | # | Phase | Effort | What ships |
 |---|---|---|---|
-| **1** | **Bottom-sheet + touch editor** | L | `editor.js` v4: scoped `all:revert` on our chrome so host CSS can't break it; `openPanel`/`openSectionPanel` become a **bottom sheet** under `max-width:640px`/`hover:none` (desktop popover kept); `pointerover` hover-select → **tap-select** with a flash; 44px targets; safe-area insets. `site-proxy` injects a viewport meta if missing. `edit-workspace.tsx` gets a fixed bottom tab bar on small screens. **Payload unchanged** — zero backend risk. |
-| **2** | **Mobile Studio + Design surfer** | L | `image-studio.tsx`: sticky ~40vh canvas, section groups as a one-at-a-time segmented sub-nav, pinned Generate/Download bar. `template-gallery.tsx`: scroll-snap **carousel** of large cards + page dots, full-screen Preview sheet + sticky Apply bar (grid on larger screens). Swipe-surf templates on a phone. |
+| **1 ✅** | **Bottom-sheet + touch editor** *(shipped)* | L | `editor.js` v4: scoped `all:revert` on our chrome so host CSS can't break it; `openPanel`/`openSectionPanel` become a **bottom sheet** under `max-width:640px`/`hover:none` (desktop popover kept); `pointerover` hover-select → **tap-select** with a flash; 44px targets; safe-area insets. `site-proxy` injects a viewport meta if missing. `edit-workspace.tsx` gets a fixed bottom tab bar on small screens. **Payload unchanged** — zero backend risk. |
+| **2 ✅** | **Mobile Studio + Design surfer** *(shipped)* | L | `image-studio.tsx`: sticky ~40vh canvas, section groups as a one-at-a-time segmented sub-nav, pinned Generate/Download bar. `template-gallery.tsx`: scroll-snap **carousel** of large cards + page dots, full-screen Preview sheet + sticky Apply bar (grid on larger screens). Swipe-surf templates on a phone. |
 | **3** | **Token palette editor + instant preview** | XL | `editor.js` **PALETTE mode**: Primary + Secondary color, a text-shade strip, curated font pickers; live-preview by setting the root token vars on the iframe; hex→OKLCH-hue helper; pushes `kind:'token'` edits. Button color defaults to **Primary-everywhere** with an *Advanced → just-this-button* fallback. `/api/edit-requests` learns a `kind` + `tokens` payload. Forge `edit-poll.mjs` gets a deterministic **theme pre-pass** that writes a fenced `TBJ-THEME` `:root` block at the end of `globals.css`; **token-only batches skip `claude -p`** (straight to build+deploy), free-text notes still route to the LLM. |
 | **4** | **Durable theme persistence** | L | New `forge_sites.theme_overrides` jsonb (via `npm run db:pull` — don't hand-edit schema). `/api/edit-requests` upserts it immediately so the proxy shows the saved theme on reopen; `site-proxy` emits a `<style>` **after** the site CSS + the font link; `edit-poll` regenerates the fenced block from the DB JSON on **every** apply (idempotent, rebuild-proof). Portal surfaces a `failed` edit-request status so a customer knows if their theme isn't live on the public URL yet. **Revert = easy undo.** |
 
