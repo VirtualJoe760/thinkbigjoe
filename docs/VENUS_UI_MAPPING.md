@@ -45,6 +45,26 @@ The nav follows the funnel: **Build → Prospect → Sell.**
 `/command/analyzer` (site analyzer) and `/command/sites` (deprecated — deleted) hang off
 Prospecting via the `match` array in `command-header.tsx`, not as top-level tabs.
 
+**Nav chrome (mobile + PWA).** `command-header.tsx` renders the tabs as a **hamburger drawer** (top-left
+menu → slide-in drawer with the tabs + email) and a top bar with the current tab + a prominent **"‹
+Portal"** back-link to the customer side. The customer **`/portal`** has its own responsive header
+(`components/portal/portal-header.tsx` — desktop links, mobile hamburger dropdown) and a **mobile PWA
+bottom bar** (`components/portal/portal-bottom-nav.tsx`: Home · Book · Billing · Account; `md:hidden`,
+safe-area-aware, hidden on the full-screen editor/receptionist, mounted via `portal/layout.tsx`). PWA
+safe-area insets come from the `viewport-fit=cover` viewport export in `(frontend)/layout.tsx`; the
+manifest's `start_url` is `/command` (admin-first — a customer install lands there and redirects to
+`/portal`).
+
+> ⚠️ **DB data-transfer (egress) — command dashboards are `force-dynamic` + `<AutoRefresh>`.** A
+> `router.refresh()` re-runs *every* query on the page, so an open tab re-pulls its data on a timer. In
+> 2026-07 this took the whole app down: `/command/prospects` re-pulled the entire `forge_sites` table
+> every 20s and blew Neon's monthly data-transfer quota (Postgres `XX000` "exceeded the data transfer
+> quota" → every request 500s). **Rule when touching a `/command` dashboard:** never put an unbounded
+> full-table `select()` behind AutoRefresh — project only the columns the page renders, collapse big
+> jsonb (e.g. `forge_sites.preview`) to a boolean, keep intervals sane. `AutoRefresh` now pauses on
+> hidden tabs. The DB is **Neon Launch, billed via Vercel** (plan changes in Vercel's Storage tab, not
+> the Neon console). Full writeup: memory `db-neon-egress.md`.
+
 ---
 
 ## `/command/prospects` — Prospecting pipeline
