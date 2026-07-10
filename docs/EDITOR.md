@@ -81,9 +81,14 @@ redeploys. Surfaces as the **"Customer edit queue"** on `/command/engine`.
 1. ~~**Per-element, not modular.**~~ **✅ Fixed (Phase 3).** `editor.js` now has a **🎨 Brand mode**
    that edits the tokens (Primary/Secondary/fonts) — "change primary everywhere," live-previewed. The
    per-element controls remain as the escape hatch.
-2. **The Studio dead-ends at Download.** `image-studio.tsx` can generate a great logo but has **no
-   "apply to my site"** action; `/api/generate-image` returns a data URL and persists nothing. (See
-   Roadmap — this needs a save+apply path too.)
+2. ~~**The Studio dead-ends at Download.**~~ **✅ Fixed.** `image-studio.tsx` now has a **"Save to my
+   site"** button next to Download. It POSTs the canvas to `/api/edit-requests` as a `kind:'asset'`
+   edit (`{ asset: { key, dataUrl, mime } }`). The forge's `edit-poll.mjs` applies it: **logo/circle
+   are deterministic** — it overwrites the canonical file (`public/logo/logo.png` /
+   `logo-circle.png`) and runs `logo-fix.mjs`, no `claude -p` (a `fastAsset` fast-path mirroring
+   `fastTheme`); **hero/og/carousel** go to `public/_edits/` for the build agent to place + wire into
+   `lib/constants.ts` (their target path varies per template). Then rebuild + redeploy. Asset spec +
+   the canonical paths: [`LOGOS.md`](LOGOS.md).
 3. ~~**Desktop-only.**~~ **✅ Fixed (Phases 1–2).** The Site editor is now a bottom sheet with
    tap-select on phones; the Studio (canvas strip + segmented nav) and Design gallery (swipe
    carousel + full-screen preview) are mobile-first. Desktop layouts unchanged.
@@ -139,6 +144,7 @@ host-site CSS).
 | **3a ✅** | **Token palette editor + instant preview** *(shipped)* | L | `editor.js` **🎨 Brand mode**: Primary + Secondary color pickers (pre-filled from the site's real tokens via a `getImageData` rasterize so `oklch()` reads correctly) + 10 curated font pairings; live-preview by setting `--brand-h`/`--brand-c`/`--accent-h`/`--font-*-stack` on the iframe `:root`; custom `hexToOklch`. Single `kind:'token'` edit per batch (Apply replaces, Undo/Reset reconcile). `/api/edit-requests` renders a "move the design tokens" markdown branch (+ `next/font` family spec). `site-proxy` versions `editor.js?v=<mtime>` so updates aren't cached stale. **The forge applies it via the existing `claude -p` loop for now** — 3b makes it deterministic. |
 | **3b ✅** | **Forge deterministic theme fast-path** *(shipped — forge repo, `a98e9ee`)* | M | `edit-poll.mjs`: a **color-only token edit skips `claude -p`** — `applyThemeTokens()` writes/replaces a fenced `TBJ-THEME` `:root` block at the end of the site's `app/globals.css` (last + unlayered → overrides the template's `:root`; values clamped + injection-safe). **Font** changes still route to the LLM (proper `next/font` wiring). Review-driven pipeline fixes: deploy is gated on a real commit+push (never reports "applied" after a failed push; skips the no-op re-apply), and the LLM prompt knows about the managed block. Writer unit-tested. *(Committed on the forge branch, not pushed — the poller runs the working-tree file.)* |
 | **4 ✅** | **Durable theme persistence** *(shipped — app `5b64b79`, forge `9161132`)* | L | `forge_sites.theme_overrides` jsonb is the source of truth. `/api/edit-requests` upserts it on a token edit (merges; Revert nulls it, flagging `clearFont` when a font was wired). `site-proxy` injects it as a `<style>` **last** (wins the cascade) + a Google Fonts link + passes it to `window.__TBJ_EDIT.theme`; values sanitized. `editor.js` pre-fills the Brand panel from it (stable `fontId`) + offers **Revert to original**. `edit-poll` sources the fenced color block from the DB (rebuild-proof); **template swaps / rebuilds carry `theme_overrides` into `business.json` so the forge bakes the saved brand** instead of the template default. Portal shows a `failed`-edit banner. |
+| **5 ✅** | **Studio "Save to my site" + per-type logo spec** *(shipped — app side; forge on branch)* | M | Closes the Studio dead-end (gap #2). `image-studio.tsx` gets a **Save to my site** button that POSTs the canvas as a `kind:'asset'` edit; `/api/edit-requests` validates it (mime allowlist, size cap, key whitelist). `edit-poll.mjs` applies it — **logo/circle deterministically** (overwrite `public/logo/*` + `logo-fix.mjs`, a `fastAsset` fast-path, no `claude -p`); hero/og/carousel via the build agent. Backed by [`../src/lib/logo-spec.ts`](../src/lib/logo-spec.ts), the browser twin of `factory/logo-fix.mjs` (per-type trim/pad + quality gates). Full spec: [`LOGOS.md`](LOGOS.md). |
 
 ### The persistence mechanism (Phases 3–4)
 A theme edit is a **pure CSS-variable swap**: preview instantly via `documentElement.style` in the

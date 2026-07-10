@@ -31,6 +31,25 @@ icon into a circle.
 > different runtimes (browser canvas vs. Node + sharp). **Change one, change the other**, and re-run
 > the parity check at the bottom of this doc.
 
+### Saving a Studio asset to the live site
+
+The Studio's **"Save to my site"** button doesn't just download — it PUTs the asset onto the site.
+It POSTs the canvas to `/api/edit-requests` as `{ kind:'asset', changes:{ asset:{ key, dataUrl, mime } } }`
+(validated there: mime allowlist, ~9 MB cap, key whitelist). The forge's `factory/edit-poll.mjs` applies it:
+
+- **logo / circle** — a **deterministic fast-path** (`fastAsset`, mirroring the theme `fastTheme`): decode the
+  base64, overwrite the canonical file (`public/logo/logo.png` / `logo-circle.png`), run `logo-fix.mjs`,
+  rebuild + redeploy. **No `claude -p`** — cheaper, and the saved logo gets the exact geometry the forge bakes.
+  A **circle** save also mirrors the normalized emblem to **`app/icon.png`** (the Next App Router favicon
+  convention) — created even on sites that had no `icon.png` — so saving a circular logo actually changes the
+  browser-tab favicon rather than writing a `logo-circle.png` that nothing references.
+- **hero / og / carousel** — their destination path varies per template, so they're written to
+  `public/_edits/` and the build agent places + wires them into `lib/constants.ts`.
+
+So `normalizeAsset()` runs **twice** on a saved logo — once in the browser on generate, once again via
+`logo-fix.mjs` on apply. Both are idempotent, so the second pass is a no-op. That redundancy is deliberate:
+the browser trim gives instant WYSIWYG, the forge trim is the authority that also guards a hand-uploaded file.
+
 ---
 
 ## Per-type spec

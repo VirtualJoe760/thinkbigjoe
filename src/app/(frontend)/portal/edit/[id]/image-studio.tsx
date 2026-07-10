@@ -22,6 +22,9 @@ export function ImageStudio({ siteId }: { siteId: number }) {
   // A generation the trim couldn't rescue (bare icon instead of a circle, square instead of a
   // lockup). Shown as a persistent banner — it needs a re-generate, not a nudge.
   const [warn, setWarn] = useState<string | null>(null);
+  // "Save to my site" is async — it files an edit the forge applies + redeploys in a few minutes.
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
   const [genPrompt, setGenPrompt] = useState("");
   const [useRef_, setUseRef] = useState(true);
   const [editPrompt, setEditPrompt] = useState("");
@@ -64,6 +67,11 @@ export function ImageStudio({ siteId }: { siteId: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
   useEffect(() => { draw(); }, [rot, adj, round, draw]);
+  // A "saved" confirmation is about the exact canvas that was pushed. Drop it the moment ANYTHING
+  // that changes the canvas changes — new image, target type, OR a rotate/brightness/contrast/
+  // saturation tweak (rot/adj feed draw(), which currentDataUrl() reads) — so it can't claim an
+  // un-saved edit went live.
+  useEffect(() => { setSaved(null); }, [src, assetType, rot, adj]);
 
   const currentDataUrl = () => canvasRef.current?.toDataURL("image/png") || null;
 
@@ -114,6 +122,26 @@ export function ImageStudio({ siteId }: { siteId: number }) {
   function download() {
     const url = currentDataUrl(); if (!url) return;
     const a = document.createElement("a"); a.href = url; a.download = `${assetType.key}.png`; a.click();
+  }
+  // Push the current canvas to the live site as this asset type. Files an edit the forge applies
+  // deterministically (logo/circle overwrite their canonical file + re-normalize; other types are
+  // placed by the build agent), then rebuilds + redeploys — so it lands in a few minutes, not now.
+  async function saveToSite() {
+    const dataUrl = currentDataUrl();
+    if (!dataUrl) { setStatus("Load or generate an image first."); return; }
+    setSaving(true); setSaved(null); setStatus("");
+    try {
+      const res = await fetch("/api/edit-requests", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          siteId,
+          edits: [{ kind: "asset", tag: "asset", text: assetType.label, changes: { asset: { key: assetType.key, dataUrl, mime: "image/png" } } }],
+        }),
+      }).then((r) => r.json());
+      if (res.ok) setSaved(`✓ Saved — your ${assetType.label.toLowerCase()} goes live in a few minutes.`);
+      else setStatus(res.error || "Couldn't save — try again.");
+    } catch { setStatus("Save failed — try again."); }
+    setSaving(false);
   }
 
   const MOBILE_TABS: { key: typeof mtab; label: string }[] = [
@@ -229,13 +257,23 @@ export function ImageStudio({ siteId }: { siteId: number }) {
             </Section>
           </div>
 
-          {/* Desktop: Download flows at the end of the controls (unchanged from before). */}
-          <button onClick={download} disabled={!src} className="hidden w-full rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-40 md:block">⬇ Download {assetType.label}</button>
+          {/* Desktop: Save (primary) + Download (secondary) flow at the end of the controls. */}
+          <div className="hidden md:block">
+            <button onClick={saveToSite} disabled={!src || saving} className="w-full rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-40">
+              {saving ? "Saving…" : "Save to my site"}
+            </button>
+            <button onClick={download} disabled={!src} className="mt-2 w-full rounded-full border border-line bg-background px-4 py-2.5 text-sm font-semibold text-ink hover:bg-surface disabled:opacity-40">⬇ Download</button>
+            {saved && <p role="status" className="mt-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-[11px] leading-snug text-emerald-800">{saved}</p>}
+          </div>
         </div>
 
-        {/* Mobile: pinned action bar so Download is always reachable without scrolling. */}
-        <div className="border-t border-line bg-surface p-3 md:hidden">
-          <button onClick={download} disabled={!src} className="w-full rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-40">⬇ Download {assetType.label}</button>
+        {/* Mobile: pinned action bar so Save + Download are always reachable without scrolling. */}
+        <div className="space-y-2 border-t border-line bg-surface p-3 md:hidden">
+          {saved && <p role="status" className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-[11px] leading-snug text-emerald-800">{saved}</p>}
+          <button onClick={saveToSite} disabled={!src || saving} className="w-full rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-40">
+            {saving ? "Saving…" : "Save to my site"}
+          </button>
+          <button onClick={download} disabled={!src} className="w-full rounded-full border border-line bg-background px-4 py-2.5 text-sm font-semibold text-ink hover:bg-surface disabled:opacity-40">⬇ Download</button>
         </div>
       </aside>
     </div>

@@ -31,8 +31,21 @@ type EditChanges = {
   clear?: boolean; // a Revert — wipe the saved theme
   clearFont?: boolean; // the reverted theme had a font wired — needs LLM to un-wire next/font
   semantic?: Record<string, string>; // element→token color edits: { "--color-foreground": "#hex" }
+  // Studio "Save to my site" — a whole brand asset (not a per-element image). key ∈ logo/circle/og/hero/carousel.
+  asset?: { key: string; dataUrl: string; mime?: string };
 };
 type Edit = { kind?: string; selector?: string; tag?: string; text?: string; section?: string; changes?: EditChanges; note?: string };
+
+// Studio asset keys → where the forge writes them. logo/circle have a canonical file (overwritten +
+// re-normalized deterministically); the rest are placed by the build agent. Keep in sync with
+// factory/edit-poll.mjs FIXED_ASSET_DEST and src/lib/logo-spec.ts.
+const ASSET_LABEL: Record<string, string> = {
+  logo: "horizontal logo lockup (public/logo/logo.png)",
+  circle: "circular emblem (public/logo/logo-circle.png)",
+  og: "social-share (OG) image",
+  hero: "hero image",
+  carousel: "carousel image",
+};
 
 /** Receives the batch of click-to-edit requests from editor.js, stores them as
  *  markdown for the forge to apply. Called same-origin from the injected editor. */
@@ -57,6 +70,21 @@ export async function POST(req: Request) {
   const owns = site.claimedByUserId === session.user.id || isAdminEmail(session.user.email);
   if (!owns) return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
 
+  // Validate Studio "Save to my site" asset edits before they land in the JSONB the forge trusts.
+  // Object.hasOwn (not `ASSET_LABEL[a.key]`) so prototype keys like "__proto__"/"constructor"/
+  // "toString" can't slip a truthy inherited value past the allowlist and poison the forge poller.
+  for (const e of edits) {
+    if (e.kind !== "asset") continue;
+    const a = e.changes?.asset;
+    if (!a || typeof a.key !== "string" || !Object.hasOwn(ASSET_LABEL, a.key))
+      return NextResponse.json({ ok: false, error: "unknown asset type" }, { status: 400 });
+    if (a.dataUrl != null && a.dataUrl.length > 12_000_000)
+      return NextResponse.json({ ok: false, error: "image too large" }, { status: 413 });
+    // Require a real, non-empty base64 image payload (the {16,} rejects an empty "data:image/png;base64,").
+    if (typeof a.dataUrl !== "string" || !/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/]{16,}/i.test(a.dataUrl))
+      return NextResponse.json({ ok: false, error: "asset must be a PNG, JPG, or WebP image" }, { status: 400 });
+  }
+
   const lines = [
     `# Edit request — ${site.businessName}`,
     `Site: ${site.domain || site.liveUrl || site.slug}`,
@@ -79,6 +107,16 @@ export async function POST(req: Request) {
       if (c.brandH != null) lines.push(`   - Primary color → \`--brand-h: ${c.brandH};\`${c.brandC != null ? ` \`--brand-c: ${c.brandC};\`` : ""}  (picked ${c.primaryHex})`);
       if (c.accentH != null) lines.push(`   - Secondary / accent → \`--accent-h: ${c.accentH};\`  (picked ${c.secondaryHex})`);
       if (c.font) lines.push(`   - Font "${c.font}" → import via \`next/font/google\` in \`app/layout.tsx\` (Google families: \`${c.fontGoogle}\`), then point \`--font-heading-stack\` / \`--font-sans-stack\` at the next/font CSS variables (fallback stacks: \`${c.fontHeadingStack}\` / \`${c.fontSansStack}\`)`);
+      lines.push(``);
+      return;
+    }
+    // Studio "Save to my site" — a whole brand asset. logo/circle are handled deterministically by
+    // the forge (overwrite the canonical file + logo-fix); the image rides in `changes.asset.dataUrl`.
+    if (e.kind === "asset") {
+      const a = c.asset;
+      const label = (a && Object.hasOwn(ASSET_LABEL, a.key) && ASSET_LABEL[a.key]) || a?.key || "brand asset";
+      imageCount++;
+      lines.push(`${i + 1}. **Save brand asset — ${label}** — replace the site's ${label} with the attached image (auto-normalized for size). logo/circle are applied deterministically to their canonical file; other types are placed by the build agent and wired into \`lib/constants.ts\`.`);
       lines.push(``);
       return;
     }
