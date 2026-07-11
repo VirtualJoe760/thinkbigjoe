@@ -152,7 +152,16 @@ ReviewWall, Bento, etc.), reusable across many industries rather than tied to on
 that designs + codes a genuinely new template into the registry, builds a demo, screenshots it,
 and registers it `enabled: false` until reviewed. It also queues a **real matching prospect** on
 that template (rather than a throwaway demo) so reviewing it means looking at an actual site for
-an actual business. Flip `enabled: true` in the registry once you like the preview.
+an actual business.
+
+**Approving templates (the `templates` table is the source of truth).** The cloud DB `templates`
+table mirrors the registry and carries the authoritative `enabled` flag. Review + approve from the
+**`/command/engine` "Templates" panel** (`command/actions.ts:setTemplateEnabled`) — toggling there
+flips `templates.enabled`, and **`forge-poll.mjs` mirrors those flags into `registry.json` on its
+next tick** (so `forge-build.sh`'s selector, which reads the registry, honors the UI). You *can*
+still hand-edit `registry.json` on the Mac, but the DB will overwrite it on the next poll — toggle
+in the UI instead. The app-side owner picker (`src/lib/forge-templates.ts`) is a hand-kept mirror;
+keep it in sync when templates are added/retired.
 
 Building a new template is an **expensive, `--max-turns 160` `claude -p` run** — this is not
 something to batch casually (see the incident below).

@@ -8,6 +8,7 @@ import { ClearBuildCache } from "./clear-cache";
 import { EngineControls } from "./engine-controls";
 import { ActivityChart } from "./activity-chart";
 import { TemplateDesigner } from "./template-designer";
+import { TemplateManager } from "./template-manager";
 import { DesignReports, type DesignReport } from "./design-reports";
 
 export const dynamic = "force-dynamic";
@@ -111,6 +112,20 @@ export default async function EnginePage() {
   }));
   const proposedCount = reports.filter((r) => r.status === "proposed").length;
 
+  // The forge's template library (`templates` table = source of truth for enabled; the
+  // forge poll mirrors it into registry.json). Disabled first, so anything awaiting review
+  // surfaces at the top of the approval panel.
+  const tplRes = await db.execute(sql`
+    SELECT id, name, description, best_for, enabled FROM templates ORDER BY enabled ASC, name ASC`);
+  const tplRows = (Array.isArray(tplRes) ? tplRes : (tplRes as { rows?: unknown[] }).rows ?? []) as Record<string, unknown>[];
+  const templates = tplRows.map((r) => ({
+    id: String(r.id),
+    name: String(r.name),
+    description: (r.description as string | null) ?? null,
+    bestFor: (r.best_for as string | null) ?? null,
+    enabled: Boolean(r.enabled),
+  }));
+
   // Budget gauge color + tone
   const pct = budget.pct;
   const barColor = pct >= 90 ? "bg-red-500" : pct >= 75 ? "bg-amber-500" : "bg-green-500";
@@ -188,6 +203,11 @@ export default async function EnginePage() {
         {/* Template designer — brand-lead proposes designs; build them here (human-gated) */}
         <div className="mt-4">
           <TemplateDesigner />
+        </div>
+
+        {/* Template library — review + approve (enable/disable) the templates the forge uses */}
+        <div className="mt-4">
+          <TemplateManager templates={templates} />
         </div>
 
         {/* Design research — the Brand Lead's accumulating reports per vertical, each verifiable by its cited sources */}

@@ -436,6 +436,30 @@ export async function requestTemplateDesign(): Promise<{ ok: boolean; message: s
   return { ok: true, message: "Queued — the forge will design the next new template in the background (~30 min). It registers disabled for your review." };
 }
 
+/** Approve (enable) or disable a template. The cloud `templates` table is the source of
+ *  truth; forge-poll.mjs mirrors its enabled flags into the forge's registry.json each
+ *  tick, so the change takes effect on the forge's next poll. */
+export async function setTemplateEnabled(
+  id: string,
+  enabled: boolean,
+): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  await db.execute(sql`UPDATE templates SET enabled = ${enabled}, updated_at = now() WHERE id = ${id}`);
+  await db.insert(activityLog).values({
+    actor: "command",
+    eventType: enabled ? "template_enabled" : "template_disabled",
+    summary: `Template ${id} ${enabled ? "enabled" : "disabled"}`,
+    metadata: { detail: { id, enabled } },
+  });
+  revalidatePath("/command/engine");
+  return {
+    ok: true,
+    message: enabled
+      ? `${id} approved — the forge picks it up on its next poll.`
+      : `${id} disabled — the forge will stop using it on its next poll.`,
+  };
+}
+
 /**
  * Verify or reject a Brand Lead design-research report. Verifying is Joe's sign-off
  * that the report's sources check out and the design direction is sound — the agent

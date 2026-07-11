@@ -47,6 +47,36 @@ export const FORGE_TEMPLATES: ForgeTemplate[] = [
     description: "Sleek, gradient, premium-modern.",
     bestFor: "Solar, smart-home, EV, med-spa, modern dental, detailing.",
   },
+  {
+    id: "retro-heritage",
+    name: "Retro Heritage",
+    description: "Warm, vintage, established — decades of history behind it.",
+    bestFor: "Restaurants, BBQ, diners, bakeries, breweries, family-owned trades.",
+  },
+  {
+    id: "luxe-noir",
+    name: "Luxe Noir",
+    description: "Dark, gold-accented, exclusive — high-end and by-invitation.",
+    bestFor: "Luxury builders, architects, design-build, high-end remodels, med-spa.",
+  },
+  {
+    id: "coastal-airy",
+    name: "Coastal Airy",
+    description: "Light, breezy, clean — calm and refreshing.",
+    bestFor: "Pool & spa, cleaning, wellness, coastal & outdoor services.",
+  },
+  {
+    id: "playful-pop",
+    name: "Playful Pop",
+    description: "Bright, rounded, fun — energetic and friendly.",
+    bestFor: "Party rentals, kids' services, entertainment, events.",
+  },
+  {
+    id: "swiss-editorial",
+    name: "Swiss Editorial",
+    description: "Minimal, black-and-white, editorial grid — precise and design-led.",
+    bestFor: "Architects, designers, studios, professional & creative services.",
+  },
 ];
 
 export const FORGE_TEMPLATE_IDS = FORGE_TEMPLATES.map((t) => t.id);
