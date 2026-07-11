@@ -250,6 +250,49 @@ function BookForLead({ siteId, onBooked }: { siteId: string; onBooked: () => voi
   );
 }
 
+// A collapsible section on the contact card — a tappable header (title + optional
+// at-a-glance summary + chevron) that shows/hides its body. `action` is an optional
+// control rendered beside the toggle (e.g. a Copy button) — kept a sibling, not a
+// child, so we never nest a <button> inside the toggle <button>.
+function CardSection({
+  title,
+  summary,
+  action,
+  defaultOpen = false,
+  tone,
+  children,
+}: {
+  title: React.ReactNode;
+  summary?: React.ReactNode;
+  action?: React.ReactNode;
+  defaultOpen?: boolean;
+  tone?: "brand";
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const brand = tone === "brand";
+  return (
+    <div className={`mt-3 overflow-hidden rounded-xl border ${brand ? "border-brand/30 bg-brand-tint/40" : "border-line"}`}>
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="flex flex-1 items-center justify-between gap-2 px-3 py-2.5 text-left"
+        >
+          <span className={`text-xs font-bold uppercase tracking-wide ${brand ? "text-brand" : "text-ink-soft"}`}>{title}</span>
+          <span className="flex items-center gap-2 text-xs text-ink-soft">
+            {summary}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}><path d="M6 9l6 6 6-6" /></svg>
+          </span>
+        </button>
+        {action && <div className="pr-2">{action}</div>}
+      </div>
+      {open && <div className={`px-3 pb-3 ${brand ? "" : "border-t border-line"} pt-2`}>{children}</div>}
+    </div>
+  );
+}
+
 // ── Contact detail (slide-over: full-screen on mobile, right sheet on desktop) ──
 function ContactDetail({
   item, meta, attempt, history, onClose, onContact,
@@ -533,8 +576,7 @@ function ContactDetail({
           </div>
 
           {/* add a note — lands on the timeline below (e.g. what happened on a call) */}
-          <div className="mt-5">
-            <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-soft">Add a note</h3>
+          <CardSection title="Add a note">
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -549,56 +591,60 @@ function ContactDetail({
             >
               {noteBusy ? "Saving…" : noteSaved ? "✓ Saved" : "📝 Save note"}
             </button>
-          </div>
+          </CardSection>
 
           {/* contact facts */}
-          <dl className="mt-4 grid grid-cols-[7rem,1fr] items-baseline gap-x-3 gap-y-2 text-sm">
-            {item.ownerName && (<><dt className="text-xs uppercase tracking-wide text-ink-soft">Owner</dt><dd className="font-medium text-ink">{item.ownerName}</dd></>)}
-            {item.phone && (<><dt className="text-xs uppercase tracking-wide text-ink-soft">Phone</dt><dd className="font-medium text-ink">{item.phone}</dd></>)}
-            {item.email && (<><dt className="text-xs uppercase tracking-wide text-ink-soft">Email</dt><dd className="truncate font-medium text-ink">{item.email}</dd></>)}
-            {[niche1(item), cityState(item)].filter(Boolean).length > 0 && (<><dt className="text-xs uppercase tracking-wide text-ink-soft">Business</dt><dd className="font-medium text-ink">{[niche1(item), cityState(item)].filter(Boolean).join(" · ")}</dd></>)}
-            {!isUser && item.claimCode && (<><dt className="text-xs uppercase tracking-wide text-ink-soft">Claim code</dt><dd className="font-mono font-medium text-ink">{item.claimCode}</dd></>)}
-          </dl>
+          <CardSection title="Contact details" defaultOpen>
+            <dl className="grid grid-cols-[7rem,1fr] items-baseline gap-x-3 gap-y-2 text-sm">
+              {item.ownerName && (<><dt className="text-xs uppercase tracking-wide text-ink-soft">Owner</dt><dd className="font-medium text-ink">{item.ownerName}</dd></>)}
+              {item.phone && (<><dt className="text-xs uppercase tracking-wide text-ink-soft">Phone</dt><dd className="font-medium text-ink">{item.phone}</dd></>)}
+              {item.email && (<><dt className="text-xs uppercase tracking-wide text-ink-soft">Email</dt><dd className="truncate font-medium text-ink">{item.email}</dd></>)}
+              {[niche1(item), cityState(item)].filter(Boolean).length > 0 && (<><dt className="text-xs uppercase tracking-wide text-ink-soft">Business</dt><dd className="font-medium text-ink">{[niche1(item), cityState(item)].filter(Boolean).join(" · ")}</dd></>)}
+              {!isUser && item.claimCode && (<><dt className="text-xs uppercase tracking-wide text-ink-soft">Claim code</dt><dd className="font-mono font-medium text-ink">{item.claimCode}</dd></>)}
+            </dl>
+          </CardSection>
 
           {/* communication timeline */}
-          <div className="mt-5">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase tracking-wide text-ink-soft">Communications</h3>
-              <span className="text-xs text-ink-soft" suppressHydrationWarning>
-                {attempt.total} reached{attempt.failed > 0 ? <span className="text-red-600"> · {attempt.failed} failed</span> : null}{attempt.lastAt ? ` · last ${relTime(attempt.lastAt)}` : ""}
+          <CardSection
+            title="Communications"
+            summary={
+              <span suppressHydrationWarning>
+                {attempt.total} reached{attempt.failed > 0 ? <span className="text-red-600"> · {attempt.failed} failed</span> : null}{attempt.lastAt ? ` · ${relTime(attempt.lastAt)}` : ""}
               </span>
-            </div>
+            }
+          >
             <Timeline history={history} />
-          </div>
+          </CardSection>
 
           {/* reviews */}
           {quotes.length > 0 && (
-            <div className="mt-5">
-              <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-ink-soft">What customers say</h3>
+            <CardSection title="What customers say" summary={`${quotes.length}`}>
               <ul className="space-y-1.5">
                 {quotes.map((q, i) => (
                   <li key={i} className="text-sm text-ink"><span className="text-amber-500">{"★".repeat(Math.max(0, Math.min(5, q.stars || 0)))}</span> <span className="italic">“{q.text}”</span>{q.name && <span className="text-ink-soft"> — {q.name}</span>}</li>
                 ))}
               </ul>
-            </div>
+            </CardSection>
           )}
 
           {/* calling script */}
-          <div className="mt-5 rounded-xl border border-brand/30 bg-brand-tint/40 p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wide text-brand">📞 Calling script</span>
+          <CardSection
+            title="📞 Calling script"
+            tone="brand"
+            action={
               <button onClick={() => { navigator.clipboard?.writeText(item.callPrep ? `${script}\n\n— Angle —\n${item.callPrep}` : script).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }} className="rounded-full border border-brand/40 px-2.5 py-0.5 text-xs font-semibold text-brand hover:bg-brand-tint">
                 {copied ? "Copied ✓" : "Copy"}
               </button>
-            </div>
-            <div className="mt-2 whitespace-pre-line text-sm leading-relaxed text-ink">{script}</div>
+            }
+          >
+            <div className="whitespace-pre-line text-sm leading-relaxed text-ink">{script}</div>
             {item.callPrep && (
               <div className="mt-3 border-t border-brand/20 pt-2">
                 <div className="text-xs font-bold uppercase tracking-wide text-ink-soft">Your angle</div>
                 <div className="mt-1 whitespace-pre-line text-sm leading-relaxed text-ink">{item.callPrep}</div>
               </div>
             )}
-          </div>
+          </CardSection>
           <div className="h-4" />
         </div>
       </div>
