@@ -3,10 +3,10 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, gt, ne, sql } from "drizzle-orm";
 
 import { PortalHeader } from "@/components/portal/portal-header";
-import { db, forgeSites } from "@/db";
+import { db, forgeSites, leads } from "@/db";
 import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
 import { PLANS, type PlanKey } from "@/lib/plans";
@@ -80,7 +80,28 @@ export default async function PortalPage({
       receptionistStatus: forgeSites.receptionistStatus,
     })
     .from(forgeSites)
-    .where(eq(forgeSites.claimedByUserId, user.id));
+    // Deleted sites are retired — never surface them (or their action buttons) in the portal.
+    .where(and(eq(forgeSites.claimedByUserId, user.id), ne(forgeSites.status, "deleted")));
+
+  // Upcoming strategy call for this user (the booking flow stores it on `leads`,
+  // matched by email). Future, booked slots only — past calls shouldn't nag.
+  const upcomingCalls = await db
+    .select({
+      name: leads.name,
+      bookedSlot: leads.bookedSlot,
+      meetLink: leads.meetLink,
+      gcalHtmlLink: leads.gcalHtmlLink,
+    })
+    .from(leads)
+    .where(
+      and(
+        sql`lower(${leads.email}) = ${user.email.toLowerCase()}`,
+        eq(leads.status, "booked"),
+        gt(leads.bookedSlot, new Date().toISOString()),
+      ),
+    )
+    .orderBy(leads.bookedSlot)
+    .limit(3);
 
   // Surface a site whose LATEST edit failed, so the customer knows their change isn't live yet.
   const siteIds = mySites.map((s) => s.id);
@@ -117,6 +138,67 @@ export default async function PortalPage({
             <span className="font-semibold">Editing is locked.</span> Your free trial has ended — subscribe below to unlock
             Studio and content edits and take your site live.
           </div>
+        )}
+
+        {upcomingCalls.length > 0 && (
+          <section className="mt-8">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-ink-soft">
+              Upcoming call
+            </h2>
+            <div className="mt-3 space-y-3">
+              {upcomingCalls.map((call) => {
+                const when = new Date(call.bookedSlot as string);
+                const dateStr = new Intl.DateTimeFormat("en-US", {
+                  weekday: "long", month: "long", day: "numeric", timeZone: "America/Los_Angeles",
+                }).format(when);
+                const timeStr = new Intl.DateTimeFormat("en-US", {
+                  hour: "numeric", minute: "2-digit", timeZone: "America/Los_Angeles",
+                }).format(when);
+                return (
+                  <div
+                    key={call.bookedSlot}
+                    className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-brand/30 bg-brand-tint/50 p-6"
+                  >
+                    <div className="flex items-center gap-4">
+                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand text-white">
+                        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M8 2v4M16 2v4M3 9h18M5 5h14v16H5z" />
+                        </svg>
+                      </span>
+                      <div>
+                        <p className="font-bold tracking-tight">Strategy call with Joe</p>
+                        <p className="text-sm text-ink-soft">
+                          {dateStr} · {timeStr} Pacific · 30 min over Google Meet
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {call.gcalHtmlLink && (
+                        <a
+                          href={call.gcalHtmlLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center rounded-full border border-line bg-background px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                        >
+                          View in calendar
+                        </a>
+                      )}
+                      {call.meetLink && (
+                        <a
+                          href={call.meetLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
+                        >
+                          Join Google Meet
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {isAdmin && (
