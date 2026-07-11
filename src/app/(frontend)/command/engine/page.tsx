@@ -114,17 +114,26 @@ export default async function EnginePage() {
 
   // The forge's template library (`templates` table = source of truth for enabled; the
   // forge poll mirrors it into registry.json). Disabled first, so anything awaiting review
-  // surfaces at the top of the approval panel.
+  // surfaces at the top of the approval gallery — with its preview + design characteristics.
   const tplRes = await db.execute(sql`
-    SELECT id, name, description, best_for, enabled FROM templates ORDER BY enabled ASC, name ASC`);
+    SELECT id, name, best_for, enabled, preview_path,
+           design->>'mood' AS mood, design->'composition' AS composition
+    FROM templates ORDER BY enabled ASC, name ASC`);
   const tplRows = (Array.isArray(tplRes) ? tplRes : (tplRes as { rows?: unknown[] }).rows ?? []) as Record<string, unknown>[];
   const templates = tplRows.map((r) => ({
     id: String(r.id),
     name: String(r.name),
-    description: (r.description as string | null) ?? null,
     bestFor: (r.best_for as string | null) ?? null,
     enabled: Boolean(r.enabled),
+    previewPath: (r.preview_path as string | null) ?? null,
+    mood: (r.mood as string | null) ?? null,
+    composition: Array.isArray(r.composition) ? (r.composition as string[]) : null,
   }));
+  const templateStats = {
+    research: proposedCount, // design_reports still proposed
+    awaiting: templates.filter((t) => !t.enabled).length, // built, disabled → needs review
+    live: templates.filter((t) => t.enabled).length, // enabled → in rotation
+  };
 
   // Budget gauge color + tone
   const pct = budget.pct;
@@ -205,9 +214,9 @@ export default async function EnginePage() {
           <TemplateDesigner />
         </div>
 
-        {/* Template library — review + approve (enable/disable) the templates the forge uses */}
+        {/* Template library — visual review + approve (enable/disable) the templates the forge uses */}
         <div className="mt-4">
-          <TemplateManager templates={templates} />
+          <TemplateManager templates={templates} stats={templateStats} />
         </div>
 
         {/* Design research — the Brand Lead's accumulating reports per vertical, each verifiable by its cited sources */}
