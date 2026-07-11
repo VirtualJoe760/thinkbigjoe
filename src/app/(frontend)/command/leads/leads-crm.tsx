@@ -74,7 +74,17 @@ function niche1(i: ForgeSiteItem): string {
 
 
 function initialsOf(item: ForgeSiteItem) {
-  return (item.businessName || "?").split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+  // First letter of the first two words. Array.from is code-point-aware so an
+  // emoji-prefixed name (e.g. "🏎️Valeri Auto") doesn't get its surrogate pair
+  // sliced in half — a lone surrogate serializes as � on the server but stays a
+  // half-surrogate on the client, causing a hydration text mismatch (React #418).
+  // We also skip leading emoji/punctuation so initials read as letters ("VA").
+  const firstChar = (w: string) => {
+    const chars = Array.from(w);
+    return (chars.find((c) => /\p{L}|\p{N}/u.test(c)) || chars[0] || "").toUpperCase();
+  };
+  const words = (item.businessName || "?").split(/\s+/).filter(Boolean).slice(0, 2);
+  return words.map(firstChar).join("") || "?";
 }
 
 // Rectangular business thumbnail (the photo we sourced from Maps/social), monogram fallback.
