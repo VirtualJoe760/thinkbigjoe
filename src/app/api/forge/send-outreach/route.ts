@@ -84,8 +84,12 @@ export async function POST(req: Request) {
   // number per invocation so outreach trickles out like a human. The launchd job fires every ~20 min;
   // gated to weekday business hours (Pacific) with a minimum gap between sends. `dry` previews the full
   // eligible list (no pacing). Same model will drive the paced GV texting.
+  // ?batch=N — manual kickoff: send up to N now, bypassing the window + min-gap.
+  const batchParam = Number(new URL(req.url).searchParams.get("batch") || 0);
   let perRun = room;
-  if (!dry) {
+  if (batchParam > 0) {
+    perRun = Math.min(batchParam, room, eligible.length);
+  } else if (!dry) {
     const pt = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
     const hour = pt.getHours(), dow = pt.getDay();
     if (!(dow >= 1 && dow <= 5 && hour >= 9 && hour < 18)) {
