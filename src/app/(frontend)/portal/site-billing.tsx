@@ -3,23 +3,49 @@
 import { useActionState, useEffect, useState } from "react";
 
 import { startCheckout, type CheckoutState } from "./actions";
-import { PLANS, PLAN_KEYS, ONE_TIME_BUILD_AMOUNT, type PlanKey } from "@/lib/plans";
+import { PLANS, PLAN_KEYS, ONE_TIME_BUILD_AMOUNT, type PlanKey, type BillingInterval } from "@/lib/plans";
 
 const initial: CheckoutState = { ok: false, message: "" };
 
-/** Plan picker + "Activate" for a claimed-but-unpaid site → Stripe Checkout. */
+/** Plan picker + billing-interval toggle + "Activate" for a claimed-but-unpaid site → Stripe Checkout. */
 export function SiteBilling({ siteId }: { siteId: number }) {
   const [plan, setPlan] = useState<PlanKey>("voice");
+  const [interval, setInterval] = useState<BillingInterval>("month");
   const [state, action, pending] = useActionState(startCheckout, initial);
 
   useEffect(() => {
     if (state.url) window.location.href = state.url;
   }, [state.url]);
 
+  const yearly = interval === "year";
+  const priceOf = (k: PlanKey) => (yearly ? `$${PLANS[k].annual.toLocaleString()}/yr` : `$${PLANS[k].monthly}/mo`);
+  const dueLabel = yearly
+    ? `$${ONE_TIME_BUILD_AMOUNT} today + $${PLANS[plan].annual.toLocaleString()}/yr`
+    : `$${ONE_TIME_BUILD_AMOUNT} today + $${PLANS[plan].monthly}/mo`;
+
   return (
     <form action={action} className="mt-4">
       <input type="hidden" name="siteId" value={siteId} />
       <input type="hidden" name="plan" value={plan} />
+      <input type="hidden" name="interval" value={interval} />
+
+      {/* Billing interval */}
+      <div className="mb-3 inline-flex rounded-full border border-line bg-background p-1 text-xs font-semibold">
+        <button
+          type="button"
+          onClick={() => setInterval("month")}
+          className={`rounded-full px-3 py-1 transition-colors ${!yearly ? "bg-brand text-white" : "text-ink-soft hover:text-ink"}`}
+        >
+          Monthly
+        </button>
+        <button
+          type="button"
+          onClick={() => setInterval("year")}
+          className={`rounded-full px-3 py-1 transition-colors ${yearly ? "bg-brand text-white" : "text-ink-soft hover:text-ink"}`}
+        >
+          Yearly <span className={yearly ? "text-white/80" : "text-brand"}>· save ~2 mo</span>
+        </button>
+      </div>
 
       <div className="grid gap-2">
         {PLAN_KEYS.map((k) => {
@@ -37,7 +63,7 @@ export function SiteBilling({ siteId }: { siteId: number }) {
                 <span className="font-semibold">{PLANS[k].label}</span>
                 <span className="block text-xs text-ink-soft">{PLANS[k].blurb}</span>
               </span>
-              <span className="whitespace-nowrap font-bold">${PLANS[k].monthly}/mo</span>
+              <span className="whitespace-nowrap font-bold">{priceOf(k)}</span>
             </button>
           );
         })}
@@ -52,9 +78,7 @@ export function SiteBilling({ siteId }: { siteId: number }) {
         disabled={pending || Boolean(state.url)}
         className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-60"
       >
-        {pending || state.url
-          ? "Starting checkout…"
-          : `Activate — $${ONE_TIME_BUILD_AMOUNT} today + $${PLANS[plan].monthly}/mo`}
+        {pending || state.url ? "Starting checkout…" : `Activate — ${dueLabel}`}
       </button>
       <p className="mt-2 text-center text-xs text-ink-soft">
         Includes a free domain. Secure checkout via Stripe · cancel anytime.

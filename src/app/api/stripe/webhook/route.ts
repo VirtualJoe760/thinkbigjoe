@@ -7,15 +7,9 @@ import { db, forgeSites, activityLog } from "@/db";
 import { notifyTelegram } from "@/lib/telegram";
 import { fulfillDomain } from "@/lib/domain-fulfill";
 import { sendPlanEmail, sendAdminAlert } from "@/lib/email";
-import { PLANS, PLAN_KEYS, isPlanKey, type PlanKey } from "@/lib/plans";
+import { PLANS, isPlanKey, planKeyForPrice, type PlanKey } from "@/lib/plans";
 
 const planLabel = (p: string | null | undefined) => (isPlanKey(p) ? PLANS[p].label : p || "your plan");
-
-// Map a Stripe price id back to our plan key (reverse of planPriceId).
-function planKeyForPrice(priceId: string | null | undefined): PlanKey | null {
-  if (!priceId) return null;
-  return PLAN_KEYS.find((k) => process.env[PLANS[k].priceEnv] === priceId) ?? null;
-}
 
 // The claimed owner's email for a site, via the better_auth user store.
 async function ownerEmailForSite(claimedByUserId: string | null): Promise<{ email: string; name: string | null } | null> {

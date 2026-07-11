@@ -8,7 +8,7 @@ import { PortalHeader } from "@/components/portal/portal-header";
 import { db, forgeSites } from "@/db";
 import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
-import { PLANS, PLAN_KEYS, ONE_TIME_BUILD_AMOUNT, type PlanKey } from "@/lib/plans";
+import { PLANS, PLAN_KEYS, ONE_TIME_BUILD_AMOUNT, annualSavings, type PlanKey, type BillingInterval } from "@/lib/plans";
 import { SiteBilling } from "../site-billing";
 
 export const metadata: Metadata = { title: "Plans & billing" };
@@ -18,7 +18,7 @@ const POPULAR: PlanKey = "voice";
 export default async function BillingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ changed?: string; billing?: string; paid?: string }>;
+  searchParams: Promise<{ changed?: string; billing?: string; paid?: string; interval?: string }>;
 }) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login?redirect=/portal/billing");
@@ -37,7 +37,9 @@ export default async function BillingPage({
     .from(forgeSites)
     .where(eq(forgeSites.claimedByUserId, user.id));
 
-  const { changed, billing } = await searchParams;
+  const { changed, billing, interval: intervalParam } = await searchParams;
+  const interval: BillingInterval = intervalParam === "year" ? "year" : "month";
+  const yearly = interval === "year";
   const activeSites = sites.filter((s) => s.oneTimePaid);
   const currentPlans = new Set(activeSites.map((s) => s.plan).filter(Boolean) as string[]);
   const hasActive = activeSites.length > 0;
@@ -134,9 +136,28 @@ export default async function BillingPage({
 
         {/* Compare plans */}
         <section className="mt-12">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-ink-soft">
-            {hasActive ? "Compare plans" : "Plans"}
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-ink-soft">
+              {hasActive ? "Compare plans" : "Plans"}
+            </h2>
+            {/* Billing-interval toggle (URL-param so this stays a server component) */}
+            <div className="inline-flex rounded-full border border-line bg-surface p-1 text-sm font-semibold">
+              <Link
+                href="/portal/billing?interval=month"
+                scroll={false}
+                className={`rounded-full px-4 py-1.5 transition-colors ${!yearly ? "bg-brand text-white" : "text-ink-soft hover:text-ink"}`}
+              >
+                Monthly
+              </Link>
+              <Link
+                href="/portal/billing?interval=year"
+                scroll={false}
+                className={`rounded-full px-4 py-1.5 transition-colors ${yearly ? "bg-brand text-white" : "text-ink-soft hover:text-ink"}`}
+              >
+                Yearly <span className={yearly ? "text-white/80" : "text-brand"}>· save ~2 mo</span>
+              </Link>
+            </div>
+          </div>
           <div className="mt-4 grid gap-5 lg:grid-cols-3">
             {PLAN_KEYS.map((k) => {
               const p = PLANS[k];
@@ -162,10 +183,19 @@ export default async function BillingPage({
                   <h3 className="text-xl font-extrabold tracking-tight">{p.label}</h3>
                   <p className="mt-1 text-sm leading-relaxed text-ink-soft">{p.blurb}</p>
                   <div className="mt-4 flex items-baseline gap-1">
-                    <span className="text-4xl font-extrabold tracking-tight">${p.monthly}</span>
-                    <span className="text-sm text-ink-soft">/mo</span>
+                    <span className="text-4xl font-extrabold tracking-tight">
+                      ${yearly ? p.annual.toLocaleString() : p.monthly}
+                    </span>
+                    <span className="text-sm text-ink-soft">/{yearly ? "yr" : "mo"}</span>
                   </div>
-                  <p className="mt-1 text-xs text-ink-soft">+ ${ONE_TIME_BUILD_AMOUNT} one-time build</p>
+                  <p className="mt-1 text-xs text-ink-soft">
+                    {yearly && (
+                      <span className="font-semibold text-green-700">
+                        Save ${annualSavings(k).toLocaleString()}/yr ·{" "}
+                      </span>
+                    )}
+                    + ${ONE_TIME_BUILD_AMOUNT} one-time build
+                  </p>
                   <ul className="mt-5 space-y-2.5">
                     {p.features.map((f) => (
                       <li key={f} className="flex gap-2.5 text-sm leading-relaxed">

@@ -11,7 +11,7 @@ import { isForgeTemplate } from "@/lib/forge-templates";
 import { notifyTelegram } from "@/lib/telegram";
 import { sendBookingConfirmationEmail, sendNotificationEmail } from "@/lib/email";
 import { stripe, ensureStripeCustomer } from "@/lib/stripe";
-import { buildPriceId, isPlanKey, planPriceId } from "@/lib/plans";
+import { buildPriceId, isPlanKey, planPriceId, type BillingInterval } from "@/lib/plans";
 import { quoteDomain, domainsConfigured } from "@/lib/domains";
 import { fulfillDomain } from "@/lib/domain-fulfill";
 import {
@@ -495,6 +495,7 @@ export async function startCheckout(
 
   const siteId = Number(formData.get("siteId"));
   const plan = String(formData.get("plan") || "");
+  const interval: BillingInterval = String(formData.get("interval")) === "year" ? "year" : "month";
   if (!Number.isFinite(siteId) || !isPlanKey(plan)) {
     return { ok: false, message: "Pick a plan to continue." };
   }
@@ -508,9 +509,9 @@ export async function startCheckout(
     return { ok: false, message: "This site is already active." };
   }
 
-  const monthly = planPriceId(plan);
+  const price = planPriceId(plan, interval);
   const build = buildPriceId();
-  if (!monthly || !build) {
+  if (!price || !build) {
     return { ok: false, message: "Plans aren't configured yet — hang tight." };
   }
 
@@ -520,14 +521,14 @@ export async function startCheckout(
       mode: "subscription",
       customer: customer.id,
       line_items: [
-        { price: monthly, quantity: 1 },
+        { price, quantity: 1 },
         { price: build, quantity: 1 }, // one-time $300 — added to the first invoice
       ],
       success_url: `${SITE_URL}/portal?paid=1`,
       cancel_url: `${SITE_URL}/portal`,
       allow_promotion_codes: true,
-      metadata: { siteId: String(siteId), userId: session.user.id, plan },
-      subscription_data: { metadata: { siteId: String(siteId), plan } },
+      metadata: { siteId: String(siteId), userId: session.user.id, plan, interval },
+      subscription_data: { metadata: { siteId: String(siteId), plan, interval } },
     });
     if (!checkout.url) return { ok: false, message: "Couldn't start checkout — try again." };
     return { ok: true, message: "Redirecting to checkout…", url: checkout.url };
