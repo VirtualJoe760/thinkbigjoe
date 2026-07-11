@@ -63,6 +63,7 @@ export default async function PortalPage({
   const { user } = session;
   const firstName = user.name?.split(" ")[0] || "there";
   const isAdmin = isAdminEmail(user.email);
+  const accountNumber = (user as { accountNumber?: string | null }).accountNumber || null;
 
   const mySites = await db
     .select({
@@ -132,6 +133,14 @@ export default async function PortalPage({
             ? "Your admin dashboards and client portal in one place."
             : "Track your project’s progress and manage billing in one place."}
         </p>
+
+        {accountNumber && (
+          <div className="mt-5 inline-flex items-center gap-2.5 rounded-full border border-brand/30 bg-brand-tint/40 px-4 py-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-brand">Account ID</span>
+            <span className="font-mono text-lg font-bold tracking-widest tabular-nums text-ink">{accountNumber}</span>
+            <span className="hidden text-xs text-ink-soft sm:inline">· read it to our phone assistant to pull up your account</span>
+          </div>
+        )}
 
         {locked && (
           <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
