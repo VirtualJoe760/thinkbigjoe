@@ -37,20 +37,22 @@ export function ContactCTA() {
               >
                 {CONTACT_PHONE}
               </a>{" "}
-              — our AI assistant answers 24/7 and can book your call on the spot.
+              — our AI receptionist answers 24/7 and can walk you through getting
+              set up.
             </p>
 
             <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5">
-              <p className="text-sm font-semibold">Ready to dig in?</p>
+              <p className="text-sm font-semibold">Ready to get started?</p>
               <p className="mt-1 text-sm text-white/60">
-                A free 30-minute strategy call maps the highest-leverage AI in
-                your business — no pitch, just a plan.
+                Create your free account to claim your site — then book a strategy
+                call from your portal and we map the highest-leverage AI for your
+                business.
               </p>
               <Link
-                href="/book-appointment"
+                href="/login"
                 className="mt-4 inline-flex items-center justify-center rounded-full border border-white/20 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10"
               >
-                Book a strategy call →
+                Create your account →
               </Link>
             </div>
           </div>

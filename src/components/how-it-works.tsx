@@ -13,8 +13,8 @@ const STEPS = [
   },
   {
     n: "03",
-    title: "Book a strategy call",
-    body: "We map which AI services move the needle for your business — an AI receptionist, agents that run the busywork, or a full-stack custom build.",
+    title: "Book a strategy call — from your account",
+    body: "Once you're set up, book a strategy call right from your portal. We map which AI services move the needle for your business — an AI receptionist, agents that run the busywork, or a full-stack custom build.",
   },
   {
     n: "04",
@@ -60,7 +60,7 @@ export function HowItWorks() {
               <p className="text-sm font-semibold text-ink">Prefer to talk?</p>
               <p className="mt-1 text-sm leading-relaxed text-ink-soft">
                 Call our AI receptionist any time — she&apos;ll walk you through
-                claiming your site and book your strategy call on the spot.
+                creating your account and claiming your site.
               </p>
               <a
                 href="tel:+14807642121"
@@ -78,10 +78,10 @@ export function HowItWorks() {
                 Claim your site
               </Link>
               <Link
-                href="/book-appointment"
+                href="/login"
                 className="inline-flex items-center justify-center rounded-full border border-line bg-background px-6 py-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
               >
-                Book a strategy call
+                Create an account
               </Link>
             </div>
           </div>

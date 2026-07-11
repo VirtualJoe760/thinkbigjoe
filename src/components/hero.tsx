@@ -37,10 +37,10 @@ export function Hero() {
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">
           <Link
-            href="/book-appointment"
+            href="/login"
             className="inline-flex items-center justify-center rounded-full bg-brand px-7 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-dark"
           >
-            Book a strategy call
+            Create your account
           </Link>
           <Link
             href="/portal/claim"
@@ -49,6 +49,14 @@ export function Hero() {
             Have a claim code? Claim your site
           </Link>
         </div>
+
+        <p className="mt-5 text-sm text-ink-soft">
+          Prefer to talk?{" "}
+          <a href="tel:+14807642121" className="font-semibold text-ink underline decoration-line underline-offset-4 hover:decoration-brand">
+            Call (480) 764-2121
+          </a>{" "}
+          — our AI receptionist answers 24/7.
+        </p>
 
         <dl className="mt-16 grid max-w-2xl grid-cols-3 gap-8 border-t border-line pt-8">
           {[
