@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm";
 
 import { db, activityLog, smsConversations } from "@/db";
 import { notifyTelegram } from "@/lib/telegram";
+import { denyProspectByPhoneOptOut } from "@/lib/forge-optout";
 import {
   encodeThreadCode,
   isOptOut,
@@ -99,16 +100,28 @@ export async function POST(req: Request) {
     console.error("[sms:inbound] activity log failed:", err);
   }
 
+  // On STOP: move the prospect out of the leads pipeline (→ denied) + blacklist
+  // the business so it's never re-scraped or re-contacted. Fully automatic.
+  let deniedName: string | null = null;
+  if (optOut) {
+    try {
+      deniedName = await denyProspectByPhoneOptOut(sender);
+    } catch (err) {
+      console.error("[sms:inbound] opt-out denial failed:", err);
+    }
+  }
+  const deniedNote = deniedName ? ` ${deniedName} moved to denied + blacklisted.` : "";
+
   if (forwardTo) {
     const note = optOut
-      ? `📵 ${sender} replied STOP — they're now opted out of TBJ texts.`
+      ? `📵 ${sender} replied STOP — opted out of TBJ texts.${deniedNote}`
       : `📱 ${code} — text from ${sender}:\n\n${body}\n\n↩︎ Reply "${code} your message" to answer (or just reply for the latest). "#list" to see all.`;
     const res = await sendSms(forwardTo, note);
     if ("ok" in res && !res.ok) console.error("[sms:inbound] forward to GV failed:", res.error);
   }
 
   await notifyTelegram(
-    optOut ? `📵 SMS opt-out from ${sender}` : `📱 Inbound SMS ${code} from ${sender}:\n${body || "(no text)"}`,
+    optOut ? `📵 SMS opt-out from ${sender}.${deniedNote}` : `📱 Inbound SMS ${code} from ${sender}:\n${body || "(no text)"}`,
   );
 
   return twiml();
