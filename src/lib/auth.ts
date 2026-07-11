@@ -58,14 +58,31 @@ const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
 // Direct (unpooled) endpoint so the search_path startup option sticks, and the tables
 // live in the isolated `better_auth` schema (Payload's dev `push` owns `public` and
 // would DROP tables it doesn't recognize).
-const authPool = new Pool({
-  connectionString:
+// Neon requires TLS. The connection string ships `sslmode=require`, which newer
+// pg-connection-string flags with a noisy deprecation warning — and Next 16's dev
+// overlay surfaces it as a "Console Error" on any page that touches auth. Strip
+// sslmode from the string and set `ssl` explicitly instead (still TLS-encrypted).
+function authConnString(): string {
+  const raw =
     process.env.DATABASE_URL_UNPOOLED ||
     process.env.POSTGRES_URL_NON_POOLING ||
     process.env.DATABASE_URL ||
     process.env.POSTGRES_URL ||
     process.env.DATABASE_URI ||
-    "",
+    "";
+  if (!raw) return raw;
+  try {
+    const u = new URL(raw);
+    u.searchParams.delete("sslmode");
+    return u.toString();
+  } catch {
+    return raw;
+  }
+}
+
+const authPool = new Pool({
+  connectionString: authConnString(),
+  ssl: { rejectUnauthorized: false },
   options: "-c search_path=better_auth",
 });
 
