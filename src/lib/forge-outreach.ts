@@ -20,11 +20,30 @@ export function composeOutreach(s: {
     ? ` your ${rating}★ reputation${reviews ? ` across ${reviews}+ reviews` : ""}`
     : " the way you show up for your customers";
   const body = [
-    `Hi${first ? ` ${first}` : ""} — I'm Joe. I came across ${s.businessName}${s.city ? ` in ${s.city}` : ""} and${repBit}, so I went ahead and built you a brand-new website (you can see it right below).`,
-    `It's a real, finished site — your services, mobile-friendly, and fast. I built it on spec because I think ${s.businessName} deserves a site that matches how good you are at the work.`,
-    `If you'd like it, just create an account and enter the claim code below to claim your website — then you can take ownership and make any changes you want. It's reserved for you; no pressure.`,
+    `Hi${first ? ` ${first}` : ""} — I'm Joe with ThinkBigJoe. I help local businesses generate more sales and revenue using software and AI. I came across ${s.businessName}${s.city ? ` in ${s.city}` : ""} and${repBit}, so I went ahead and built you a brand-new website — you can see it right below.`,
+    `It's a real, finished site — your services, mobile-friendly, and fast. Beyond the site, we also offer AI voice reception that answers and books your incoming calls 24/7, plus agentic solutions that handle sales and administrative work for you.`,
+    `If you'd like the site, just create a free account and enter the claim code below to claim it — then it's yours to manage and change however you want. It's reserved for you; no pressure. And when you have a minute, what's a good day and time for a quick call about your goals?`,
   ].join("\n\n");
   return { subject: `I built ${s.businessName} a new website — take a look`, body };
+}
+
+/**
+ * First-touch outreach SMS — Joe's approved voice. Short + personal: he built
+ * them a site, here's the link + claim code, with a required STOP opt-out. The
+ * fuller pitch (AI voice, agentic) lives in email + follow-ups so the text reads
+ * like a real person, not a wall of copy.
+ */
+export function composeSmsOutreach(p: {
+  businessName: string;
+  ownerName: string | null;
+  liveUrl: string | null;
+  slug: string | null;
+  claimCode: string | null;
+}): string {
+  const first = p.ownerName ? p.ownerName.trim().split(/\s+/)[0] : "";
+  const site = p.liveUrl || (p.slug ? `thinkbigjoe.com/s/${p.slug}` : "thinkbigjoe.com");
+  const hi = first ? `Hi ${first}, ` : "Hi, ";
+  return `${hi}it's Joe — I build websites + AI tools for local businesses, and I actually built ${p.businessName} a site already. Take a look: ${site} — create a free account & claim it with code ${p.claimCode}. Reply STOP to opt out.`;
 }
 
 export type OutreachQueueItem = {
@@ -133,7 +152,7 @@ export async function getLeadHistories(leads: HistLead[]): Promise<Record<string
            (metadata->'detail'->>'sent') AS sent,
            event_type, created_at
     FROM activity_log
-    WHERE event_type IN ('forge_outreach_sent','lead_contact_attempt','email_bounced','email_reply','email_reply_sent','lead_note','callback_code_sent')
+    WHERE event_type IN ('forge_outreach_sent','lead_contact_attempt','email_bounced','email_reply','email_reply_sent','lead_note','callback_code_sent','sms_outreach_sent')
       AND (metadata->'detail'->>'siteId') IS NOT NULL
     ORDER BY created_at ASC`);
   const rows = (Array.isArray(res) ? res : (res as { rows?: unknown }).rows ?? []) as Record<string, unknown>[];
@@ -157,6 +176,8 @@ export async function getLeadHistories(leads: HistLead[]): Promise<Record<string
       ev = { at, kind: "email", label: "Sent a reply", body: r.snippet ? String(r.snippet) : undefined };
     } else if (r.event_type === "lead_note") {
       ev = { at, kind: "note", label: "Note", body: r.note ? String(r.note) : undefined };
+    } else if (r.event_type === "sms_outreach_sent") {
+      ev = { at, kind: "text", label: "Texted (first touch)", body: r.note ? String(r.note) : smsText(lead) };
     } else if (r.event_type === "callback_code_sent") {
       const delivered = String(r.sent) === "true";
       ev = {

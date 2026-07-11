@@ -4,6 +4,7 @@ import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { db, forgeSites, activityLog, outreachEngine } from "@/db";
 import { sendForgeOutreachEmail } from "@/lib/email";
 import { composeOutreach } from "@/lib/forge-outreach";
+import { notifyTelegram } from "@/lib/telegram";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -144,6 +145,7 @@ export async function POST(req: Request) {
           summary: `Sent owner outreach — ${s.businessName} (${s.email})`,
           metadata: { auto: true, detail: { siteId: s.id, channel: "email" } },
         });
+        await notifyTelegram(`📧 Emailed ${s.businessName} (${s.email}) — "${subject}"`);
         results.push({ businessName: s.businessName, email: s.email!, subject, ok: true });
       } else {
         results.push({ businessName: s.businessName, email: s.email!, subject, ok: false });
