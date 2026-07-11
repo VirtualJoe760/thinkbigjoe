@@ -141,7 +141,7 @@ export default function AgenticPage() {
                   "Qualification + lead scoring so you focus on the best jobs",
                   "Automatic calendar booking with reminders",
                   "Re-engagement of past customers and cold leads",
-                  "Wired into your CRM/calendar/site through MCP",
+                  "Wired into your CRM, calendar, and site through secure integrations",
                   "Ongoing tuning + support as your business grows",
                 ].map((item) => (
                   <li key={item} className="flex gap-3 rounded-xl border border-line bg-background p-4 text-sm leading-relaxed">

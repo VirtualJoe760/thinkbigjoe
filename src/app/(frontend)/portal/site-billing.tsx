@@ -81,7 +81,7 @@ export function SiteBilling({ siteId }: { siteId: number }) {
         {pending || state.url ? "Starting checkout…" : `Activate — ${dueLabel}`}
       </button>
       <p className="mt-2 text-center text-xs text-ink-soft">
-        Includes a free domain. Secure checkout via Stripe · cancel anytime.
+        Includes a free domain. Secure checkout · cancel anytime.
       </p>
     </form>
   );

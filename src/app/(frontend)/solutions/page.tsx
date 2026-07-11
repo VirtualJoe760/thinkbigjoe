@@ -45,7 +45,7 @@ const PHASES = [
   {
     n: "03",
     title: "Build it into your systems",
-    body: "We build it custom and wire it into your systems of record through MCP. You see it working against your real data, with a review queue from day one — not a demo on fake inputs.",
+    body: "We build it custom and wire it into your systems of record through secure integrations. You see it working against your real data, with a review queue from day one — not a demo on fake inputs.",
   },
   {
     n: "04",

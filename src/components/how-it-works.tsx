@@ -30,7 +30,7 @@ const PILLARS = [
   },
   {
     title: "Embedded, not bolted on",
-    body: "Agents wired into your CRM, ERP, or DMS through MCP — automation inside the tools you already run.",
+    body: "Agents wired into your CRM, ERP, or DMS through secure integrations — automation inside the tools you already run.",
   },
   {
     title: "Production-grade",

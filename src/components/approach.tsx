@@ -7,7 +7,7 @@ const steps = [
   {
     n: "02",
     title: "Design the system",
-    body: "We map the agents, the data, and the MCP connections — architecting a solution that fits how you actually operate.",
+    body: "We map the agents, the data, and the integrations — architecting a solution that fits how you actually operate.",
   },
   {
     n: "03",

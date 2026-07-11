@@ -8,12 +8,12 @@ export function StructuredData() {
     url: baseUrl,
     logo: `${baseUrl}/opengraph-image`,
     description:
-      "AI consulting agency building agentic software and Model Context Protocol (MCP) solutions for businesses.",
+      "AI agency building custom websites, AI receptionists, and agentic software for established businesses.",
     knowsAbout: [
       "Agentic AI",
-      "Model Context Protocol",
-      "AI strategy",
-      "Software development",
+      "AI receptionists",
+      "AI systems integration",
+      "Full-stack development",
     ],
   };
 

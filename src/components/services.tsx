@@ -16,8 +16,8 @@ const services = [
     body: "Autonomous agents that handle real workflows — research, outreach, operations, and support — wired into the tools you already run.",
   },
   {
-    title: "MCP Development",
-    body: "Custom Model Context Protocol servers that give AI secure, structured access to your data and systems. The connective tissue of modern AI.",
+    title: "Custom AI Integrations",
+    body: "Secure, permissioned connections that give your AI structured access to the data and systems you already run — the connective tissue between AI and your business.",
   },
   {
     title: "AI Sales System",

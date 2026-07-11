@@ -7,7 +7,7 @@ import { SiteFooter } from "@/components/site-footer";
 export const metadata: Metadata = {
   title: "Book a Strategy Call",
   description:
-    "Tell us about your business, then pick a time — a free 30-minute strategy call mapping where agentic AI and MCP can actually move your business.",
+    "Tell us about your business, then pick a time — a free 30-minute strategy call mapping where custom AI can actually move your business.",
 };
 
 export default async function BookAppointmentPage({

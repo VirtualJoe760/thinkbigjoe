@@ -230,7 +230,7 @@ export function BookingWizard({
           {fmtTime(selectedSlot.end)}
         </p>
         <p className="mt-4 text-sm leading-relaxed text-ink-soft">
-          A calendar invite with a Google Meet link is on its way to your
+          A calendar invite with a video call link is on its way to your
           inbox. Talk soon — come ready to think big.
         </p>
       </div>
