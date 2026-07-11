@@ -19,20 +19,20 @@ export function Hero() {
       <div className="relative mx-auto max-w-6xl px-6 pt-24 pb-20 md:pt-32 md:pb-28">
         <div className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-xs font-semibold tracking-wide text-ink-soft uppercase">
           <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-          Agentic Software · MCP Development · Websites · AI Voice
+          Websites · AI Receptionists · AI Agents · Full-Stack Builds
         </div>
 
         <h1 className="mt-8 max-w-4xl text-5xl font-extrabold leading-[1.05] tracking-tight text-balance md:text-7xl">
           A website that wins the click —
           <br />
-          and an <span className="text-brand">AI</span> that answers the call.
+          and an <span className="text-brand">AI</span> that runs your business.
         </h1>
 
         <p className="mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft md:text-xl">
-          ThinkBigJoe builds the AI that runs your business — from a modern
-          website and an AI receptionist that books every call, to custom
-          agentic software and Model Context Protocol systems that automate the
-          work and scale what your team does best.
+          ThinkBigJoe is an AI agency for established businesses. We build your
+          website, an AI receptionist that answers and books every call, and
+          custom agents that run the work — so you make more sales, run more
+          efficiently, and save time and money.
         </p>
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">
@@ -43,17 +43,17 @@ export function Hero() {
             Book a strategy call
           </Link>
           <Link
-            href="#services"
+            href="/portal/claim"
             className="inline-flex items-center justify-center rounded-full border border-line bg-background px-7 py-3.5 text-base font-semibold text-ink transition-colors hover:bg-surface"
           >
-            See what we build
+            Have a claim code? Claim your site
           </Link>
         </div>
 
         <dl className="mt-16 grid max-w-2xl grid-cols-3 gap-8 border-t border-line pt-8">
           {[
-            { k: "24/7", v: "AI answers every call, day or night" },
-            { k: "Books jobs", v: "Appointments straight to your calendar" },
+            { k: "24/7", v: "AI receptionist answers & books every call" },
+            { k: "More sales", v: "Custom systems that fill your pipeline" },
             { k: "Done-for-you", v: "We build, host, and run it" },
           ].map((s) => (
             <div key={s.k}>

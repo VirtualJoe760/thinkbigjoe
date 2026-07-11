@@ -2,7 +2,7 @@ import { SiteNav } from "@/components/site-nav";
 import { Hero } from "@/components/hero";
 import { Services } from "@/components/services";
 import { Approach } from "@/components/approach";
-import { Founder } from "@/components/founder";
+import { HowItWorks } from "@/components/how-it-works";
 import { ContactCTA } from "@/components/contact-cta";
 import { SiteFooter } from "@/components/site-footer";
 import { StructuredData } from "@/components/structured-data";
@@ -16,7 +16,7 @@ export default function Home() {
         <Hero />
         <Services />
         <Approach />
-        <Founder />
+        <HowItWorks />
         <ContactCTA />
       </main>
       <SiteFooter />

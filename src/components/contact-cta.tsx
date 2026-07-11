@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { ContactStatus } from "./contact-status";
 
-const CONTACT_EMAIL = "josephsardella@gmail.com";
+const CONTACT_EMAIL = "joe@thinkbigjoe.com";
 const CONTACT_PHONE = "(480) 764-2121";
 const CONTACT_PHONE_HREF = "tel:+14807642121";
 
@@ -19,8 +19,8 @@ export function ContactCTA() {
               Have a question? Send a note.
             </h2>
             <p className="mt-6 max-w-md leading-relaxed text-white/60">
-              Drop me a message and I&apos;ll get back to you personally. Or email
-              me directly at{" "}
+              Send us a note and our team will get back to you, usually within a
+              day. Or email us directly at{" "}
               <a
                 href={`mailto:${CONTACT_EMAIL}`}
                 className="font-medium text-white underline decoration-white/30 underline-offset-4 hover:decoration-white"

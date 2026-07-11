@@ -16,7 +16,7 @@ export function ContactStatus() {
   if (state === "sent") {
     return (
       <div className="mb-5 rounded-xl border border-brand/40 bg-brand/10 px-4 py-3 text-sm text-white">
-        Thanks — your message is in. I&apos;ll get back to you personally, usually within a day.
+        Thanks — your message is in. Our team will get back to you, usually within a day.
       </div>
     );
   }
