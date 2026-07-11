@@ -1453,11 +1453,55 @@ async function toolListDesignReports(args = {}) {
   return { content: [{ type: "text", text: `Prior design research (${res.rows.length}), newest first — build on these, don't repeat:\n\n${lines.join("\n\n")}` }] };
 }
 
+// Best-effort US E.164 normalization (mirrors src/lib/sms.ts normalizePhone).
+function normalizeUsPhone(raw) {
+  if (!raw) return null;
+  const t = String(raw).trim();
+  if (t.startsWith("+")) return t.replace(/[^\d+]/g, "");
+  const d = t.replace(/\D/g, "");
+  if (d.length === 10) return `+1${d}`;
+  if (d.length === 11 && d.startsWith("1")) return `+${d}`;
+  return d ? `+${d}` : null;
+}
+
+async function toolSendSms({ to, body } = {}) {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const mgSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+  if (!sid || !token || !mgSid) {
+    return { content: [{ type: "text", text: "❌ SMS isn't configured — set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_MESSAGING_SERVICE_SID in .env.local." }], isError: true };
+  }
+  const dest = normalizeUsPhone(to);
+  const text = String(body || "").trim();
+  if (!dest) return { content: [{ type: "text", text: "Need a valid US `to` phone number." }], isError: true };
+  if (!text) return { content: [{ type: "text", text: "Need a non-empty `body`." }], isError: true };
+
+  const form = new URLSearchParams({ MessagingServiceSid: mgSid, To: dest, Body: text.slice(0, 1600) });
+  try {
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: "POST",
+      headers: {
+        Authorization: "Basic " + Buffer.from(`${sid}:${token}`).toString("base64"),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: form.toString(),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      return { content: [{ type: "text", text: `❌ Twilio rejected the text: ${data.message || `HTTP ${r.status}`}${data.code ? ` (code ${data.code})` : ""}` }], isError: true };
+    }
+    await audit("sms_sent", `📱 Texted ${dest}: ${text.slice(0, 80)}`, { target: dest, detail: data.sid || null });
+    return { content: [{ type: "text", text: `✅ Sent to ${dest} (sid ${data.sid || "?"}). Their reply forwards to Joe's phone automatically.` }] };
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Send failed: ${err?.message || err}` }], isError: true };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.20.0" },
+  { name: "tbj-mcp", version: "2.21.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1939,6 +1983,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
       },
     },
+    {
+      name: "send_sms",
+      description: "Send an SMS to a lead/prospect through the ThinkBigJoe Twilio number (A2P-registered Messaging Service). Use for quick text touches — booking confirmations, 'saw your business, built you a preview site', reply nudges. Their reply comes back to Joe's phone automatically (forwarded to his Google Voice). Keep it short, identify as ThinkBigJoe, and never text someone who replied STOP. US numbers only.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          to: { type: "string", description: "Recipient phone, US format (e.g. '480-555-1212' or '+14805551212')." },
+          body: { type: "string", description: "The message text. Short, plain, identify as ThinkBigJoe. Include an opt-out hint (e.g. 'reply STOP to opt out') for cold/promo texts." },
+        },
+        required: ["to", "body"],
+      },
+    },
   ],
 }));
 
@@ -1986,6 +2042,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "book_appointment": return toolBookAppointment(args);
     case "save_design_report": return toolSaveDesignReport(args);
     case "list_design_reports": return toolListDesignReports(args);
+    case "send_sms": return toolSendSms(args);
     default:
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }

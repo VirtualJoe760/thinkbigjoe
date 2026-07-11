@@ -324,6 +324,23 @@ export const jobRequests = pgTable("job_requests", {
 	finishedAt: timestamp("finished_at", { withTimezone: true, mode: 'string' }),
 });
 
+export const templates = pgTable("templates", {
+	id: text().primaryKey().notNull(),
+	dir: text().notNull(),
+	language: text(),
+	name: text().notNull(),
+	description: text(),
+	bestFor: text("best_for"),
+	previewPath: text("preview_path"),
+	enabled: boolean().default(false).notNull(),
+	builtBy: text("built_by"),
+	builtAt: text("built_at"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	design: jsonb(),
+	archived: boolean().default(false).notNull(),
+});
+
 export const previewEngine = pgTable("preview_engine", {
 	id: serial().primaryKey().notNull(),
 	dailyBudget: integer("daily_budget").default(30).notNull(),
@@ -469,4 +486,17 @@ export const forgeReplies = pgTable("forge_replies", {
 }, (table) => [
 	index("forge_replies_site_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops")),
 	index("forge_replies_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+]);
+
+export const smsConversations = pgTable("sms_conversations", {
+	id: serial().primaryKey().notNull(),
+	contactPhone: varchar("contact_phone").notNull(),
+	lastInboundAt: timestamp("last_inbound_at", { withTimezone: true, mode: 'string' }),
+	lastOutboundAt: timestamp("last_outbound_at", { withTimezone: true, mode: 'string' }),
+	lastDirection: varchar("last_direction", { length: 8 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("sms_conversations_last_inbound_idx").using("btree", table.lastInboundAt.desc().nullsFirst().op("timestamptz_ops")),
+	unique("sms_conversations_contact_phone_key").on(table.contactPhone),
 ]);
