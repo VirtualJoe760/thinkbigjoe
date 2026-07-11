@@ -136,7 +136,7 @@ function Timeline({ history }: { history: LeadHistoryEvent[] }) {
               <span aria-hidden>{e.failed && e.kind !== "bounce" ? "⚠️" : h.icon}</span>
               <span className={`font-semibold ${e.failed ? "text-red-700" : "text-ink"}`}>{verb}</span>
               <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${OUTCOME_CLS[outcome]}`}>{OUTCOME_LABEL[outcome]}</span>
-              <span className="ml-auto text-xs text-ink-soft">{relTime(e.at)}</span>
+              <span className="ml-auto text-xs text-ink-soft" suppressHydrationWarning>{relTime(e.at)}</span>
             </div>
             {e.subject && <p className="mt-1.5 text-sm font-medium text-ink">“{e.subject}”</p>}
             {paras.length > 0 ? (
@@ -428,14 +428,14 @@ function ContactDetail({
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-violet-700">
                 <span>👤 Signed-up user</span>
                 {billingGood && <span className="rounded-full bg-brand-tint px-2 py-0.5 text-[11px] font-semibold text-brand">paying</span>}
-                {meta.claimedAt && <span className="ml-auto text-[11px] font-medium normal-case text-violet-500">claimed {fmtDate(meta.claimedAt)}</span>}
+                {meta.claimedAt && <span className="ml-auto text-[11px] font-medium normal-case text-violet-500" suppressHydrationWarning>claimed {fmtDate(meta.claimedAt)}</span>}
               </div>
               <dl className="mt-2 grid grid-cols-[auto,1fr] gap-x-4 gap-y-1 text-sm">
                 {meta.accountNumber && (<><dt className="text-ink-soft">Account #</dt><dd className="text-right font-mono font-semibold text-ink">{meta.accountNumber}</dd></>)}
                 <dt className="text-ink-soft">Plan</dt><dd className="text-right font-medium text-ink">{meta.plan || "not chosen"}</dd>
                 <dt className="text-ink-soft">Billing</dt>
                 <dd className={`text-right font-medium capitalize ${billingGood ? "text-emerald-700" : "text-ink"}`}>
-                  {billingLabel}{meta.paidAt ? <span className="text-ink-soft"> · since {fmtDate(meta.paidAt)}</span> : null}
+                  {billingLabel}{meta.paidAt ? <span className="text-ink-soft" suppressHydrationWarning> · since {fmtDate(meta.paidAt)}</span> : null}
                 </dd>
                 {meta.receptionistStatus && (<><dt className="text-ink-soft">Receptionist</dt><dd className="text-right font-medium capitalize text-ink">{meta.receptionistStatus}</dd></>)}
                 {domainLabel && (<><dt className="text-ink-soft">Domain</dt><dd className="text-right font-medium text-ink">{domainLabel}</dd></>)}
@@ -554,7 +554,7 @@ function ContactDetail({
           <div className="mt-5">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-wide text-ink-soft">Communications</h3>
-              <span className="text-xs text-ink-soft">
+              <span className="text-xs text-ink-soft" suppressHydrationWarning>
                 {attempt.total} reached{attempt.failed > 0 ? <span className="text-red-600"> · {attempt.failed} failed</span> : null}{attempt.lastAt ? ` · last ${relTime(attempt.lastAt)}` : ""}
               </span>
             </div>
@@ -785,7 +785,7 @@ export function LeadsCRM({
                           <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-soft sm:hidden">
                             {item.googleRating && <span className="text-amber-500">★ <span className="text-ink-soft">{Number(item.googleRating).toFixed(1)}</span></span>}
                             <span className={touchFailed ? "font-medium text-red-600" : ""}>{touches}</span>
-                            {a.lastAt && !touchFailed && <span>· {relTime(a.lastAt)}</span>}
+                            {a.lastAt && !touchFailed && <span suppressHydrationWarning>· {relTime(a.lastAt)}</span>}
                           </div>
                         </div>
                       </div>
@@ -796,7 +796,7 @@ export function LeadsCRM({
                       ) : <span className="text-xs">—</span>}
                     </td>
                     <td className={`hidden whitespace-nowrap px-3 py-2.5 text-xs sm:table-cell ${touchFailed ? "text-red-600" : "text-ink-soft"}`}>
-                      {touches}{a.lastAt && !touchFailed ? <span className="block text-[11px]">last {relTime(a.lastAt)}</span> : null}
+                      {touches}{a.lastAt && !touchFailed ? <span className="block text-[11px]" suppressHydrationWarning>last {relTime(a.lastAt)}</span> : null}
                     </td>
                     <td className="whitespace-nowrap py-2.5 pl-3 text-right">
                       <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.chip}`}>{st.label}</span>
