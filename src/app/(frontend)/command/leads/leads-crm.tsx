@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState, useEffect, useTransition } from "react";
 
-import { logContactAttempt, getContactSlots, bookForContact, type ContactSlot, type BookForContactState } from "../actions";
+import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, type ContactSlot, type BookForContactState } from "../actions";
 import type { ForgeSiteItem } from "../sites/sites-queue";
 import type { LeadHistoryEvent } from "@/lib/forge-outreach";
 
@@ -105,6 +105,8 @@ const HIST: Record<LeadHistoryEvent["kind"], { icon: string; verb: string; outco
   call: { icon: "📞", verb: "Called", outcome: "neutral" },
   reply: { icon: "↩️", verb: "Replied", outcome: "positive" },
   bounce: { icon: "⚠️", verb: "Bounced", outcome: "negative" },
+  note: { icon: "📝", verb: "Note", outcome: "neutral" },
+  code: { icon: "🎟️", verb: "Texted callback code", outcome: "sent" },
 };
 const OUTCOME_CLS: Record<Outcome, string> = {
   positive: "bg-emerald-50 text-emerald-700",
@@ -248,6 +250,41 @@ function ContactDetail({
   const [copied, setCopied] = useState(false);
   const [copiedMsg, setCopiedMsg] = useState(false);
   const [showBook, setShowBook] = useState(false);
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [codeMsg, setCodeMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [note, setNote] = useState("");
+  const [noteBusy, setNoteBusy] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(false);
+
+  async function handleTextCode() {
+    setCodeBusy(true);
+    setCodeMsg(null);
+    try {
+      const r = await sendCallbackCodeText(item.id);
+      setCodeMsg({ ok: r.ok, text: r.message });
+    } catch {
+      setCodeMsg({ ok: false, text: "Something went wrong sending the code." });
+    } finally {
+      setCodeBusy(false);
+    }
+  }
+
+  async function handleSaveNote() {
+    const text = note.trim();
+    if (!text) return;
+    setNoteBusy(true);
+    try {
+      const r = await saveLeadNote(item.id, text);
+      if (r.ok) {
+        setNote("");
+        setNoteSaved(true);
+        setTimeout(() => setNoteSaved(false), 1800);
+      }
+    } finally {
+      setNoteBusy(false);
+    }
+  }
+
   const s = item.socialStats || {};
   const igF = s.instagram?.followers ? fmtNum(s.instagram.followers) : "";
   const fbF = s.facebook?.followers ? fmtNum(s.facebook.followers) : "";
@@ -462,6 +499,46 @@ function ContactDetail({
               📅 {showBook ? "Hide booking" : "Book an appointment"}
             </button>
             {showBook && <BookForLead siteId={item.id} onBooked={() => onContact(item.id, "call")} />}
+
+            {/* Text a priority callback code — they call the TBJ number, give the code, Ivy transfers them to Joe. */}
+            {item.phone && (
+              <>
+                <button
+                  onClick={handleTextCode}
+                  disabled={codeBusy}
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/60 bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-60 active:scale-[0.98]"
+                >
+                  🎟️ {codeBusy ? "Sending…" : "Text a callback code (rings you)"}
+                </button>
+                {codeMsg && (
+                  <p className={`mt-1.5 text-[11px] ${codeMsg.ok ? "text-emerald-700" : "text-amber-700"}`}>{codeMsg.text}</p>
+                )}
+                {!codeMsg && (
+                  <p className="mt-1.5 text-[11px] text-ink-soft">
+                    Auto-texts them a code from our number. When they call it and give the code, Ivy sends the call straight to you.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* add a note — lands on the timeline below (e.g. what happened on a call) */}
+          <div className="mt-5">
+            <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-soft">Add a note</h3>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              placeholder="What happened on the call, next steps, anything to remember…"
+              className="w-full resize-y rounded-xl border border-line bg-background p-2.5 text-sm text-ink outline-none placeholder:text-ink-soft focus:border-brand"
+            />
+            <button
+              onClick={handleSaveNote}
+              disabled={noteBusy || !note.trim()}
+              className="mt-1.5 flex w-full items-center justify-center gap-2 rounded-xl border border-line px-3 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface disabled:opacity-50 active:scale-[0.98]"
+            >
+              {noteBusy ? "Saving…" : noteSaved ? "✓ Saved" : "📝 Save note"}
+            </button>
           </div>
 
           {/* contact facts */}

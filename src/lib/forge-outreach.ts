@@ -103,11 +103,11 @@ export async function getPendingReplies(): Promise<PendingReply[]> {
 
 export type LeadHistoryEvent = {
   at: string;
-  kind: "email-sent" | "call" | "text" | "email" | "bounce" | "reply";
+  kind: "email-sent" | "call" | "text" | "email" | "bounce" | "reply" | "note" | "code";
   label: string;
   subject?: string;
   body?: string;
-  failed?: boolean; // an email that bounced — attempted, not delivered
+  failed?: boolean; // an email that bounced / a code we couldn't text — attempted, not delivered
 };
 
 type HistLead = {
@@ -128,9 +128,12 @@ export async function getLeadHistories(leads: HistLead[]): Promise<Record<string
            (metadata->'detail'->>'channel') AS ch,
            (metadata->'detail'->>'subject') AS subject,
            (metadata->'detail'->>'snippet') AS snippet,
+           (metadata->'detail'->>'note') AS note,
+           (metadata->'detail'->>'code') AS code,
+           (metadata->'detail'->>'sent') AS sent,
            event_type, created_at
     FROM activity_log
-    WHERE event_type IN ('forge_outreach_sent','lead_contact_attempt','email_bounced','email_reply','email_reply_sent')
+    WHERE event_type IN ('forge_outreach_sent','lead_contact_attempt','email_bounced','email_reply','email_reply_sent','lead_note','callback_code_sent')
       AND (metadata->'detail'->>'siteId') IS NOT NULL
     ORDER BY created_at ASC`);
   const rows = (Array.isArray(res) ? res : (res as { rows?: unknown }).rows ?? []) as Record<string, unknown>[];
@@ -152,6 +155,17 @@ export async function getLeadHistories(leads: HistLead[]): Promise<Record<string
       ev = { at, kind: "reply", label: "Replied", subject: r.subject ? String(r.subject) : undefined, body: r.snippet ? String(r.snippet) : undefined };
     } else if (r.event_type === "email_reply_sent") {
       ev = { at, kind: "email", label: "Sent a reply", body: r.snippet ? String(r.snippet) : undefined };
+    } else if (r.event_type === "lead_note") {
+      ev = { at, kind: "note", label: "Note", body: r.note ? String(r.note) : undefined };
+    } else if (r.event_type === "callback_code_sent") {
+      const delivered = String(r.sent) === "true";
+      ev = {
+        at,
+        kind: "code",
+        label: "Callback code",
+        body: r.note ? String(r.note) : (r.code ? `Code ${r.code}` : undefined),
+        failed: !delivered, // minted but not texted (SMS off / send failed)
+      };
     } else {
       const ch = String(r.ch || "email");
       if (ch === "call") ev = { at, kind: "call", label: "Called" };

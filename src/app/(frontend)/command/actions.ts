@@ -9,6 +9,8 @@ import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadE
 import { assertAdmin } from "@/lib/require-admin";
 import { sendForgeOutreachEmail, sendReplyEmail, sendBookingConfirmationEmail } from "@/lib/email";
 import { notifyTelegram } from "@/lib/telegram";
+import { sendSms } from "@/lib/sms";
+import { mintCallbackCode, callbackCodeMessage } from "@/lib/callback-codes";
 import {
   BOOKING_TIMEZONE,
   SLOT_DURATION_MIN,
@@ -202,6 +204,75 @@ export async function logContactAttempt(siteId: string, channel: "call" | "text"
     metadata: { detail: { siteId: id, channel } },
   });
   await db.update(forgeSites).set({ contactedAt: now() }).where(eq(forgeSites.id, id));
+  revalidatePath("/command/leads");
+  return { ok: true };
+}
+
+/**
+ * One-click "text a priority callback code" from the lead page. Mints a code tied
+ * to this lead, texts it via our Twilio number, and drops it on the lead's
+ * timeline. When the lead calls the TBJ number and gives the code, Ivy verifies it
+ * and transfers them straight to Joe. Gracefully degrades if SMS isn't live yet
+ * (still mints + returns the code + message so Joe can send it by hand).
+ */
+export async function sendCallbackCodeText(
+  siteId: string,
+): Promise<{ ok: boolean; message: string; code?: string }> {
+  await assertAdmin();
+  const id = Number(siteId);
+  if (!Number.isFinite(id)) return { ok: false, message: "Bad lead id." };
+  const [site] = await db
+    .select({ phone: forgeSites.phone, businessName: forgeSites.businessName, ownerName: forgeSites.ownerName })
+    .from(forgeSites)
+    .where(eq(forgeSites.id, id))
+    .limit(1);
+  if (!site) return { ok: false, message: "Lead not found." };
+  if (!site.phone) return { ok: false, message: "No phone number on this lead — add one first." };
+
+  const firstName = (site.ownerName || "").trim().split(/\s+/)[0] || null;
+  let code: string;
+  try {
+    code = await mintCallbackCode({ phone: site.phone, name: site.ownerName || site.businessName, forgeSiteId: id });
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Couldn't mint a code." };
+  }
+
+  const msg = callbackCodeMessage(code, firstName);
+  const res = await sendSms(site.phone, msg);
+  const sent = "ok" in res && res.ok;
+
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "callback_code_sent",
+    summary: `${sent ? "Texted" : "Minted"} callback code ${code} — ${site.businessName}`,
+    metadata: { detail: { siteId: id, channel: "code", code, note: msg, sent } },
+  });
+  if (sent) await db.update(forgeSites).set({ contactedAt: now() }).where(eq(forgeSites.id, id));
+  revalidatePath("/command/leads");
+
+  if (sent) return { ok: true, message: `Texted code ${code} to ${site.phone}. Reaches you when they call + give it.`, code };
+  if ("skipped" in res)
+    return {
+      ok: false,
+      message: `Code ${code} is ready, but texting isn't live yet (add the Twilio keys in Vercel). Send it manually: "${msg}"`,
+      code,
+    };
+  return { ok: false, message: `Code ${code} minted, but the text failed: ${"error" in res ? res.error : "unknown"}`, code };
+}
+
+/** Save a free-text note on a lead (e.g. what happened on a call). Lands on the lead's timeline. */
+export async function saveLeadNote(siteId: string, note: string): Promise<{ ok: boolean; message?: string }> {
+  await assertAdmin();
+  const id = Number(siteId);
+  const text = note.trim();
+  if (!Number.isFinite(id)) return { ok: false, message: "Bad lead id." };
+  if (!text) return { ok: false, message: "Note is empty." };
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "lead_note",
+    summary: `Note — site #${id}: ${text.slice(0, 100)}`,
+    metadata: { detail: { siteId: id, note: text } },
+  });
   revalidatePath("/command/leads");
   return { ok: true };
 }
