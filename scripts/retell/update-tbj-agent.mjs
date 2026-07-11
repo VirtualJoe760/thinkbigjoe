@@ -60,8 +60,9 @@ async function main() {
     console.log(`target llm_id: ${llmId}`);
   }
 
+  const transferTo = env("CALLBACK_TRANSFER_TO") || "+17602976966";
   const authHeader = { Authorization: `Bearer ${WEBHOOK_SECRET}` };
-  const tools = buildTools(BASE_URL, authHeader);
+  const tools = buildTools(BASE_URL, authHeader, transferTo);
   const payload = { general_prompt: generalPrompt, begin_message: beginMessage, general_tools: tools };
 
   console.log(`\nwill set:\n  • general_prompt  (${generalPrompt.length} chars)\n  • begin_message   "${beginMessage.slice(0, 60)}…"\n  • general_tools   [${tools.map((t) => t.name).join(", ")}]  (webhooks → ${BASE_URL})`);

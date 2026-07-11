@@ -34,6 +34,12 @@ This is bespoke: Joe personally builds AI agents that run a business's sales pip
   - Point them to the website to learn: "Head to thinkbigjoe.com slash agentic — there's a whole breakdown of how our AI agent sales pipelines actually make businesses money. You can read it there and register."
   - And offer to book an agentic strategy call with Joe: → BOOKING, type "agentic" (a 30-minute call, weekdays 9 to 5). Tell them Joe walks through a custom plan for their business on that call.
 
+── PRIORITY CALLBACK CODE (a warm lead reaching Joe directly) ──
+Some callers were given a PRIORITY CALLBACK CODE (a 4-digit number) in a text or voicemail from us, told to "call and give the code to reach Joe." If a caller mentions a callback code, a code to reach Joe, or says Joe told them to call — ask for the code and call verify_callback_code with it.
+  • If it returns valid:true → say "Perfect, connecting you to Joe now — one moment," then IMMEDIATELY use transfer_to_joe to transfer the call. Do not book or take a message; just transfer.
+  • If it returns valid:false → don't transfer. Say the code didn't match and continue helping them normally (this is how we keep random callers from ringing Joe).
+Only transfer_to_joe right after verify_callback_code returns valid:true — never otherwise.
+
 ── IF THEY NEED SOMETHING YOU CAN'T DO (billing issue, a technical problem, a complaint, or they just want a human) ──
 Two options — offer whichever fits:
   - Take a message: collect their name, a callback number, and what they need, then call create_support_ticket. Tell them Joe will follow up. Use this for anything support-ish.
@@ -50,8 +56,12 @@ Get their full name and email (repeat the email back to confirm spelling) and on
 export const beginMessage =
   `Thanks for calling ThinkBigJoe! This is ${ASSISTANT_NAME}, Joe's assistant — are you calling about the website we built for your business?`;
 
-/** The receptionist's custom tools. `authHeader` is the Bearer wrapper for our /api/voice/* webhooks. */
-export function buildTools(baseUrl, authHeader) {
+/**
+ * The receptionist's custom tools. `authHeader` is the Bearer wrapper for our /api/voice/*
+ * webhooks. `transferTo` is the E.164 number a verified priority callback is transferred to
+ * (Joe's line); pass it from CALLBACK_TRANSFER_TO.
+ */
+export function buildTools(baseUrl, authHeader, transferTo = "+17602976966") {
   return [
     {
       type: "custom",
@@ -156,6 +166,34 @@ export function buildTools(baseUrl, authHeader) {
       speak_after_execution: true,
       execution_message_description: "Let me get that to Joe.",
       timeout_ms: 15000,
+    },
+    {
+      type: "custom",
+      name: "verify_callback_code",
+      description:
+        "Verify a PRIORITY CALLBACK CODE — a 4-digit number we gave a warm lead (in a text or voicemail) so they can reach Joe directly. Call this whenever a caller reads a callback code or says they were told to call and ask for Joe with a code. Returns { valid, name, message }. If valid is true, tell them you're connecting them and then use transfer_to_joe. If false, do NOT transfer — keep helping them yourself.",
+      url: `${baseUrl}/api/voice/callback-code`,
+      method: "POST",
+      headers: authHeader,
+      parameters: {
+        type: "object",
+        properties: {
+          code: { type: "string", description: "The callback code exactly as the caller read it (digits; spaces are fine)." },
+        },
+        required: ["code"],
+      },
+      speak_during_execution: true,
+      speak_after_execution: true,
+      execution_message_description: "Let me check that code.",
+      timeout_ms: 12000,
+    },
+    {
+      type: "transfer_call",
+      name: "transfer_to_joe",
+      description:
+        "Transfer the caller to Joe. Use this ONLY immediately after verify_callback_code returns valid:true — a warm lead with a good priority code. Never transfer without a verified code.",
+      transfer_destination: { type: "predefined", number: transferTo },
+      transfer_option: { type: "cold_transfer" },
     },
   ];
 }

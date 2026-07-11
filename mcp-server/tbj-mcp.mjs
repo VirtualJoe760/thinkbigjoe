@@ -1497,11 +1497,47 @@ async function toolSendSms({ to, body } = {}) {
   }
 }
 
+// The public number leads text/call (the Twilio A2P sender). Calls to it hit Ivy.
+const TBJ_PHONE_PRETTY = "760-262-0014";
+
+async function toolIssueCallbackCode({ phone, name = null, expires_hours = 720 } = {}) {
+  const dest = normalizeUsPhone(phone);
+  const hrs = Math.max(1, Math.min(24 * 60, Number(expires_hours) || 720)); // cap 60 days
+  // 4-digit code, unique among ACTIVE codes (partial unique index enforces it too).
+  let code = null;
+  for (let attempt = 0; attempt < 8 && !code; attempt++) {
+    const candidate = String(1000 + Math.floor(Math.random() * 9000)); // 1000–9999
+    const { rows } = await query(`SELECT 1 FROM callback_codes WHERE code=$1 AND status='active' LIMIT 1`, [candidate]);
+    if (rows.length === 0) code = candidate;
+  }
+  if (!code) return { content: [{ type: "text", text: "Couldn't mint a free code — try again." }], isError: true };
+
+  try {
+    await query(
+      `INSERT INTO callback_codes (code, contact_phone, lead_name, status, issued_by, expires_at)
+       VALUES ($1, $2, $3, 'active', 'venus', now() + ($4 || ' hours')::interval)`,
+      [code, dest, name, String(hrs)],
+    );
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Couldn't save code: ${err?.message || err}` }], isError: true };
+  }
+  await audit("callback_code_issued", `🎟️ Issued priority callback code ${code}${name ? ` for ${name}` : ""}${dest ? ` (${dest})` : ""}`, { target: dest, detail: code });
+
+  const days = Math.round(hrs / 24);
+  const snippet = `Call ${TBJ_PHONE_PRETTY} and give code ${code} to reach Joe directly.`;
+  return {
+    content: [{
+      type: "text",
+      text: `✅ Callback code **${code}**${name ? ` for ${name}` : ""}${dest ? ` (${dest})` : ""}, valid ~${days} day(s).\n\nDrop this in your text or voicemail:\n"${snippet}"\n\nWhen they call ${TBJ_PHONE_PRETTY} and give ${code}, Ivy verifies it and transfers them straight to Joe. Random callers without a code stay with Ivy.`,
+    }],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.21.0" },
+  { name: "tbj-mcp", version: "2.22.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1995,6 +2031,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["to", "body"],
       },
     },
+    {
+      name: "issue_callback_code",
+      description: "Mint a PRIORITY CALLBACK CODE for a warm lead. Returns a short code + a ready-to-send line (e.g. \"Call 760-262-0014 and give code 7788 to reach Joe directly\") to drop into your outreach text or a voicemail. When that lead calls the ThinkBigJoe number and gives the code, the AI receptionist (Ivy) verifies it and transfers them straight to Joe — while random callers without a code stay with Ivy. Use this for leads you want to give a direct line to Joe (hot prospects, follow-ups you promised). Cheap: you only pay for a live call when an interested lead actually calls back.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          phone: { type: "string", description: "The lead's phone (US format), so we can note who the code is for and confirm the caller. Optional but recommended." },
+          name: { type: "string", description: "The lead's name/business, so Ivy can greet them and Joe knows who's transferring in." },
+          expires_hours: { type: "number", description: "How long the code stays valid (default 720 = 30 days, cap 60 days)." },
+        },
+        required: [],
+      },
+    },
   ],
 }));
 
@@ -2043,6 +2092,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "save_design_report": return toolSaveDesignReport(args);
     case "list_design_reports": return toolListDesignReports(args);
     case "send_sms": return toolSendSms(args);
+    case "issue_callback_code": return toolIssueCallbackCode(args);
     default:
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }

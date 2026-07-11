@@ -63,7 +63,10 @@ callers are local owners who got our outreach — Ivy is a **claim concierge**, 
 6. **AI receptionist setup** — comes with the Website + Voice plan; our team activates it once on plan.
 7. **Escalate** — anything Ivy can't do (billing, tech, complaint, wants a human) → `create_support_ticket`
    (message to Joe) or book Joe.
-8. **Close** — reads the caller: book Joe (`check_availability` → `book_appointment`) or reassure DIY.
+8. **Priority callback → transfer to Joe** — a warm lead given a **callback code** (see below) reads it →
+   `verify_callback_code` → if valid, Ivy **transfers the call to Joe** (`transfer_to_joe`). Invalid/none →
+   normal flow, so random callers never ring Joe.
+9. **Close** — reads the caller: book Joe (`check_availability` → `book_appointment`) or reassure DIY.
 
 Never takes payment on the call — plans are chosen/paid in the portal or set up with Joe.
 
@@ -76,6 +79,19 @@ Never takes payment on the call — plans are chosen/paid in the portal or set u
 | `check_availability` | `POST /api/voice/availability` | Open slots. `type: "regular"` (11–1) or `"agentic"` (9–5). Never invent times. |
 | `book_appointment` | `POST /api/voice/book` | Books into Google Calendar (Meet) + records the lead. Takes `type` + a `reason` (tagged on the invite so Joe's prepared). |
 | `create_support_ticket` | `POST /api/voice/support` | Takes a message → emails Joe + logs `support_ticket` + Telegram. The interim support queue. |
+| `verify_callback_code` | `POST /api/voice/callback-code` | Verifies a 4-digit **priority callback code** against `callback_codes` (active + unexpired). Valid → logs `callback_code_verified` + Telegram + tells Ivy to transfer. Read-mostly (records use). |
+| `transfer_to_joe` | *(Retell native `transfer_call`)* | Cold-transfers the caller to **`CALLBACK_TRANSFER_TO`** (Joe's line, default the GV number). Ivy only uses it right after `verify_callback_code` returns valid. |
+
+### Priority callback codes (cheap warm-lead fast-lane)
+The outreach economics: texting is cheap, cold outbound calling isn't. So instead of dialing leads,
+we mint a **callback code** and drop it in the outreach text/voicemail ("Call 760-262-0014 and give
+code 7788 to reach Joe directly"). Mint one with the **`issue_callback_code`** MCP tool (writes
+`callback_codes`; returns the code + a ready-to-send line). When the lead calls the TBJ number, Ivy
+answers, takes the code, `verify_callback_code` checks it, and if valid `transfer_to_joe` hands the
+call to Joe. You only pay for a live call when an interested lead actually calls back. Codes default
+to 30-day validity, are reusable within their window (not burned on a dropped call), and unique among
+active codes. **Ivy config lives in `scripts/retell/agent-config.mjs`** — push changes with
+`node scripts/retell/update-tbj-agent.mjs`.
 
 Booking runs on `src/lib/gcal.ts` — **regular** calls Mon–Fri 11 AM–1 PM Pacific, **agentic** calls
 Mon–Fri 9 AM–5 PM Pacific (`AGENTIC_HOURS`), 30-min slots. Weekends always closed. All routes are

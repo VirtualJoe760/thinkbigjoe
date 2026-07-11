@@ -37,8 +37,9 @@ async function retell(path, body, method = "POST") {
   return json;
 }
 
+const TRANSFER_TO = env("CALLBACK_TRANSFER_TO") || "+17602976966";
 const authHeader = { Authorization: `Bearer ${WEBHOOK_SECRET}` };
-const tools = buildTools(BASE_URL, authHeader);
+const tools = buildTools(BASE_URL, authHeader, TRANSFER_TO);
 
 async function main() {
   const wantNumber = process.argv.includes("--number");

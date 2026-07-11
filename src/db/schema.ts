@@ -500,3 +500,22 @@ export const smsConversations = pgTable("sms_conversations", {
 	index("sms_conversations_last_inbound_idx").using("btree", table.lastInboundAt.desc().nullsFirst().op("timestamptz_ops")),
 	unique("sms_conversations_contact_phone_key").on(table.contactPhone),
 ]);
+
+export const callbackCodes = pgTable("callback_codes", {
+	id: serial().primaryKey().notNull(),
+	code: varchar().notNull(),
+	contactPhone: varchar("contact_phone"),
+	leadName: varchar("lead_name"),
+	forgeSiteId: integer("forge_site_id"),
+	status: varchar({ length: 12 }).default('active').notNull(),
+	issuedBy: varchar("issued_by").default('venus'),
+	expiresAt: timestamp("expires_at", { withTimezone: true, mode: 'string' }),
+	usedAt: timestamp("used_at", { withTimezone: true, mode: 'string' }),
+	usedCount: integer("used_count").default(0).notNull(),
+	usedCallId: varchar("used_call_id"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("callback_codes_active_code_idx").using("btree", table.code.asc().nullsLast().op("text_ops")).where(sql`((status)::text = 'active'::text)`),
+	index("callback_codes_contact_idx").using("btree", table.contactPhone.asc().nullsLast().op("text_ops")),
+]);

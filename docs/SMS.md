@@ -54,6 +54,14 @@ lead, each conversation gets a short code — the `sms_conversations` row id in 
 Outbound relays are logged to `activity_log` (`sms_outbound`), inbound as `sms_inbound` /
 `sms_opt_out`. A raw STOP from a lead is labeled (not offered as a thread to reply to).
 
+## Priority callback codes (text → warm call → Joe)
+
+To give a hot lead a direct line to Joe without paying to cold-call, mint a **callback code**
+(`issue_callback_code` MCP tool) and drop the returned line into your text:
+"Call 760-262-0014 and give code 7788 to reach Joe directly." When they call, Ivy verifies the code
+and transfers them to Joe. Full flow + the `callback_codes` table live in
+[`VOICE.md`](VOICE.md#priority-callback-codes-cheap-warm-lead-fast-lane).
+
 ## Env vars
 
 Set in **`.env.local`** (local + the MCP server reads it) **and in Vercel** (the webhook + send
