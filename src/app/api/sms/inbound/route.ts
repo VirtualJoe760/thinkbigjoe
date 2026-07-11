@@ -3,7 +3,10 @@ import { desc, eq } from "drizzle-orm";
 
 import { db, activityLog, smsConversations } from "@/db";
 import { notifyTelegram } from "@/lib/telegram";
+import { sendAdminAlert } from "@/lib/email";
 import { denyProspectByPhoneOptOut } from "@/lib/forge-optout";
+
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com";
 import {
   encodeThreadCode,
   isOptOut,
@@ -123,6 +126,26 @@ export async function POST(req: Request) {
   await notifyTelegram(
     optOut ? `📵 SMS opt-out from ${sender}.${deniedNote}` : `📱 Inbound SMS ${code} from ${sender}:\n${body || "(no text)"}`,
   );
+
+  // Email notification to the admin address (josephsardella@gmail.com by default) —
+  // so SMS replies/opt-outs land in the right inbox, independent of Google Voice.
+  await sendAdminAlert(
+    optOut
+      ? {
+          subject: `SMS opt-out — ${sender}`,
+          heading: "Prospect opted out (STOP)",
+          message: `${sender} replied STOP and is now opted out of TBJ texts.${deniedNote}`,
+          ctaUrl: `${SITE}/command/leads`,
+          ctaLabel: "View leads",
+        }
+      : {
+          subject: `New text reply from ${sender}`,
+          heading: `${sender} replied${code ? ` (${code})` : ""}`,
+          message: body || "(no text)",
+          ctaUrl: `${SITE}/command/leads`,
+          ctaLabel: "View & reply",
+        },
+  ).catch((err) => console.error("[sms:inbound] admin alert email failed:", err));
 
   return twiml();
 }
