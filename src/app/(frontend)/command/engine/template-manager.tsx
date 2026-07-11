@@ -2,13 +2,15 @@
 
 import { useState, useTransition } from "react";
 
-import { setTemplateEnabled } from "../actions";
+import { setTemplateEnabled, retireTemplate, restoreTemplate, requestTemplateFix } from "../actions";
 
 export type TemplateRow = {
   id: string;
+  dir: string;
   name: string;
   bestFor: string | null;
   enabled: boolean;
+  archived?: boolean;
   previewPath: string | null;
   mood: string | null;
   composition: string[] | null;
@@ -17,19 +19,33 @@ export type TemplateRow = {
 type Stats = { research: number; awaiting: number; live: number };
 
 /**
- * Visual review + approval for the forge's design templates. The `templates` table is the
- * source of truth for `enabled`; toggling here flips it, and forge-poll.mjs mirrors it into
- * the forge's registry.json on its next tick. A pipeline strip shows where designs are in the
- * flow; each card shows the real preview + its design mood/section-flow so you can eyeball and
- * approve. Disabled (built-but-unreviewed) templates sort first.
+ * Visual review + lifecycle for the forge's design templates. The `templates` table is the
+ * source of truth; forge-poll.mjs mirrors enabled flags into the forge's registry.json.
+ * Each card can be approved/disabled, re-prompted to the forge for a rebuild (fix), or retired
+ * (soft-deleted into the collapsible "Retired" tray, restorable).
  */
-export function TemplateManager({ templates, stats }: { templates: TemplateRow[]; stats: Stats }) {
+export function TemplateManager({
+  templates,
+  retired,
+  stats,
+}: {
+  templates: TemplateRow[];
+  retired: TemplateRow[];
+  stats: Stats;
+}) {
   const [rows, setRows] = useState(templates);
+  const [tray, setTray] = useState(retired);
+  const [showTray, setShowTray] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [zoom, setZoom] = useState<TemplateRow | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
   const [, start] = useTransition();
 
   const enabledCount = rows.filter((r) => r.enabled).length;
+  const flash = (m: string) => {
+    setMsg(m);
+    setTimeout(() => setMsg((cur) => (cur === m ? null : cur)), 6000);
+  };
 
   function toggle(id: string, next: boolean) {
     setPendingId(id);
@@ -41,13 +57,42 @@ export function TemplateManager({ templates, stats }: { templates: TemplateRow[]
     });
   }
 
+  function retire(t: TemplateRow) {
+    setRows((rs) => rs.filter((r) => r.id !== t.id));
+    setTray((ts) => [{ ...t, enabled: false, archived: true }, ...ts]);
+    start(async () => {
+      const res = await retireTemplate(t.id);
+      flash(res.message);
+    });
+  }
+
+  function restore(t: TemplateRow) {
+    setTray((ts) => ts.filter((r) => r.id !== t.id));
+    setRows((rs) => [{ ...t, archived: false, enabled: false }, ...rs]);
+    start(async () => {
+      const res = await restoreTemplate(t.id);
+      flash(res.message);
+    });
+  }
+
+  function fix(t: TemplateRow) {
+    if (!confirm(`Re-prompt the forge to rebuild "${t.name}" from its design brief?\n\nThis runs on your Mac (~30 min) and uses one forge run.`)) return;
+    setPendingId(t.id);
+    start(async () => {
+      const res = await requestTemplateFix(t.id, t.dir);
+      flash(res.message);
+      setPendingId(null);
+    });
+  }
+
   return (
     <div className="rounded-2xl border border-line bg-background p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-bold tracking-tight">Templates</h2>
           <p className="mt-1 text-sm text-ink-soft">
-            The design library the forge picks from. Review each preview and approve it into rotation.
+            The design library the forge picks from. Review each preview, approve it into rotation, or
+            re-prompt / retire a broken one.
           </p>
         </div>
         <span className="shrink-0 rounded-full bg-surface px-3 py-1 text-xs font-semibold text-ink-soft">
@@ -55,7 +100,13 @@ export function TemplateManager({ templates, stats }: { templates: TemplateRow[]
         </span>
       </div>
 
-      {/* Pipeline flow — where designs sit on the way to going live */}
+      {msg && (
+        <div className="mt-3 rounded-xl border border-brand/30 bg-brand-tint/50 px-4 py-2.5 text-sm text-brand">
+          {msg}
+        </div>
+      )}
+
+      {/* Pipeline flow */}
       <div className="mt-4 flex flex-wrap items-stretch gap-2">
         <FlowStep n={stats.research} label="In research" sub="design reports proposed" tone="neutral" />
         <Arrow />
@@ -73,7 +124,6 @@ export function TemplateManager({ templates, stats }: { templates: TemplateRow[]
               t.enabled ? "border-line" : "border-amber-300 ring-1 ring-amber-200"
             }`}
           >
-            {/* Preview */}
             <button
               type="button"
               onClick={() => t.previewPath && setZoom(t)}
@@ -82,16 +132,9 @@ export function TemplateManager({ templates, stats }: { templates: TemplateRow[]
             >
               {t.previewPath ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={t.previewPath}
-                  alt={`${t.name} template preview`}
-                  loading="lazy"
-                  className="h-full w-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.03]"
-                />
+                <img src={t.previewPath} alt={`${t.name} template preview`} loading="lazy" className="h-full w-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.03]" />
               ) : (
-                <div className="grid h-full w-full place-items-center text-xs text-ink-soft">
-                  No preview
-                </div>
+                <div className="grid h-full w-full place-items-center text-xs text-ink-soft">No preview</div>
               )}
               {!t.enabled && (
                 <span className="absolute left-2 top-2 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow">
@@ -105,13 +148,10 @@ export function TemplateManager({ templates, stats }: { templates: TemplateRow[]
               )}
             </button>
 
-            {/* Meta */}
             <div className="flex flex-1 flex-col p-4">
               <div className="flex items-center gap-2">
                 <span className="font-semibold tracking-tight">{t.name}</span>
-                <span className="rounded bg-background px-1.5 py-0.5 font-mono text-[10px] text-ink-soft">
-                  {t.id}
-                </span>
+                <span className="rounded bg-background px-1.5 py-0.5 font-mono text-[10px] text-ink-soft">{t.id}</span>
               </div>
               {t.mood && <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-ink-soft">{t.mood}</p>}
               {t.bestFor && (
@@ -122,9 +162,7 @@ export function TemplateManager({ templates, stats }: { templates: TemplateRow[]
               {t.composition && t.composition.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {t.composition.slice(0, 6).map((s, i) => (
-                    <span key={i} className="rounded bg-background px-1.5 py-0.5 text-[10px] text-ink-soft">
-                      {s}
-                    </span>
+                    <span key={i} className="rounded bg-background px-1.5 py-0.5 text-[10px] text-ink-soft">{s}</span>
                   ))}
                 </div>
               )}
@@ -134,55 +172,65 @@ export function TemplateManager({ templates, stats }: { templates: TemplateRow[]
                   onClick={() => toggle(t.id, !t.enabled)}
                   disabled={pendingId === t.id}
                   className={`w-full rounded-full px-4 py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${
-                    t.enabled
-                      ? "bg-green-100 text-green-800 hover:bg-green-200"
-                      : "bg-brand text-white hover:bg-brand-dark"
+                    t.enabled ? "bg-green-100 text-green-800 hover:bg-green-200" : "bg-brand text-white hover:bg-brand-dark"
                   }`}
                 >
                   {pendingId === t.id ? "…" : t.enabled ? "Live ✓ — click to disable" : "Approve → add to rotation"}
                 </button>
+                <div className="mt-2 flex items-center justify-center gap-4 text-[11px]">
+                  <button type="button" onClick={() => fix(t)} disabled={pendingId === t.id} className="font-semibold text-ink-soft transition-colors hover:text-brand disabled:opacity-50">
+                    ↻ Reprompt to fix
+                  </button>
+                  <span className="text-line">·</span>
+                  <button type="button" onClick={() => retire(t)} className="font-semibold text-ink-soft transition-colors hover:text-red-600">
+                    🗑 Retire
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         ))}
       </div>
 
+      {/* Retired tray */}
+      {tray.length > 0 && (
+        <div className="mt-5 rounded-xl border border-line bg-surface p-4">
+          <button type="button" onClick={() => setShowTray((s) => !s)} className="flex w-full items-center justify-between text-sm font-semibold text-ink-soft">
+            <span>Retired ({tray.length})</span>
+            <span>{showTray ? "Hide" : "Show"}</span>
+          </button>
+          {showTray && (
+            <div className="mt-3 space-y-2">
+              {tray.map((t) => (
+                <div key={t.id} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-background px-3 py-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="text-sm font-medium text-ink-soft line-through">{t.name}</span>
+                    <span className="rounded bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-soft">{t.id}</span>
+                  </div>
+                  <button type="button" onClick={() => restore(t)} className="shrink-0 rounded-full border border-line px-3 py-1 text-xs font-semibold text-ink-soft transition-colors hover:bg-surface hover:text-ink">
+                    Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Lightbox */}
       {zoom && zoom.previewPath && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-4 backdrop-blur-sm"
-          onClick={() => setZoom(null)}
-        >
-          <div
-            className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-background shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-4 backdrop-blur-sm" onClick={() => setZoom(null)}>
+          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-background shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
               <div className="min-w-0">
                 <p className="font-bold tracking-tight">{zoom.name}</p>
                 {zoom.mood && <p className="mt-0.5 line-clamp-1 text-xs text-ink-soft">{zoom.mood}</p>}
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    toggle(zoom.id, !zoom.enabled);
-                    setZoom({ ...zoom, enabled: !zoom.enabled });
-                  }}
-                  className={`rounded-full px-4 py-1.5 text-xs font-semibold ${
-                    zoom.enabled ? "bg-green-100 text-green-800" : "bg-brand text-white hover:bg-brand-dark"
-                  }`}
-                >
+                <button type="button" onClick={() => { toggle(zoom.id, !zoom.enabled); setZoom({ ...zoom, enabled: !zoom.enabled }); }} className={`rounded-full px-4 py-1.5 text-xs font-semibold ${zoom.enabled ? "bg-green-100 text-green-800" : "bg-brand text-white hover:bg-brand-dark"}`}>
                   {zoom.enabled ? "Live ✓" : "Approve →"}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setZoom(null)}
-                  className="grid h-8 w-8 place-items-center rounded-lg text-ink-soft hover:bg-surface"
-                  aria-label="Close"
-                >
-                  ✕
-                </button>
+                <button type="button" onClick={() => setZoom(null)} className="grid h-8 w-8 place-items-center rounded-lg text-ink-soft hover:bg-surface" aria-label="Close">✕</button>
               </div>
             </div>
             <div className="overflow-y-auto bg-surface">
@@ -198,11 +246,7 @@ export function TemplateManager({ templates, stats }: { templates: TemplateRow[]
 
 function FlowStep({ n, label, sub, tone }: { n: number; label: string; sub: string; tone: "neutral" | "amber" | "brand" }) {
   const toneCls =
-    tone === "amber"
-      ? "border-amber-300 bg-amber-50"
-      : tone === "brand"
-        ? "border-brand/30 bg-brand-tint/50"
-        : "border-line bg-surface";
+    tone === "amber" ? "border-amber-300 bg-amber-50" : tone === "brand" ? "border-brand/30 bg-brand-tint/50" : "border-line bg-surface";
   const numCls = tone === "amber" ? "text-amber-700" : tone === "brand" ? "text-brand" : "text-ink";
   return (
     <div className={`min-w-[120px] flex-1 rounded-xl border p-3 ${toneCls}`}>

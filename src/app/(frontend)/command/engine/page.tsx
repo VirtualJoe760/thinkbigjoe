@@ -116,19 +116,23 @@ export default async function EnginePage() {
   // forge poll mirrors it into registry.json). Disabled first, so anything awaiting review
   // surfaces at the top of the approval gallery — with its preview + design characteristics.
   const tplRes = await db.execute(sql`
-    SELECT id, name, best_for, enabled, preview_path,
+    SELECT id, dir, name, best_for, enabled, archived, preview_path,
            design->>'mood' AS mood, design->'composition' AS composition
-    FROM templates ORDER BY enabled ASC, name ASC`);
+    FROM templates ORDER BY archived ASC, enabled ASC, name ASC`);
   const tplRows = (Array.isArray(tplRes) ? tplRes : (tplRes as { rows?: unknown[] }).rows ?? []) as Record<string, unknown>[];
-  const templates = tplRows.map((r) => ({
+  const allTemplates = tplRows.map((r) => ({
     id: String(r.id),
+    dir: String(r.dir),
     name: String(r.name),
     bestFor: (r.best_for as string | null) ?? null,
     enabled: Boolean(r.enabled),
+    archived: Boolean(r.archived),
     previewPath: (r.preview_path as string | null) ?? null,
     mood: (r.mood as string | null) ?? null,
     composition: Array.isArray(r.composition) ? (r.composition as string[]) : null,
   }));
+  const templates = allTemplates.filter((t) => !t.archived);
+  const retiredTemplates = allTemplates.filter((t) => t.archived);
   const templateStats = {
     research: proposedCount, // design_reports still proposed
     awaiting: templates.filter((t) => !t.enabled).length, // built, disabled → needs review
@@ -216,7 +220,7 @@ export default async function EnginePage() {
 
         {/* Template library — visual review + approve (enable/disable) the templates the forge uses */}
         <div className="mt-4">
-          <TemplateManager templates={templates} stats={templateStats} />
+          <TemplateManager templates={templates} retired={retiredTemplates} stats={templateStats} />
         </div>
 
         {/* Design research — the Brand Lead's accumulating reports per vertical, each verifiable by its cited sources */}

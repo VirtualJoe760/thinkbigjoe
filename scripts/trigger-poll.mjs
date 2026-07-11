@@ -6,7 +6,8 @@
 //   • find            → node scripts/lead-engine.mjs   (Apify Maps discovery)
 //   • enrich          → openclaw cron run <id>          (the FREE browser agent: contacts + call-prep)
 //   • design_template → forge-template.sh <next-unbuilt-language>  (the forge template designer)
-import { readFileSync, openSync } from "node:fs";
+//   • fix_template    → forge-template.sh <dir>   (rebuild an existing template from its brief; note=dir)
+import { readFileSync, openSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { exec, spawn } from "node:child_process";
@@ -30,7 +31,7 @@ const env = loadEnv(join(ROOT, ".env.local"));
 const DB = env.DATABASE_URL_UNPOOLED || env.DATABASE_URL;
 const ENRICH_CRON_ID = "eb7d66fe-8347-452e-bde7-53df7455f886"; // TBJ Forge Contact Enrichment
 
-async function run(kind) {
+async function run(kind, target) {
   if (kind === "find") {
     const { stdout } = await pexec(`node scripts/lead-engine.mjs`, { cwd: ROOT, timeout: 9 * 60 * 1000, maxBuffer: 4 << 20 });
     return (stdout.trim().split("\n").pop() || "lead-engine ran").slice(0, 300);
@@ -59,6 +60,20 @@ async function run(kind) {
     child.unref();
     return `Template designer started for "${next.name || next.id}" (${next.id}) — runs in the background (~30 min); review the preview when it registers. log: ${logf}`;
   }
+  if (kind === "fix_template") {
+    // Re-prompt the forge to rebuild an EXISTING template from its DESIGN-BRIEF.md. `target` is
+    // the template dir (job_requests.note). Same detached, one-at-a-time designer run.
+    const FORGE = join(homedir(), "code/webdev-templates");
+    const dir = String(target || "").trim();
+    if (!dir || !existsSync(join(FORGE, "templates", dir))) return `fix_template: no such template dir "${dir}"`;
+    const logf = `/tmp/forge-template-${dir}.log`;
+    const out = openSync(logf, "a");
+    const child = spawn("bash", ["factory/forge-template.sh", dir], {
+      cwd: FORGE, detached: true, stdio: ["ignore", out, out],
+    });
+    child.unref();
+    return `Rebuild started for template "${dir}" — runs in the background (~30 min); review when it re-registers. log: ${logf}`;
+  }
   throw new Error(`unknown kind ${kind}`);
 }
 
@@ -71,14 +86,14 @@ async function run(kind) {
   const claim = await c.query(
     `UPDATE job_requests SET status='running', started_at=now()
       WHERE id = (SELECT id FROM job_requests WHERE status='pending' ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
-      RETURNING id, kind`,
+      RETURNING id, kind, note`,
   );
   if (!claim.rows.length) { await c.end(); return; } // nothing queued
-  const { id, kind } = claim.rows[0];
-  log(`claimed job #${id} (${kind})`);
+  const { id, kind, note: target } = claim.rows[0];
+  log(`claimed job #${id} (${kind}${target ? ` → ${target}` : ""})`);
 
   try {
-    const note = await run(kind);
+    const note = await run(kind, target);
     await c.query(`UPDATE job_requests SET status='done', finished_at=now(), note=$2 WHERE id=$1`, [id, note]);
     log(`job #${id} done — ${note}`);
   } catch (e) {

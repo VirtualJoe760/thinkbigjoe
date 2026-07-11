@@ -460,6 +460,57 @@ export async function setTemplateEnabled(
   };
 }
 
+/** Retire (trash) a template — hide it from the library and pull it from rotation.
+ *  Soft delete: keeps the row (restorable) but archived+disabled. */
+export async function retireTemplate(id: string): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  await db.execute(sql`UPDATE templates SET archived = true, enabled = false, updated_at = now() WHERE id = ${id}`);
+  await db.insert(activityLog).values({
+    actor: "command",
+    eventType: "template_retired",
+    summary: `Template ${id} retired`,
+    metadata: { detail: { id } },
+  });
+  revalidatePath("/command/engine");
+  return { ok: true, message: `${id} retired — removed from the library and rotation.` };
+}
+
+/** Un-retire a template — back into the library (stays disabled until approved). */
+export async function restoreTemplate(id: string): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  await db.execute(sql`UPDATE templates SET archived = false, updated_at = now() WHERE id = ${id}`);
+  revalidatePath("/command/engine");
+  return { ok: true, message: `${id} restored — review and approve it to re-enable.` };
+}
+
+/** Re-prompt the forge to rebuild/fix a template from its design brief. Queues a
+ *  `fix_template` job (the Mac's trigger-poll runs forge-template.sh <dir>). Costs a
+ *  forge run, so it's one-at-a-time and de-duped. `dir` is the forge template directory. */
+export async function requestTemplateFix(
+  id: string,
+  dir: string,
+): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  const pending = await db
+    .select({ id: jobRequests.id })
+    .from(jobRequests)
+    .where(and(eq(jobRequests.kind, "fix_template"), eq(jobRequests.note, dir), sql`${jobRequests.status} in ('pending','running')`))
+    .limit(1);
+  if (pending.length) return { ok: true, message: `A fix for ${id} is already queued.` };
+  await db.insert(jobRequests).values({ kind: "fix_template", requestedBy: "joe", note: dir });
+  await db.insert(activityLog).values({
+    actor: "command",
+    eventType: "template_fix_requested",
+    summary: `Rebuild requested for template ${id}`,
+    metadata: { detail: { id, dir } },
+  });
+  revalidatePath("/command/engine");
+  return {
+    ok: true,
+    message: `Queued — the forge will rebuild ${id} from its design brief in the background (~30 min, costs a run). It re-registers for review.`,
+  };
+}
+
 /**
  * Verify or reject a Brand Lead design-research report. Verifying is Joe's sign-off
  * that the report's sources check out and the design direction is sound — the agent
