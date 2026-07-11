@@ -45,7 +45,11 @@ export default function FrontendLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${jost.variable} h-full antialiased`}>
+    // suppressHydrationWarning on <html>: some extensions inject a class onto the
+    // root element itself (e.g. a microformats/reader extension adding `hentry`)
+    // before React hydrates — the flag only covers one level, so <html> needs its
+    // own (the one on <body> below doesn't reach it).
+    <html lang="en" className={`${jost.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
       </head>
