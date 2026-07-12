@@ -13,7 +13,9 @@ const LINKS: NavLink[] = [
 ];
 
 export async function PortalHeader({ email, isAdmin }: { email: string; isAdmin?: boolean }) {
-  const links = isAdmin ? [...LINKS, { href: "/command", label: "Command", exact: true }] : LINKS;
+  const links = isAdmin
+    ? [...LINKS, { href: "/command/messages", label: "Messages" }, { href: "/command", label: "Command", exact: true }]
+    : LINKS;
 
   // The account ID lives on the session (better-auth additional field). Surfaced
   // in the nav so a customer can always read it to our phone assistant.
