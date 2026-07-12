@@ -27,19 +27,18 @@ export async function PortalHeader({ email, isAdmin }: { email: string; isAdmin?
     <AppHeader
       links={links}
       highlightActive
+      inlineOnDesktop={false}
       desktopRight={
-        <>
-          {accountNumber && (
-            <span
-              className="hidden items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink-soft lg:inline-flex"
-              title="Your account ID — read it to our phone assistant to pull up your account"
-            >
-              ID <span className="font-mono font-semibold tabular-nums text-ink">{accountNumber}</span>
-            </span>
-          )}
-          <span className="hidden text-sm text-ink-soft lg:block">{email}</span>
-          <SignOutButton />
-        </>
+        // The account ID stays glanceable in the bar on wide screens; everything
+        // else (links, email, sign-out) lives in the hamburger drawer at every width.
+        accountNumber ? (
+          <span
+            className="hidden items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink-soft lg:inline-flex"
+            title="Your account ID — read it to our phone assistant to pull up your account"
+          >
+            ID <span className="font-mono font-semibold tabular-nums text-ink">{accountNumber}</span>
+          </span>
+        ) : undefined
       }
       drawerFooter={
         <>
