@@ -161,7 +161,7 @@ export async function getLeadHistories(leads: HistLead[]): Promise<Record<string
            (metadata->'detail'->>'sent') AS sent,
            event_type, created_at
     FROM activity_log
-    WHERE event_type IN ('forge_outreach_sent','lead_contact_attempt','email_bounced','email_reply','email_reply_sent','lead_note','callback_code_sent','sms_outreach_sent','sms_inbound')
+    WHERE event_type IN ('forge_outreach_sent','lead_contact_attempt','email_bounced','email_reply','email_reply_sent','lead_note','callback_code_sent','sms_outreach_sent','sms_inbound','sms_outbound')
       AND (metadata->'detail'->>'siteId') IS NOT NULL
     ORDER BY created_at ASC`);
   const rows = (Array.isArray(res) ? res : (res as { rows?: unknown }).rows ?? []) as Record<string, unknown>[];
@@ -187,6 +187,8 @@ export async function getLeadHistories(leads: HistLead[]): Promise<Record<string
       ev = { at, kind: "note", label: "Note", body: r.note ? String(r.note) : undefined };
     } else if (r.event_type === "sms_inbound") {
       ev = { at, kind: "reply", label: "Texted back", body: r.note ? String(r.note) : undefined };
+    } else if (r.event_type === "sms_outbound") {
+      ev = { at, kind: "text", label: "We replied", body: r.note ? String(r.note) : undefined };
     } else if (r.event_type === "sms_outreach_sent") {
       ev = { at, kind: "text", label: "Texted (first touch)", body: r.note ? String(r.note) : smsText(lead) };
     } else if (r.event_type === "callback_code_sent") {

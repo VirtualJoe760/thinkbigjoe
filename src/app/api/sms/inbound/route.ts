@@ -1,10 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { desc, eq } from "drizzle-orm";
 
 import { db, activityLog, smsConversations } from "@/db";
 import { notifyTelegram } from "@/lib/telegram";
 import { sendAdminAlert } from "@/lib/email";
 import { findProspectByPhone, markProspectOptedOut } from "@/lib/forge-optout";
+import { smsAgentReply, isSmsAgentConfigured, type SmsProspect } from "@/lib/sms-agent";
 import {
   encodeThreadCode,
   isOptOut,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/sms";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 40; // the agent auto-reply runs in after() and may make a few tool calls
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com";
 
@@ -119,10 +121,16 @@ export async function POST(req: Request) {
   }
   const optedNote = optedName ? ` ${optedName} → Declined queue (call to confirm, then remove).` : "";
 
+  // The AI agent auto-answers real prospect replies (below). When it will, tell
+  // Joe it's handled so he doesn't also reply — but he can still jump in via #code.
+  const agentHandling = !optOut && !!prospect && isSmsAgentConfigured();
+
   if (forwardTo) {
     const note = optOut
       ? `🛑 ${prospect?.businessName || sender} replied STOP — opted out of texts.${optedNote}`
-      : `📱 ${code} — ${prospect?.businessName || sender} replied:\n\n${body}\n\n↩︎ Reply "${code} your message" to answer (or just reply for the latest). "#list" to see all.`;
+      : agentHandling
+        ? `📱 ${prospect!.businessName} (${code}) replied:\n\n${body}\n\n🤖 The agent is replying. Text "${code} your message" to jump in yourself.`
+        : `📱 ${code} — ${prospect?.businessName || sender} replied:\n\n${body}\n\n↩︎ Reply "${code} your message" to answer (or just reply for the latest). "#list" to see all.`;
     const res = await sendSms(forwardTo, note);
     if ("ok" in res && !res.ok) console.error("[sms:inbound] forward to GV failed:", res.error);
   }
@@ -151,6 +159,42 @@ export async function POST(req: Request) {
           ctaLabel: "View & reply",
         },
   ).catch((err) => console.error("[sms:inbound] admin alert email failed:", err));
+
+  // AI agent auto-reply — runs AFTER the Twilio response so it never delays the
+  // webhook. Casual, human, and books the call via the same voice booking endpoints.
+  if (agentHandling && prospect) {
+    const agentProspect: SmsProspect = {
+      id: prospect.id,
+      businessName: prospect.businessName,
+      ownerName: null,
+      claimCode: prospect.claimCode,
+      site: prospect.liveUrl || (prospect.slug ? `thinkbigjoe.com/s/${prospect.slug}` : "thinkbigjoe.com"),
+      phone: sender,
+    };
+    after(async () => {
+      try {
+        const reply = await smsAgentReply(agentProspect, body);
+        if (!reply) return;
+        const res = await sendSms(sender, reply);
+        if ("ok" in res && res.ok) {
+          await db
+            .insert(activityLog)
+            .values({
+              actor: "agent",
+              eventType: "sms_outbound",
+              summary: `🤖 Agent replied to ${prospect.businessName}: ${reply.slice(0, 140)}`,
+              metadata: { detail: { siteId: prospect.id, note: reply, to: sender, via: "agent" } },
+            })
+            .catch(() => {});
+          await notifyTelegram(`🤖 Agent replied to ${prospect.businessName}:\n${reply}`).catch(() => {});
+        } else if ("error" in res) {
+          console.error("[sms:agent] send failed:", res.error);
+        }
+      } catch (err) {
+        console.error("[sms:agent] reply failed:", err);
+      }
+    });
+  }
 
   return twiml();
 }
