@@ -54,8 +54,8 @@ export function Hero() {
           Prefer to talk?{" "}
           <a href="tel:+14807642121" className="font-semibold text-ink underline decoration-line underline-offset-4 hover:decoration-brand">
             Call (480) 764-2121
-          </a>{" "}
-          — our AI receptionist answers 24/7.
+          </a>
+          .
         </p>
 
         <dl className="mt-16 grid max-w-2xl grid-cols-3 gap-8 border-t border-line pt-8">
