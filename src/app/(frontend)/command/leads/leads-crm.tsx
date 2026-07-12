@@ -340,6 +340,10 @@ function ContactDetail({
   }
 
   const [removing, setRemoving] = useState(false);
+  // Preview overlay — opens the site inside the app (with a Back button) instead of
+  // navigating away. In a standalone PWA, a same-origin link replaces the whole app
+  // with no back button, trapping you; this keeps you in the contact view.
+  const [showPreview, setShowPreview] = useState(false);
   async function handleRemove() {
     if (!window.confirm(`Remove ${item.businessName} from the database? This denies + blacklists them so they're never re-added.`)) return;
     setRemoving(true);
@@ -440,9 +444,9 @@ function ContactDetail({
               </div>
             )}
             {heroSite && heroUrl && (
-              <a href={heroUrl} target="_blank" rel="noreferrer" className="absolute bottom-2 right-2 rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white backdrop-blur transition-colors hover:bg-black/85">
-                {item.liveUrl ? "Open live site ↗" : "Open preview ↗"}
-              </a>
+              <button onClick={() => setShowPreview(true)} className="absolute bottom-2 right-2 rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white backdrop-blur transition-colors hover:bg-black/85">
+                {item.liveUrl ? "Open live site" : "Open preview"}
+              </button>
             )}
           </div>
 
@@ -678,6 +682,32 @@ function ContactDetail({
           <div className="h-4" />
         </div>
       </div>
+
+      {/* In-app site preview — stays inside the PWA with a Back button (fixes the
+          standalone-PWA trap where tapping the preview navigated away with no way back). */}
+      {showPreview && heroUrl && (
+        <div className="fixed inset-0 z-[60] flex flex-col bg-background">
+          <div className="flex items-center gap-2 border-b border-line bg-background px-3 py-2.5">
+            <button
+              onClick={() => setShowPreview(false)}
+              className="flex items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-sm font-semibold text-white active:scale-[0.98]"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6" /></svg>
+              Back
+            </button>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{item.businessName}</span>
+            <a
+              href={heroUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand-tint/40"
+            >
+              Open in browser ↗
+            </a>
+          </div>
+          <iframe src={heroUrl} title={`${item.businessName} site`} className="w-full flex-1 border-0 bg-white" />
+        </div>
+      )}
     </div>
   );
 }
