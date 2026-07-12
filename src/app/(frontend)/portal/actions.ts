@@ -540,7 +540,7 @@ export async function startCheckout(
 
 // ── Book a call with Joe (portal, logged-in) ────────────────────────────────
 // A logged-in client can book a 30-min strategy call in Joe's regular window
-// (Mon–Fri 11am–1pm Pacific) straight from the dashboard. Unlike the public
+// (Mon–Fri 10am–4pm Pacific, lunch break at noon) straight from the dashboard. Unlike the public
 // booking flow (`/api/appointments/book`, gated by a Turnstile intake token),
 // the session IS the gate here — identity comes from the signed-in user, so no
 // token is needed. Same calendar/Meet/confirmation path as the voice + web flows.
@@ -559,7 +559,7 @@ export async function getPortalSlots(
   if (!isCalendarConfigured()) return { ok: false, slots: [], message: "Booking isn't available right now." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, slots: [], message: "Invalid date." };
   try {
-    const slots = await getAvailableSlots(date); // default = regular 11–1 PT window
+    const slots = await getAvailableSlots(date); // default = regular 10–4 PT window (lunch break at noon)
     return { ok: true, slots };
   } catch (err) {
     console.error("[getPortalSlots] failed:", err);
@@ -688,7 +688,7 @@ export async function bookStrategyCall(
 }
 
 /**
- * Request a call OUTSIDE Joe's regular 11–1 PT window. Unlike bookStrategyCall this does NOT
+ * Request a call OUTSIDE Joe's regular 10–4 PT window. Unlike bookStrategyCall this does NOT
  * touch the calendar — it records the ask as a lead and pings Joe (Telegram + email) so he can
  * confirm a time manually. Auth-gated; identity comes from the session.
  */
@@ -716,12 +716,12 @@ export async function requestCallOutsideWindow(
     }
 
     notifyTelegram(
-      `🗓️ <b>Call request (outside 11–1)</b>\n${name} · ${email}\nPrefers: ${preferred}${reason ? `\nReason: ${reason}` : ""}\n→ confirm a time + send them an invite.`,
+      `🗓️ <b>Call request (outside 10–4)</b>\n${name} · ${email}\nPrefers: ${preferred}${reason ? `\nReason: ${reason}` : ""}\n→ confirm a time + send them an invite.`,
     ).catch(() => {});
     sendNotificationEmail({
       to: process.env.SUPPORT_EMAIL || process.env.EMAIL_FROM || "joe@thinkbigjoe.com",
       subject: `Out-of-window call request — ${name}`,
-      heading: "Someone wants a call outside 11–1",
+      heading: "Someone wants a call outside 10–4",
       message: `${name} (${email}) requested a call outside your regular window.\n\nThey prefer: ${preferred}${reason ? `\nReason: ${reason}` : ""}\n\nReply to them to confirm a time.`,
     }).catch(() => {});
 

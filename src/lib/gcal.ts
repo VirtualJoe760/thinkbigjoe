@@ -13,32 +13,37 @@
 
 export const BOOKING_TIMEZONE = "America/Los_Angeles";
 export const SLOT_DURATION_MIN = 30;
-export const SLOT_BUFFER_MIN = 15;
+// 30-min buffer → slots land on clean top-of-hour times (10, 11, 1, 2, 3) rather
+// than odd offsets, and leaves the host breathing room between calls.
+export const SLOT_BUFFER_MIN = 30;
 export const ADVANCE_BOOKING_DAYS = 30;
 /** Minimum notice before a slot can be booked (ms). */
 export const MIN_NOTICE_MS = 3 * 60 * 60 * 1000; // 3 hours
 
 /**
  * Sales-call windows in 24h clock, per weekday (0 = Sunday). null = closed.
- * Deliberately narrow (11am–1pm Pacific, weekdays) — strategy calls are
- * gated behind the intake funnel and scarce by design; the rest of the day
- * stays protected for build work. Full-day availability used to live here
- * (Mon–Sat 9–5) if it's ever needed again.
+ * Joe's booking hours: 10am–4pm Pacific, weekdays, with a midday lunch break
+ * (see LUNCH_BREAK) that removes the noon slot. Weekends stay closed.
  */
 export type DayHours = { open: [number, number]; close: [number, number] };
 
-/** Agentic ($999) strategy calls use a wider weekday window (9am–5pm Pacific). Passed as an
+const WEEKDAY_HOURS: DayHours = { open: [10, 0], close: [16, 0] };
+
+/** Lunch — no appointments book in this window (Pacific), applied to every open day. */
+export const LUNCH_BREAK: { start: [number, number]; end: [number, number] } = { start: [12, 0], end: [13, 0] };
+
+/** Agentic ($999) strategy calls share the standard 10am–4pm weekday window. Passed as an
  *  override to getAvailableSlots; weekends stay closed regardless (BUSINESS_HOURS gates the day). */
-export const AGENTIC_HOURS: DayHours = { open: [9, 0], close: [17, 0] };
+export const AGENTIC_HOURS: DayHours = WEEKDAY_HOURS;
 
 const BUSINESS_HOURS: Array<DayHours | null> = [
-  null, //                    Sunday — closed
-  { open: [11, 0], close: [13, 0] }, // Monday
-  { open: [11, 0], close: [13, 0] }, // Tuesday
-  { open: [11, 0], close: [13, 0] }, // Wednesday
-  { open: [11, 0], close: [13, 0] }, // Thursday
-  { open: [11, 0], close: [13, 0] }, // Friday
-  null, //                    Saturday — closed
+  null, //          Sunday — closed
+  WEEKDAY_HOURS, // Monday
+  WEEKDAY_HOURS, // Tuesday
+  WEEKDAY_HOURS, // Wednesday
+  WEEKDAY_HOURS, // Thursday
+  WEEKDAY_HOURS, // Friday
+  null, //          Saturday — closed
 ];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -266,6 +271,8 @@ export async function getAvailableSlots(
 
   const openTime = zonedTimeToUtc(dateStr, hours.open[0], hours.open[1]);
   const closeTime = zonedTimeToUtc(dateStr, hours.close[0], hours.close[1]);
+  const breakStart = zonedTimeToUtc(dateStr, LUNCH_BREAK.start[0], LUNCH_BREAK.start[1]).getTime();
+  const breakEnd = zonedTimeToUtc(dateStr, LUNCH_BREAK.end[0], LUNCH_BREAK.end[1]).getTime();
 
   let busySlots: FreeBusySlot[] = [];
   try {
@@ -288,8 +295,9 @@ export async function getAvailableSlots(
       const busyEnd = new Date(busy.end).getTime();
       return current.getTime() < busyEnd && slotEnd.getTime() > busyStart;
     });
+    const inLunch = current.getTime() < breakEnd && slotEnd.getTime() > breakStart;
 
-    if (!isBusy && current.getTime() >= earliestStart) {
+    if (!isBusy && !inLunch && current.getTime() >= earliestStart) {
       slots.push({ start: current.toISOString(), end: slotEnd.toISOString() });
     }
 

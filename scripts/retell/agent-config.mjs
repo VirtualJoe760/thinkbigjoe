@@ -38,7 +38,7 @@ Never read a code or account ID TO the caller — they always read it to you.
 ── AGENTIC / THE COMPLETE PACKAGE ($999 tier) ──
 This is bespoke: Joe personally builds AI agents that run a business's sales pipeline. Don't try to explain or sell it in depth. Instead:
   - Point them to the website to learn: "Head to thinkbigjoe.com slash agentic — there's a whole breakdown of how our AI agent sales pipelines actually make businesses money. You can read it there and register."
-  - And offer to book an agentic strategy call with Joe: → BOOKING, type "agentic" (a 30-minute call, weekdays 9 to 5). Tell them Joe walks through a custom plan for their business on that call.
+  - And offer to book an agentic strategy call with Joe: → BOOKING, type "agentic" (a 30-minute call, weekdays 10 to 4 Pacific). Tell them Joe walks through a custom plan for their business on that call.
 
 ── PRIORITY CALLBACK CODE (a warm lead reaching Joe directly) ──
 Some callers were given a PRIORITY CALLBACK CODE (a 4-digit number) in a text or voicemail from us, told to "call and give the code to reach Joe." If a caller mentions a callback code, a code to reach Joe, or says Joe told them to call — ask for the code and call verify_callback_code with it.
@@ -53,7 +53,7 @@ Two options — offer whichever fits:
 Never invent an answer to a billing or technical question — take a message or book Joe.
 
 ── BOOKING FLOW ──
-Get their full name and email (repeat the email back to confirm spelling) and one line on what they need. Call check_availability (pass type "regular" or "agentic" — that sets the right hours). Offer two or three real times out loud; never invent times. Then call book_appointment with name, email, the exact "start" timestamp they chose, their phone, a one-line note, the same "type", and a short "reason" (e.g. "claim help", "plan questions", "agentic scoping") so Joe walks in prepared. Confirm the time and that a calendar invite with a Google Meet link is on the way. Regular calls: Mon–Fri 11 AM–1 PM Pacific. Agentic calls: Mon–Fri 9 AM–5 PM Pacific. 30 minutes, over Google Meet.
+Get their full name and email (repeat the email back to confirm spelling) and one line on what they need. Call check_availability (pass type "regular" or "agentic"). The moment they want a call, offer the SOONEST real time first (e.g. "I've got tomorrow at 10 — want that?") rather than an open "what works for you?"; offer just two or three real times out loud and never invent times. Then call book_appointment with name, email, the exact "start" timestamp they chose, their phone, a one-line note, the same "type", and a short "reason" (e.g. "claim help", "plan questions", "agentic scoping") so Joe walks in prepared. Confirm the time and that a calendar invite with a Google Meet link is on the way. Call hours: Mon–Fri 10 AM–4 PM Pacific, with a lunch break at noon. 30 minutes, over Google Meet.
 
 ── ALWAYS ──
 - NEVER take a credit card or payment over the phone — plans are chosen and paid in the portal, or set up with Joe. Direct them there.
@@ -106,7 +106,7 @@ export function buildTools(baseUrl, authHeader, transferTo = "+17602976966") {
       type: "custom",
       name: "check_availability",
       description:
-        "Get real open call slots before offering any times. Pass type 'regular' for a standard call (Mon–Fri 11–1 Pacific) or 'agentic' for a $999 agentic strategy call (Mon–Fri 9–5 Pacific). Omit 'date' for the next openings, or pass a specific date. Returns a 'message' to read + 'slots' each with a 'start' ISO timestamp for book_appointment.",
+        "Get real open call slots before offering any times. Call hours are Mon–Fri 10 AM–4 PM Pacific (lunch break at noon) for both 'regular' and 'agentic' ($999 strategy) calls. Omit 'date' for the next openings, or pass a specific date. Returns a 'message' to read + 'slots' each with a 'start' ISO timestamp for book_appointment.",
       url: `${baseUrl}/api/voice/availability`,
       method: "POST",
       headers: authHeader,
@@ -114,7 +114,7 @@ export function buildTools(baseUrl, authHeader, transferTo = "+17602976966") {
         type: "object",
         properties: {
           date: { type: "string", description: "Optional specific date in YYYY-MM-DD (Pacific). Omit for the next openings." },
-          type: { type: "string", enum: ["regular", "agentic"], description: "'agentic' for a $999 agentic strategy call (9–5 window); otherwise 'regular'." },
+          type: { type: "string", enum: ["regular", "agentic"], description: "'agentic' for a $999 agentic strategy call; otherwise 'regular'. Both use the Mon–Fri 10–4 PT window." },
         },
         required: [],
       },

@@ -230,7 +230,7 @@ function BookForLead({ siteId, onBooked }: { siteId: string; onBooked: () => voi
       </div>
       <div className="mt-2 min-h-[2rem]">
         {loading ? <p className="text-xs text-ink-soft">Loading times…</p>
-          : slots.length === 0 ? <p className="text-xs text-ink-soft">No open times that day (11–1 PT).</p>
+          : slots.length === 0 ? <p className="text-xs text-ink-soft">No open times that day (10–4 PT).</p>
           : (
             <div className="flex flex-wrap gap-1.5">
               {slots.map((sl) => (

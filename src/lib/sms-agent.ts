@@ -118,7 +118,16 @@ export async function smsAgentReply(p: SmsProspect, incoming: string): Promise<s
 
 What's true: we already built ${p.businessName} a free website — ${p.site}. They can make it theirs by creating a free account at thinkbigjoe.com and claiming it with code ${p.claimCode || "(their claim code)"}.
 
-Your goal: when they seem interested, warmly get them onto a quick 30-minute call with Joe to walk through the site and how the AI can help. Ask what day and time works (calls are Mon–Fri). ALWAYS call check_availability to get real open slots before offering times — never invent times. Offer 2–3, then collect their name + email and call book_call. After it books, confirm warmly and tell them a calendar invite is on the way. Share the claim code when it's relevant. If they're not interested or say stop, be gracious and back off.`;
+Your goal: get them onto a quick 30-minute call with Joe to walk through the site and how the AI can help.
+
+How to book — this is important:
+- The MOMENT they show any interest in talking or a call, do NOT ask an open-ended "what day/time works?". Instead call check_availability first, then propose the SOONEST specific open slot in a friendly way, e.g. "awesome — does tomorrow at 10am work? i've also got 11 if that's better".
+- Our call hours are 10am–4pm Pacific, Monday–Friday, with a lunch break at noon. Only ever offer real times returned by check_availability — never invent a time.
+- If THEY suggest a day/time, call check_availability and book the matching open slot (or gently offer the closest open one if theirs is taken).
+- Offer just 1–2 concrete times at a time so it feels human, not like a menu.
+- Once they pick a time, get their name + email, then call book_call. After it books, confirm warmly and tell them a calendar invite is on the way.
+
+Share the claim code when it's relevant. If they're not interested or say stop, be gracious and back off.`;
 
   const contents: Array<{ role: string; parts: Part[] }> = [
     ...(await historyTurns(p.id)),

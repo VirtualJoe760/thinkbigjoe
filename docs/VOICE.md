@@ -38,7 +38,7 @@ are and move them one step forward. End to end:
 9. **Voice add-on** — Website+Voice includes an AI receptionist; our team provisions a per-client
    Retell agent for their business. **Complete ($999)** = bespoke agentic (OpenClaw) work Joe scopes
    personally → book Joe.
-10. **Booking** — discovery/strategy calls land on Joe's Google Calendar (Meet), Mon–Fri 11 AM–1 PM
+10. **Booking** — discovery/strategy calls land on Joe's Google Calendar (Meet), Mon–Fri 10 AM–4 PM
     Pacific, 30-min slots.
 
 **The receptionist sits at the phone-call moment** (mostly owners from step 4 calling in). It must be
@@ -76,7 +76,7 @@ Never takes payment on the call — plans are chosen/paid in the portal or set u
 |---|---|---|
 | `identify_caller` | `POST /api/voice/identify` | Matches the caller's phone → business + pipeline stage. Read-only; returns **no** claim code (that stays in their email). |
 | `verify_code` | `POST /api/voice/verify` | Confirms a claim code **or** account number; returns the business. Read-only. |
-| `check_availability` | `POST /api/voice/availability` | Open slots. `type: "regular"` (11–1) or `"agentic"` (9–5). Never invent times. |
+| `check_availability` | `POST /api/voice/availability` | Open slots. Mon–Fri 10 AM–4 PM PT (lunch break at noon), both `type: "regular"` and `"agentic"`. Never invent times. |
 | `book_appointment` | `POST /api/voice/book` | Books into Google Calendar (Meet) + records the lead. Takes `type` + a `reason` (tagged on the invite so Joe's prepared). |
 | `create_support_ticket` | `POST /api/voice/support` | Takes a message → emails Joe + logs `support_ticket` + Telegram. The interim support queue. |
 | `verify_callback_code` | `POST /api/voice/callback-code` | Verifies a 4-digit **priority callback code** against `callback_codes` (active + unexpired). Valid → logs `callback_code_verified` + Telegram + tells Ivy to transfer. Read-mostly (records use). |
@@ -93,8 +93,9 @@ to 30-day validity, are reusable within their window (not burned on a dropped ca
 active codes. **Ivy config lives in `scripts/retell/agent-config.mjs`** — push changes with
 `node scripts/retell/update-tbj-agent.mjs`.
 
-Booking runs on `src/lib/gcal.ts` — **regular** calls Mon–Fri 11 AM–1 PM Pacific, **agentic** calls
-Mon–Fri 9 AM–5 PM Pacific (`AGENTIC_HOURS`), 30-min slots. Weekends always closed. All routes are
+Booking runs on `src/lib/gcal.ts` — calls are Mon–Fri 10 AM–4 PM Pacific with a lunch break at
+noon (`LUNCH_BREAK`); both regular and agentic (`AGENTIC_HOURS`) share that window, 30-min slots on
+the hour. Weekends always closed. All routes are
 bearer-gated by `RETELL_WEBHOOK_SECRET`.
 
 **Host calendar / Google Meet:** every booking is created on the calendar named by **`GCAL_CALENDAR_ID`**
@@ -135,7 +136,7 @@ plan:** off-plan, the form saves a **draft** (config only, status stays `none`) 
 manual team step (Path A auto-provisioning below is not built). Linked from the portal site card.
 
 **Book a call with Joe (portal):** any logged-in client can book a 30-min strategy call from the
-dashboard at **`/portal/book`** — `getPortalSlots()` lists open slots in Joe's regular Mon–Fri 11 AM–1 PM
+dashboard at **`/portal/book`** — `getPortalSlots()` lists open slots in Joe's regular Mon–Fri 10 AM–4 PM
 Pacific window, `bookStrategyCall()` books it. The session is the gate (no Turnstile token, unlike the
 public `/api/appointments/book`); it creates the GCal event + Meet, records the lead, and sends the same
 branded confirmation email as the voice + web paths. Entry point: the "Book a call with Joe" card on
@@ -170,7 +171,7 @@ Live agent as of this writing: `agent_fc091c7bd9f23c9760ed6fa559` / `llm_2be0665
 ## Status
 
 - ✅ Agent + LLM on Retell; all 5 webhooks live (identify, verify, availability, book, support).
-- ✅ "Ivy" persona + full flow: caller-ID greet → claim → portal plans → agentic (website + 9–5 call)
+- ✅ "Ivy" persona + full flow: caller-ID greet → claim → portal plans → agentic (website + 10–4 call)
   → support ticket / book Joe. Applied to the live agent via `update-tbj-agent.mjs`.
 - ✅ Live number +1 (480) 764-2121 bound to the receptionist — calling it hits the new flow.
 - ⏳ Dashboard ticket system + `support@` mailbox — deferred (tickets email Joe meanwhile).
