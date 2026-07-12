@@ -54,7 +54,13 @@ export async function POST(req: Request) {
           WHERE al.event_type = 'sms_outreach_sent'
             AND (al.metadata->'detail'->>'siteId') = fs.id::text
         )
-      ORDER BY created_at DESC`)
+      -- Highest-performing first: rated businesses, best rating, most reviews. This
+      -- is who we're pitching ("high Google rating, no website") — so the
+      -- personalized rating hook always lands, and top prospects get reached first.
+      ORDER BY (google_rating ~ '^[0-9.]+$') DESC,
+               (CASE WHEN google_rating ~ '^[0-9.]+$' THEN google_rating::numeric ELSE 0 END) DESC,
+               (CASE WHEN review_count ~ '^[0-9]+$' THEN review_count::int ELSE 0 END) DESC,
+               created_at DESC`)
   ).rows as Array<{
     id: number; businessName: string; ownerName: string | null;
     phone: string; claimCode: string; liveUrl: string | null; slug: string | null;
