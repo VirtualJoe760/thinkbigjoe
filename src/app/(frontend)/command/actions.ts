@@ -5,7 +5,7 @@ import { eq, inArray } from "drizzle-orm";
 
 import { and, sql } from "drizzle-orm";
 
-import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine, jobRequests, outreachEngine, previewEngine, forgeEngine, forgeReplies, designReports } from "@/db";
+import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine, jobRequests, outreachEngine, previewEngine, forgeEngine, forgeReplies, designReports, contactOverrides } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
 import { sendForgeOutreachEmail, sendReplyEmail, sendBookingConfirmationEmail } from "@/lib/email";
 import { notifyTelegram } from "@/lib/telegram";
@@ -285,6 +285,28 @@ export async function sendConversationMessage(siteId: string, text: string): Pro
     metadata: { detail: { siteId: id, note: body, to: site.phone, via: "manual" } },
   });
   await db.update(forgeSites).set({ contactedAt: now() }).where(eq(forgeSites.id, id));
+  revalidatePath("/command/messages");
+  return { ok: true };
+}
+
+/**
+ * Rename a contact in the Messages inbox. Stores a display-name override keyed by phone
+ * (contact_overrides) so it works for any number — including ones that don't match a business
+ * yet. Passing an empty name clears the override (falls back to the business name / phone).
+ */
+export async function renameContact(phone: string, name: string): Promise<{ ok: boolean; message?: string }> {
+  await assertAdmin();
+  const key = (phone || "").trim();
+  const display = name.trim().slice(0, 80);
+  if (!key) return { ok: false, message: "No phone to attach the name to." };
+  if (!display) {
+    await db.delete(contactOverrides).where(eq(contactOverrides.phone, key));
+  } else {
+    await db
+      .insert(contactOverrides)
+      .values({ phone: key, displayName: display })
+      .onConflictDoUpdate({ target: contactOverrides.phone, set: { displayName: display, updatedAt: now() } });
+  }
   revalidatePath("/command/messages");
   return { ok: true };
 }

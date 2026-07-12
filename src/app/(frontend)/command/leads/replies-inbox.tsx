@@ -51,7 +51,8 @@ function ReplyCard({ reply }: { reply: PendingReply }) {
             view site ↗
           </a>
         )}
-        <span className="ml-auto text-xs text-ink-soft">{when}</span>
+        {/* server renders in UTC, client in the viewer's zone → different hour; suppress the mismatch */}
+        <span className="ml-auto text-xs text-ink-soft" suppressHydrationWarning>{when}</span>
       </div>
       {reply.subject && <p className="mt-1 text-xs font-medium text-ink-soft">Re: {reply.subject}</p>}
 

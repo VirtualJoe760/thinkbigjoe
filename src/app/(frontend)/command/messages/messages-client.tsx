@@ -3,12 +3,13 @@
 import { useMemo, useRef, useState, useTransition, useEffect } from "react";
 import Link from "next/link";
 
-import { sendConversationMessage } from "../actions";
+import { sendConversationMessage, renameContact } from "../actions";
 
 export type Msg = { dir: "in" | "out"; text: string; at: string; via?: string };
 export type Conversation = {
   siteId: number;
   businessName: string;
+  customName: boolean;
   phone: string;
   city: string;
   niche: string;
@@ -68,33 +69,36 @@ export function MessagesClient({ conversations }: { conversations: Conversation[
   const needsReplyCount = conversations.filter((c) => c.needsReply).length;
 
   return (
-    <div>
-      <div className="mb-4 flex items-baseline justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Messages</h1>
-          <p className="mt-0.5 text-sm text-ink-soft">
-            Every text conversation with your contacts — the AI&apos;s replies included. Jump in anytime.
-          </p>
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Page header — hidden on mobile while a thread is open, so the thread goes full-screen */}
+      <div className={`shrink-0 px-4 pt-5 pb-3 sm:px-6 ${open ? "hidden md:block" : "block"}`}>
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-extrabold tracking-tight">Messages</h1>
+            <p className="mt-0.5 text-sm text-ink-soft">
+              Every text conversation with your contacts — the AI&apos;s replies included. Jump in anytime.
+            </p>
+          </div>
+          {needsReplyCount > 0 && (
+            <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+              {needsReplyCount} awaiting reply
+            </span>
+          )}
         </div>
-        {needsReplyCount > 0 && (
-          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
-            {needsReplyCount} awaiting reply
-          </span>
-        )}
       </div>
 
-      <div className="grid overflow-hidden rounded-2xl border border-line md:grid-cols-[340px_1fr]" style={{ height: "calc(100vh - 220px)", minHeight: 420 }}>
+      <div className="grid min-h-0 flex-1 overflow-hidden border-t border-line md:mx-6 md:mb-6 md:rounded-2xl md:border md:grid-cols-[340px_1fr]">
         {/* Conversation list */}
         <div className={`flex min-h-0 flex-col border-line md:border-r ${open ? "hidden md:flex" : "flex"}`}>
-          <div className="border-b border-line p-3">
+          <div className="shrink-0 border-b border-line p-3">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search contacts…"
-              className="w-full rounded-full border border-line bg-surface px-4 py-2 text-sm text-ink outline-none placeholder:text-ink-soft focus:border-brand"
+              className="w-full rounded-full border border-line bg-surface px-4 py-2.5 text-base text-ink outline-none placeholder:text-ink-soft focus:border-brand sm:text-sm"
             />
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {filtered.length === 0 ? (
               <p className="p-6 text-center text-sm text-ink-soft">No conversations yet.</p>
             ) : (
@@ -102,11 +106,11 @@ export function MessagesClient({ conversations }: { conversations: Conversation[
                 <button
                   key={c.siteId}
                   onClick={() => setOpenId(c.siteId)}
-                  className={`flex w-full items-center gap-3 border-b border-line px-3 py-3 text-left transition-colors hover:bg-surface ${
+                  className={`flex w-full items-center gap-3 border-b border-line px-3 py-3.5 text-left transition-colors active:bg-surface hover:bg-surface ${
                     openId === c.siteId ? "bg-brand-tint/40" : ""
                   }`}
                 >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-sm font-bold text-brand">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand/10 text-sm font-bold text-brand">
                     {initials(c.businessName)}
                   </span>
                   <span className="min-w-0 flex-1">
@@ -153,6 +157,12 @@ function Thread({ c, onBack }: { c: Conversation; onBack: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Editable contact name (works for any number, incl. ones with no matching business).
+  const [name, setName] = useState(c.businessName);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(c.businessName);
+  const [savingName, saveNameTransition] = useTransition();
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [c.messages.length]);
@@ -168,21 +178,67 @@ function Thread({ c, onBack }: { c: Conversation; onBack: () => void }) {
     });
   };
 
+  const saveName = () => {
+    const next = draft.trim();
+    saveNameTransition(async () => {
+      const r = await renameContact(c.phone, next);
+      if (r.ok) {
+        setName(next || c.businessName);
+        setEditing(false);
+      }
+    });
+  };
+
   return (
     <>
       {/* header */}
-      <div className="flex items-center gap-3 border-b border-line bg-background px-3 py-2.5">
-        <button onClick={onBack} className="rounded-full p-1.5 text-ink-soft hover:bg-surface md:hidden" aria-label="Back">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6" /></svg>
+      <div className="flex shrink-0 items-center gap-2.5 border-b border-line bg-background px-3 py-2.5">
+        <button onClick={onBack} className="-ml-1 rounded-full p-2 text-ink-soft active:bg-surface hover:bg-surface md:hidden" aria-label="Back">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6" /></svg>
         </button>
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand">{initials(c.businessName)}</span>
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand">{initials(name)}</span>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-bold text-ink">{c.businessName}</div>
-          <div className="truncate text-[11px] text-ink-soft">
-            {c.phone}
-            {c.rating ? ` · ${Number(c.rating).toFixed(1)}★${c.reviews ? ` (${c.reviews})` : ""}` : ""}
-            {c.status === "opted_out" ? " · opted out" : c.status === "claimed" ? " · claimed ✓" : ""}
-          </div>
+          {editing ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveName();
+              }}
+              className="flex items-center gap-1.5"
+            >
+              <input
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setEditing(false);
+                }}
+                placeholder="Contact name"
+                className="min-w-0 flex-1 rounded-lg border border-brand bg-surface px-2 py-1 text-sm font-semibold text-ink outline-none"
+              />
+              <button type="submit" disabled={savingName} className="shrink-0 rounded-lg bg-brand px-2 py-1 text-xs font-semibold text-white disabled:opacity-40" aria-label="Save name">Save</button>
+              <button type="button" onClick={() => setEditing(false)} className="shrink-0 rounded-lg px-1.5 py-1 text-xs text-ink-soft hover:bg-surface" aria-label="Cancel">✕</button>
+            </form>
+          ) : (
+            <button
+              onClick={() => {
+                setDraft(name);
+                setEditing(true);
+              }}
+              className="group flex max-w-full items-center gap-1.5 text-left"
+              title="Rename contact"
+            >
+              <span className="truncate text-sm font-bold text-ink">{name}</span>
+              <svg className="shrink-0 text-ink-soft opacity-0 transition-opacity group-hover:opacity-100" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
+            </button>
+          )}
+          {!editing && (
+            <div className="truncate text-[11px] text-ink-soft">
+              {c.phone}
+              {c.rating ? ` · ${Number(c.rating).toFixed(1)}★${c.reviews ? ` (${c.reviews})` : ""}` : ""}
+              {c.status === "opted_out" ? " · opted out" : c.status === "claimed" ? " · claimed ✓" : ""}
+            </div>
+          )}
         </div>
         <Link href="/command/leads" className="shrink-0 rounded-full border border-line px-2.5 py-1 text-xs font-semibold text-brand hover:bg-brand-tint/40">
           Lead ↗
@@ -190,7 +246,7 @@ function Thread({ c, onBack }: { c: Conversation; onBack: () => void }) {
       </div>
 
       {/* messages */}
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-1.5 overflow-y-auto bg-surface/40 p-3">
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain bg-surface/40 p-3">
         {c.messages.map((m, i) => {
           const out = m.dir === "out";
           const viaLabel = out && m.via ? VIA_LABEL[m.via] : null;
@@ -214,11 +270,11 @@ function Thread({ c, onBack }: { c: Conversation; onBack: () => void }) {
 
       {/* compose */}
       {c.status === "opted_out" ? (
-        <div className="border-t border-line bg-rose-50 px-4 py-3 text-center text-xs font-medium text-rose-700">
+        <div className="shrink-0 border-t border-line bg-rose-50 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-center text-xs font-medium text-rose-700">
           🛑 This contact opted out — texting is disabled.
         </div>
       ) : (
-        <div className="border-t border-line bg-background p-3">
+        <div className="shrink-0 border-t border-line bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {error && <p className="mb-1.5 text-[11px] text-rose-600">{error}</p>}
           <div className="flex items-end gap-2">
             <textarea
@@ -232,12 +288,12 @@ function Thread({ c, onBack }: { c: Conversation; onBack: () => void }) {
               }}
               rows={1}
               placeholder="Type a message…"
-              className="max-h-32 min-h-[42px] flex-1 resize-none rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink outline-none placeholder:text-ink-soft focus:border-brand"
+              className="max-h-32 min-h-[44px] flex-1 resize-none rounded-2xl border border-line bg-surface px-4 py-2.5 text-base text-ink outline-none placeholder:text-ink-soft focus:border-brand sm:text-sm"
             />
             <button
               onClick={send}
               disabled={pending || !text.trim()}
-              className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-brand text-white transition-colors hover:bg-brand-dark disabled:opacity-40"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand text-white transition-colors hover:bg-brand-dark disabled:opacity-40"
               aria-label="Send"
             >
               {pending ? (

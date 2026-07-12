@@ -519,3 +519,10 @@ export const callbackCodes = pgTable("callback_codes", {
 	uniqueIndex("callback_codes_active_code_idx").using("btree", table.code.asc().nullsLast().op("text_ops")).where(sql`((status)::text = 'active'::text)`),
 	index("callback_codes_contact_idx").using("btree", table.contactPhone.asc().nullsLast().op("text_ops")),
 ]);
+
+export const contactOverrides = pgTable("contact_overrides", {
+	phone: text().primaryKey().notNull(),
+	displayName: text("display_name").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+});

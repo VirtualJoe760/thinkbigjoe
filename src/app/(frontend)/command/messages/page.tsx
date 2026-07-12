@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { inArray, sql } from "drizzle-orm";
 
-import { db, forgeSites } from "@/db";
+import { db, forgeSites, contactOverrides } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { MessagesClient, type Conversation, type Msg } from "./messages-client";
 
@@ -66,14 +66,22 @@ export default async function MessagesPage() {
     : [];
   const info = new Map(sites.map((s) => [s.id, s]));
 
+  // Name overrides (contact_overrides), keyed by the same phone string we store on forge_sites.
+  const overrideRows = await db
+    .select({ phone: contactOverrides.phone, name: contactOverrides.displayName })
+    .from(contactOverrides);
+  const overrideByPhone = new Map(overrideRows.map((o) => [o.phone, o.name]));
+
   const conversations: Conversation[] = siteIds
     .map((id): Conversation => {
       const msgs = bySite.get(id)!;
       const s = info.get(id);
       const last = msgs[msgs.length - 1];
+      const override = s?.phone ? overrideByPhone.get(s.phone) : undefined;
       return {
         siteId: id,
-        businessName: s?.businessName || "Unknown contact",
+        businessName: override || s?.businessName || "Unknown contact",
+        customName: !!override,
         phone: s?.phone || "",
         city: s?.city || "",
         niche: s?.niche || "",
@@ -91,10 +99,8 @@ export default async function MessagesPage() {
     .sort((a, b) => b.lastAt.localeCompare(a.lastAt));
 
   return (
-    <div className="px-4 py-6 sm:px-6">
-      <div className="mx-auto w-full max-w-5xl">
-        <MessagesClient conversations={conversations} />
-      </div>
+    <div className="mx-auto flex h-[calc(100dvh-4rem)] w-full max-w-5xl flex-col">
+      <MessagesClient conversations={conversations} />
     </div>
   );
 }
