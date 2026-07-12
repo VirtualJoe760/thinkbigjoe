@@ -54,12 +54,11 @@ export async function POST(req: Request) {
           WHERE al.event_type = 'sms_outreach_sent'
             AND (al.metadata->'detail'->>'siteId') = fs.id::text
         )
-      -- Highest-performing first: rated businesses, best rating, most reviews. This
-      -- is who we're pitching ("high Google rating, no website") — so the
-      -- personalized rating hook always lands, and top prospects get reached first.
-      ORDER BY (google_rating IS NOT NULL AND google_rating ~ '^[0-9.]+$') DESC,
-               (CASE WHEN google_rating ~ '^[0-9.]+$' THEN google_rating::numeric ELSE 0 END) DESC,
-               (CASE WHEN review_count ~ '^[0-9]+$' THEN review_count::int ELSE 0 END) DESC,
+      -- WORST prospects first (fewest reviews / lowest rating / unrated), saving the
+      -- best 5★ shops for once the flow is proven and converting. Lowest quality
+      -- leads the queue; top prospects go last.
+      ORDER BY (CASE WHEN google_rating ~ '^[0-9.]+$' THEN google_rating::numeric ELSE 0 END) ASC,
+               (CASE WHEN review_count ~ '^[0-9]+$' THEN review_count::int ELSE 0 END) ASC,
                created_at DESC`)
   ).rows as Array<{
     id: number; businessName: string; ownerName: string | null;

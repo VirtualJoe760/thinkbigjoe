@@ -42,18 +42,17 @@ export function composeSmsOutreach(p: {
   googleRating?: string | null;
   reviewCount?: string | null;
 }): string {
-  const first = p.ownerName ? p.ownerName.trim().split(/\s+/)[0] : "";
   const site = p.liveUrl || (p.slug ? `thinkbigjoe.com/s/${p.slug}` : "thinkbigjoe.com");
   const rating = p.googleRating ? Number(p.googleRating) : 0;
   const reviews = p.reviewCount ? Number(p.reviewCount) : 0;
-  // Hand-written feel: lead with WHY we picked them specifically — a strong Google
-  // reputation but no website — so it reads like Joe personally noticed their
-  // business, not a mass blast. Soft, human opt-out (STOP still works).
-  const hi = first ? `Hi ${first}, this is Joe` : `Hi, this is Joe`;
-  const why = rating
-    ? ` — I came across ${p.businessName}, saw your ${rating}★${reviews ? ` (${reviews} reviews)` : ""} but no website, and figured I'd just build you one.`
-    : ` — I came across ${p.businessName}, noticed you don't have a website, and figured I'd just build you one.`;
-  return `${hi}${why} Here it is: ${site}. If you like it it's yours — make a free account + use code ${p.claimCode} to claim it. Reply STOP if you'd rather I didn't text.`;
+  // Casual + human — no fake name, no claim code up front. Just a friendly opener
+  // that gets a reply; the agent hands over the claim code once they respond.
+  // Only claims "awesome reviews" when it's actually true.
+  const opener =
+    rating && reviews >= 5
+      ? `Hi, I found your business online and saw you've got a ton of awesome Google reviews but no website, so I made you one!`
+      : `Hi, I found your business online and noticed you don't have a website, so I made you one!`;
+  return `${opener} Here's the link to check it out: ${site}. Let me know what you think! (Not interested? Reply STOP.)`;
 }
 
 export type OutreachQueueItem = {
