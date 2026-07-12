@@ -81,11 +81,12 @@ export default async function LeadsPage() {
   const attemptRes = await db.execute(sql`
     SELECT (metadata->'detail'->>'siteId') AS site,
            (metadata->'detail'->>'channel') AS ch,
+           event_type AS et,
            count(*)::int AS n, max(created_at) AS last_at
     FROM activity_log
-    WHERE event_type IN ('lead_contact_attempt','forge_outreach_sent')
+    WHERE event_type IN ('lead_contact_attempt','forge_outreach_sent','sms_outreach_sent','sms_inbound')
       AND metadata->'detail'->>'siteId' IS NOT NULL
-    GROUP BY site, ch`);
+    GROUP BY site, ch, event_type`);
   const attemptRows = (Array.isArray(attemptRes) ? attemptRes : (attemptRes as { rows?: unknown }).rows ?? []) as Record<string, unknown>[];
   // Deliverability: a bounced lead's emails did NOT reach anyone — they're FAILED attempts, not
   // successful touches. `total` counts only real contact (delivered email, text, call); `failed`
@@ -95,11 +96,15 @@ export default async function LeadsPage() {
   for (const r of attemptRows) {
     const site = String(r.site);
     const ch = String(r.ch || "email");
+    const et = String(r.et || "");
     const n = Number(r.n) || 0;
     const at = r.last_at ? new Date(r.last_at as string).toISOString() : null;
     const cur = attempts[site] || { call: 0, text: 0, email: 0, failed: 0, total: 0, lastAt: null };
-    if (ch === "call") { cur.call += n; cur.total += n; }
-    else if (ch === "text") { cur.text += n; cur.total += n; }
+    // Their inbound reply isn't OUR touch — but it IS recent activity, so it bumps
+    // lastAt (surfaces repliers under "Recent activity") without inflating counts.
+    if (et === "sms_inbound") { /* lastAt only */ }
+    else if (ch === "call") { cur.call += n; cur.total += n; }
+    else if (ch === "text") { cur.text += n; cur.total += n; } // manual text + sms_outreach_sent
     else if (bouncedIds.has(site)) { cur.failed += n; } // email to a bounced address — failed, not a touch
     else { cur.email += n; cur.total += n; }
     if (at && (!cur.lastAt || at > cur.lastAt)) cur.lastAt = at;

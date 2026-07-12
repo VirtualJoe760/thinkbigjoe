@@ -127,8 +127,9 @@ export async function POST(req: Request) {
     if ("ok" in res && !res.ok) console.error("[sms:inbound] forward to GV failed:", res.error);
   }
 
+  const who = prospect?.businessName ? `${prospect.businessName} (${sender})` : sender;
   await notifyTelegram(
-    optOut ? `📵 SMS opt-out from ${sender}.${optedNote}` : `📱 Inbound SMS ${code} from ${sender}:\n${body || "(no text)"}`,
+    optOut ? `📵 SMS opt-out — ${who}.${optedNote}` : `📱 ${who} texted back ${code}:\n${body || "(no text)"}`,
   );
 
   // Email notification to the admin address (josephsardella@gmail.com by default) —
@@ -136,15 +137,15 @@ export async function POST(req: Request) {
   await sendAdminAlert(
     optOut
       ? {
-          subject: `SMS opt-out — ${sender}`,
+          subject: `SMS opt-out — ${who}`,
           heading: "Prospect opted out (STOP)",
-          message: `${sender} replied STOP and is now opted out of TBJ texts.${optedNote}`,
+          message: `${who} replied STOP and is now opted out of TBJ texts.${optedNote}`,
           ctaUrl: `${SITE}/command/leads`,
           ctaLabel: "View leads",
         }
       : {
-          subject: `New text reply from ${sender}`,
-          heading: `${sender} replied${code ? ` (${code})` : ""}`,
+          subject: `New text reply — ${who}`,
+          heading: `${who} texted back${code ? ` (${code})` : ""}`,
           message: body || "(no text)",
           ctaUrl: `${SITE}/command/leads`,
           ctaLabel: "View & reply",

@@ -725,10 +725,13 @@ export function LeadsCRM({
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
+    const digits = needle.replace(/\D/g, "");
     return leads.filter((l) => {
       if (filter !== "all" && metaOf(l.id).stage !== filter) return false;
       if (!needle) return true;
-      return [l.businessName, l.ownerName, l.city, l.niche, l.email].filter(Boolean).some((v) => String(v).toLowerCase().includes(needle));
+      const textMatch = [l.businessName, l.ownerName, l.city, l.niche, l.email].filter(Boolean).some((v) => String(v).toLowerCase().includes(needle));
+      const phoneMatch = digits.length >= 3 && String(l.phone || "").replace(/\D/g, "").includes(digits);
+      return textMatch || phoneMatch;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leads, q, filter, meta]);
@@ -794,7 +797,7 @@ export function LeadsCRM({
       <div className="relative mb-3">
         <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
         <input
-          value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search contacts…"
+          value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, phone, city, email…"
           className="w-full rounded-full border border-line bg-background py-2.5 pl-9 pr-4 text-sm text-ink focus:border-brand focus:outline-none"
         />
       </div>
