@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useTransition, useEffect } from "react";
 import Link from "next/link";
 
-import { sendConversationMessage, renameContact } from "../actions";
+import { sendConversationMessage, renameContact, setContactAiPaused } from "../actions";
 
 export type Msg = { dir: "in" | "out"; text: string; at: string; via?: string };
 export type Conversation = {
@@ -17,6 +17,7 @@ export type Conversation = {
   reviews: string;
   claimCode: string;
   status: "active" | "opted_out" | "claimed";
+  aiPaused: boolean;
   messages: Msg[];
   lastText: string;
   lastAt: string;
@@ -125,11 +126,16 @@ export function MessagesClient({ conversations }: { conversations: Conversation[
                       </span>
                     </span>
                   </span>
-                  {c.needsReply ? (
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" title="Awaiting your reply" />
-                  ) : c.status === "opted_out" ? (
-                    <span className="shrink-0 text-[11px] font-semibold text-rose-600">STOP</span>
-                  ) : null}
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {c.aiPaused && c.status !== "opted_out" && (
+                      <span className="text-[11px] leading-none" title="AI paused on this contact">⏸️</span>
+                    )}
+                    {c.needsReply ? (
+                      <span className="h-2.5 w-2.5 rounded-full bg-amber-500" title="Awaiting your reply" />
+                    ) : c.status === "opted_out" ? (
+                      <span className="text-[11px] font-semibold text-rose-600">STOP</span>
+                    ) : null}
+                  </span>
                 </button>
               ))
             )}
@@ -162,6 +168,18 @@ function Thread({ c, onBack }: { c: Conversation; onBack: () => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(c.businessName);
   const [savingName, saveNameTransition] = useTransition();
+
+  // Per-contact AI pause — when on, the inbound webhook won't auto-reply to this contact.
+  const [paused, setPaused] = useState(c.aiPaused);
+  const [togglingAi, toggleAiTransition] = useTransition();
+  const toggleAi = () => {
+    const next = !paused;
+    setPaused(next); // optimistic
+    toggleAiTransition(async () => {
+      const r = await setContactAiPaused(String(c.siteId), next);
+      if (!r.ok) setPaused(!next); // revert on failure
+    });
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -240,6 +258,21 @@ function Thread({ c, onBack }: { c: Conversation; onBack: () => void }) {
             </div>
           )}
         </div>
+        {c.status !== "opted_out" && (
+          <button
+            onClick={toggleAi}
+            disabled={togglingAi}
+            title={paused ? "AI is paused — tap to let it auto-reply again" : "AI is answering — tap to pause and handle this contact yourself"}
+            className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-50 ${
+              paused
+                ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+            }`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${paused ? "bg-amber-500" : "bg-emerald-500"}`} />
+            {paused ? "AI paused" : "AI on"}
+          </button>
+        )}
         <Link href="/command/leads" className="shrink-0 rounded-full border border-line px-2.5 py-1 text-xs font-semibold text-brand hover:bg-brand-tint/40">
           Lead ↗
         </Link>
@@ -303,7 +336,11 @@ function Thread({ c, onBack }: { c: Conversation; onBack: () => void }) {
               )}
             </button>
           </div>
-          <p className="mt-1 px-1 text-[10px] text-ink-soft">The AI answers automatically — send here only to jump in yourself.</p>
+          <p className="mt-1 px-1 text-[10px] text-ink-soft">
+            {paused
+              ? "⏸️ AI is paused on this contact — replies only go out when you send them."
+              : "The AI answers automatically — send here only to jump in yourself."}
+          </p>
         </div>
       )}
     </>

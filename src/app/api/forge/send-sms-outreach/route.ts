@@ -49,6 +49,7 @@ export async function POST(req: Request) {
         AND (live_url IS NOT NULL OR slug IS NOT NULL)
         AND status <> 'deleted'
         AND claimed_by_user_id IS NULL
+        AND ai_paused = false
         AND NOT EXISTS (
           SELECT 1 FROM activity_log al
           WHERE al.event_type = 'sms_outreach_sent'

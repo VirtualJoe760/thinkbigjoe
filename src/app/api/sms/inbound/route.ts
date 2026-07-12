@@ -121,16 +121,18 @@ export async function POST(req: Request) {
   }
   const optedNote = optedName ? ` ${optedName} → Declined queue (call to confirm, then remove).` : "";
 
-  // The AI agent auto-answers real prospect replies (below). When it will, tell
-  // Joe it's handled so he doesn't also reply — but he can still jump in via #code.
-  const agentHandling = !optOut && !!prospect && isSmsAgentConfigured();
+  // The AI agent auto-answers real prospect replies (below) — UNLESS Joe has paused
+  // the AI on this contact (he's handling them himself). When it will reply, tell Joe
+  // it's handled so he doesn't also; he can still jump in via #code either way.
+  const aiPaused = !!prospect?.aiPaused;
+  const agentHandling = !optOut && !!prospect && !aiPaused && isSmsAgentConfigured();
 
   if (forwardTo) {
     const note = optOut
       ? `🛑 ${prospect?.businessName || sender} replied STOP — opted out of texts.${optedNote}`
       : agentHandling
         ? `📱 ${prospect!.businessName} (${code}) replied:\n\n${body}\n\n🤖 The agent is replying. Text "${code} your message" to jump in yourself.`
-        : `📱 ${code} — ${prospect?.businessName || sender} replied:\n\n${body}\n\n↩︎ Reply "${code} your message" to answer (or just reply for the latest). "#list" to see all.`;
+        : `📱 ${code} — ${prospect?.businessName || sender} replied:\n\n${body}\n\n${aiPaused ? "⏸️ AI is paused on this contact — you're handling it. " : ""}↩︎ Reply "${code} your message" to answer (or just reply for the latest). "#list" to see all.`;
     const res = await sendSms(forwardTo, note);
     if ("ok" in res && !res.ok) console.error("[sms:inbound] forward to GV failed:", res.error);
   }

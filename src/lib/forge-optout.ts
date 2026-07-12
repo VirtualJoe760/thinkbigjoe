@@ -4,19 +4,19 @@ import { db, activityLog } from "@/db";
 
 /** Resolve a forge_sites prospect by the last 10 digits of a phone number. */
 export async function findProspectByPhone(phone: string): Promise<
-  { id: number; businessName: string; claimCode: string | null; city: string | null; slug: string | null; liveUrl: string | null } | null
+  { id: number; businessName: string; claimCode: string | null; city: string | null; slug: string | null; liveUrl: string | null; aiPaused: boolean } | null
 > {
   const last10 = (phone || "").replace(/[^0-9]/g, "").slice(-10);
   if (last10.length < 10) return null;
   const rows = (
     await db.execute(sql`
-      SELECT id, business_name AS "businessName", claim_code AS "claimCode", city, slug, live_url AS "liveUrl"
+      SELECT id, business_name AS "businessName", claim_code AS "claimCode", city, slug, live_url AS "liveUrl", ai_paused AS "aiPaused"
       FROM forge_sites
       WHERE right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 10) = ${last10}
         AND status <> 'deleted'
       ORDER BY (status = 'denied') ASC, updated_at DESC
       LIMIT 1`)
-  ).rows as Array<{ id: number; businessName: string; claimCode: string | null; city: string | null; slug: string | null; liveUrl: string | null }>;
+  ).rows as Array<{ id: number; businessName: string; claimCode: string | null; city: string | null; slug: string | null; liveUrl: string | null; aiPaused: boolean }>;
   return rows[0] ?? null;
 }
 

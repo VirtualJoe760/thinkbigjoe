@@ -290,6 +290,20 @@ export async function sendConversationMessage(siteId: string, text: string): Pro
 }
 
 /**
+ * Pause or resume the AI auto-reply on a single contact. When paused, the inbound SMS
+ * webhook skips the agent (Joe handles the conversation himself); flip it back on when
+ * he wants the AI to take over follow-ups again.
+ */
+export async function setContactAiPaused(siteId: string, paused: boolean): Promise<{ ok: boolean; message?: string }> {
+  await assertAdmin();
+  const id = Number(siteId);
+  if (!Number.isFinite(id)) return { ok: false, message: "Bad contact id." };
+  await db.update(forgeSites).set({ aiPaused: paused }).where(eq(forgeSites.id, id));
+  revalidatePath("/command/messages");
+  return { ok: true };
+}
+
+/**
  * Rename a contact in the Messages inbox. Stores a display-name override keyed by phone
  * (contact_overrides) so it works for any number — including ones that don't match a business
  * yet. Passing an empty name clears the override (falls back to the business name / phone).

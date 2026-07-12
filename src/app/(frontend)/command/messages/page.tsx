@@ -60,6 +60,7 @@ export default async function MessagesPage() {
           outreachStatus: forgeSites.outreachStatus,
           claimCode: forgeSites.claimCode,
           claimed: forgeSites.claimedByUserId,
+          aiPaused: forgeSites.aiPaused,
         })
         .from(forgeSites)
         .where(inArray(forgeSites.id, siteIds))
@@ -89,6 +90,7 @@ export default async function MessagesPage() {
         reviews: s?.reviews || "",
         claimCode: s?.claimCode || "",
         status: s?.claimed ? "claimed" : s?.outreachStatus === "opted_out" ? "opted_out" : "active",
+        aiPaused: !!s?.aiPaused,
         messages: msgs,
         lastText: last?.text || "",
         lastAt: last?.at || "",

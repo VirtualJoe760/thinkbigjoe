@@ -54,6 +54,13 @@ lead, each conversation gets a short code — the `sms_conversations` row id in 
 Outbound relays are logged to `activity_log` (`sms_outbound`), inbound as `sms_inbound` /
 `sms_opt_out`. A raw STOP from a lead is labeled (not offered as a thread to reply to).
 
+**Per-contact AI pause.** Each contact has a `forge_sites.ai_paused` flag. When on, the inbound
+webhook still logs + forwards the reply to Joe but **skips the agent auto-reply** — Joe handles that
+conversation himself (typical once the AI has warmed the lead up). Toggle it from the **AI on / AI
+paused** button in the [Messages](../src/app/(frontend)/command/messages) thread header
+(`setContactAiPaused` action); paused contacts show a ⏸️ in the inbox list. Automated first-touch
+outreach also skips `ai_paused` contacts. Flip it back on to let the AI resume follow-ups.
+
 ## Priority callback codes (text → warm call → Joe)
 
 To give a hot lead a direct line to Joe without paying to cold-call, mint a **callback code**
