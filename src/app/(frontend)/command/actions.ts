@@ -260,6 +260,35 @@ export async function sendCallbackCodeText(
   return { ok: false, message: `Code ${code} minted, but the text failed: ${"error" in res ? res.error : "unknown"}`, code };
 }
 
+/** Send a text to a contact from the Messages inbox (Joe jumping into a conversation). */
+export async function sendConversationMessage(siteId: string, text: string): Promise<{ ok: boolean; message?: string }> {
+  await assertAdmin();
+  const id = Number(siteId);
+  const body = text.trim();
+  if (!Number.isFinite(id)) return { ok: false, message: "Bad contact id." };
+  if (!body) return { ok: false, message: "Empty message." };
+  const [site] = await db
+    .select({ phone: forgeSites.phone, businessName: forgeSites.businessName })
+    .from(forgeSites)
+    .where(eq(forgeSites.id, id))
+    .limit(1);
+  if (!site?.phone) return { ok: false, message: "No phone number on this contact." };
+
+  const res = await sendSms(site.phone, body);
+  if (!("ok" in res) || res.ok !== true) {
+    return { ok: false, message: "skipped" in res ? "SMS isn't configured yet." : "error" in res ? res.error : "Send failed." };
+  }
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "sms_outbound",
+    summary: `📤 You texted ${site.businessName}: ${body.slice(0, 120)}`,
+    metadata: { detail: { siteId: id, note: body, to: site.phone, via: "manual" } },
+  });
+  await db.update(forgeSites).set({ contactedAt: now() }).where(eq(forgeSites.id, id));
+  revalidatePath("/command/messages");
+  return { ok: true };
+}
+
 /** Save a free-text note on a lead (e.g. what happened on a call). Lands on the lead's timeline. */
 export async function saveLeadNote(siteId: string, note: string): Promise<{ ok: boolean; message?: string }> {
   await assertAdmin();

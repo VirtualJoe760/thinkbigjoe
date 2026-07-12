@@ -21,6 +21,7 @@ const LINKS: NavLink[] = [
   },
   { href: "/command/outreach", label: "Outreach", icon: "M4 6h16v12H4zM4 7l8 6 8-6" },
   { href: "/command/leads", label: "Leads", icon: "M4 4h16v4H4zM4 12h16v8H4z" },
+  { href: "/command/messages", label: "Messages", icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" },
   { href: "/command/appointments", label: "Appointments", icon: "M8 2v4M16 2v4M3 9h18M5 5h14v16H5z" },
   {
     href: "/command/crons",
