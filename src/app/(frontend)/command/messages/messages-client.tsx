@@ -83,7 +83,7 @@ export function MessagesClient({ conversations }: { conversations: Conversation[
         )}
       </div>
 
-      <div className="grid overflow-hidden rounded-2xl border border-line md:grid-cols-[340px,1fr]" style={{ height: "calc(100vh - 220px)", minHeight: 420 }}>
+      <div className="grid overflow-hidden rounded-2xl border border-line md:grid-cols-[340px_1fr]" style={{ height: "calc(100vh - 220px)", minHeight: 420 }}>
         {/* Conversation list */}
         <div className={`flex min-h-0 flex-col border-line md:border-r ${open ? "hidden md:flex" : "flex"}`}>
           <div className="border-b border-line p-3">
