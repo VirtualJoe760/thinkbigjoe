@@ -5,6 +5,7 @@ import { Pool } from "pg";
 
 import { sendResetPasswordEmail, sendWelcomeEmail, sendAdminAlert, sendVerificationEmail } from "./email";
 import { notifyTelegram } from "./telegram";
+import { sendSms, smsForwardTo } from "./sms";
 
 const baseURL =
   process.env.BETTER_AUTH_URL ||
@@ -192,6 +193,16 @@ export const auth = betterAuth({
             ctaUrl: `${process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com"}/command/leads`,
             ctaLabel: "Open leads",
           }).catch((err) => console.error("[auth] admin signup alert failed:", err));
+          // Text alert to Joe's phone (same channel as the opt-out texts — our
+          // number → his Google Voice).
+          try {
+            const to = smsForwardTo();
+            if (to) {
+              await sendSms(to, `👤 New TBJ signup: ${user.name ? `${user.name} — ` : ""}${user.email}`);
+            }
+          } catch (err) {
+            console.error("[auth] signup text alert failed:", err);
+          }
         },
       },
     },
