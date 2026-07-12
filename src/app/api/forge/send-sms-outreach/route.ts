@@ -40,7 +40,8 @@ export async function POST(req: Request) {
   const eligible = (
     await db.execute(sql`
       SELECT id, business_name AS "businessName", owner_name AS "ownerName",
-             phone, claim_code AS "claimCode", live_url AS "liveUrl", slug
+             phone, claim_code AS "claimCode", live_url AS "liveUrl", slug,
+             google_rating AS "googleRating", review_count AS "reviewCount"
       FROM forge_sites fs
       WHERE marketing_approved_at IS NOT NULL
         AND phone IS NOT NULL AND phone <> ''
@@ -57,6 +58,7 @@ export async function POST(req: Request) {
   ).rows as Array<{
     id: number; businessName: string; ownerName: string | null;
     phone: string; claimCode: string; liveUrl: string | null; slug: string | null;
+    googleRating: string | null; reviewCount: string | null;
   }>;
 
   // Daily cap (today's sms_outreach_sent).

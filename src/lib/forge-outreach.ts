@@ -39,11 +39,21 @@ export function composeSmsOutreach(p: {
   liveUrl: string | null;
   slug: string | null;
   claimCode: string | null;
+  googleRating?: string | null;
+  reviewCount?: string | null;
 }): string {
   const first = p.ownerName ? p.ownerName.trim().split(/\s+/)[0] : "";
   const site = p.liveUrl || (p.slug ? `thinkbigjoe.com/s/${p.slug}` : "thinkbigjoe.com");
-  const hi = first ? `Hi ${first}, ` : "Hi, ";
-  return `${hi}it's Joe — I build websites + AI tools for local businesses, and I actually built ${p.businessName} a site already. Take a look: ${site} — create a free account & claim it with code ${p.claimCode}. Reply STOP to opt out.`;
+  const rating = p.googleRating ? Number(p.googleRating) : 0;
+  const reviews = p.reviewCount ? Number(p.reviewCount) : 0;
+  // Hand-written feel: lead with WHY we picked them specifically — a strong Google
+  // reputation but no website — so it reads like Joe personally noticed their
+  // business, not a mass blast. Soft, human opt-out (STOP still works).
+  const hi = first ? `Hi ${first}, this is Joe` : `Hi, this is Joe`;
+  const why = rating
+    ? ` — I came across ${p.businessName}, saw your ${rating}★${reviews ? ` (${reviews} reviews)` : ""} but no website, and figured I'd just build you one.`
+    : ` — I came across ${p.businessName}, noticed you don't have a website, and figured I'd just build you one.`;
+  return `${hi}${why} Here it is: ${site}. If you like it it's yours — make a free account + use code ${p.claimCode} to claim it. Reply STOP if you'd rather I didn't text.`;
 }
 
 export type OutreachQueueItem = {
