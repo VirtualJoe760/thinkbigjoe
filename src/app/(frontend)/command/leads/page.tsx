@@ -137,6 +137,7 @@ export default async function LeadsPage() {
     let stage: LeadStage;
     if (paid) stage = "customer";
     else if (claimed) stage = "claimed";
+    else if (lead.outreachStatus === "opted_out") stage = "opted_out";
     else if (lead.outreachStatus === "bounced") stage = "bounced";
     else if (hist.some((h) => h.kind === "reply")) stage = "replied";
     else if ((a?.total ?? 0) > 0 || lead.outreachStatus === "sent") stage = "contacted";

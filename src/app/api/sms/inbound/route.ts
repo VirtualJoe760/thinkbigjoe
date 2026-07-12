@@ -4,9 +4,7 @@ import { desc, eq } from "drizzle-orm";
 import { db, activityLog, smsConversations } from "@/db";
 import { notifyTelegram } from "@/lib/telegram";
 import { sendAdminAlert } from "@/lib/email";
-import { denyProspectByPhoneOptOut } from "@/lib/forge-optout";
-
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com";
+import { findProspectByPhone, markProspectOptedOut } from "@/lib/forge-optout";
 import {
   encodeThreadCode,
   isOptOut,
@@ -18,6 +16,8 @@ import {
 } from "@/lib/sms";
 
 export const dynamic = "force-dynamic";
+
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com";
 
 // Empty TwiML — tells Twilio "no auto-reply" (we relay/forward out-of-band).
 const EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
@@ -90,41 +90,45 @@ export async function POST(req: Request) {
     console.error("[sms:inbound] conversation upsert failed:", err);
   }
 
+  // Resolve which prospect this number belongs to, so the reply lands on their
+  // lead timeline (and marks them "replied"/engaged), not just a floating log row.
+  const prospect = await findProspectByPhone(sender).catch(() => null);
+
   try {
     await db.insert(activityLog).values({
       actor: "twilio",
       eventType: optOut ? "sms_opt_out" : "sms_inbound",
       summary: optOut
-        ? `📵 ${sender} texted STOP (opted out)`
-        : `📱 ${code ? code + " " : ""}SMS from ${sender}: ${body.slice(0, 200)}`,
-      metadata: { from: sender, body, code, messageSid: params.MessageSid || null, to: params.To || null },
+        ? `📵 ${prospect?.businessName || sender} texted STOP (opted out)`
+        : `📱 ${prospect?.businessName ? prospect.businessName + " " : ""}${code ? code + " " : ""}replied: ${body.slice(0, 200)}`,
+      metadata: { detail: { siteId: prospect?.id ?? null, note: body, from: sender, code }, from: sender, body, code, messageSid: params.MessageSid || null, to: params.To || null },
     });
   } catch (err) {
     console.error("[sms:inbound] activity log failed:", err);
   }
 
-  // On STOP: move the prospect out of the leads pipeline (→ denied) + blacklist
-  // the business so it's never re-scraped or re-contacted. Fully automatic.
-  let deniedName: string | null = null;
+  // On STOP: flag the prospect as opted-out and move them to the Declined queue —
+  // visible so Joe can call once more before removing. NOT auto-deleted/blacklisted.
+  let optedName: string | null = null;
   if (optOut) {
     try {
-      deniedName = await denyProspectByPhoneOptOut(sender);
+      optedName = await markProspectOptedOut(sender);
     } catch (err) {
-      console.error("[sms:inbound] opt-out denial failed:", err);
+      console.error("[sms:inbound] opt-out mark failed:", err);
     }
   }
-  const deniedNote = deniedName ? ` ${deniedName} moved to denied + blacklisted.` : "";
+  const optedNote = optedName ? ` ${optedName} → Declined queue (call to confirm, then remove).` : "";
 
   if (forwardTo) {
     const note = optOut
-      ? `📵 ${sender} replied STOP — opted out of TBJ texts.${deniedNote}`
-      : `📱 ${code} — text from ${sender}:\n\n${body}\n\n↩︎ Reply "${code} your message" to answer (or just reply for the latest). "#list" to see all.`;
+      ? `🛑 ${prospect?.businessName || sender} replied STOP — opted out of texts.${optedNote}`
+      : `📱 ${code} — ${prospect?.businessName || sender} replied:\n\n${body}\n\n↩︎ Reply "${code} your message" to answer (or just reply for the latest). "#list" to see all.`;
     const res = await sendSms(forwardTo, note);
     if ("ok" in res && !res.ok) console.error("[sms:inbound] forward to GV failed:", res.error);
   }
 
   await notifyTelegram(
-    optOut ? `📵 SMS opt-out from ${sender}.${deniedNote}` : `📱 Inbound SMS ${code} from ${sender}:\n${body || "(no text)"}`,
+    optOut ? `📵 SMS opt-out from ${sender}.${optedNote}` : `📱 Inbound SMS ${code} from ${sender}:\n${body || "(no text)"}`,
   );
 
   // Email notification to the admin address (josephsardella@gmail.com by default) —
@@ -134,7 +138,7 @@ export async function POST(req: Request) {
       ? {
           subject: `SMS opt-out — ${sender}`,
           heading: "Prospect opted out (STOP)",
-          message: `${sender} replied STOP and is now opted out of TBJ texts.${deniedNote}`,
+          message: `${sender} replied STOP and is now opted out of TBJ texts.${optedNote}`,
           ctaUrl: `${SITE}/command/leads`,
           ctaLabel: "View leads",
         }

@@ -1,68 +1,56 @@
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 
-import { db, forgeSites, forgeBlacklist, activityLog } from "@/db";
+import { db, activityLog } from "@/db";
 
-const slugify = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-function hostOf(u: string): string | null {
-  try {
-    return u ? new URL(u.startsWith("http") ? u : `https://${u}`).hostname.replace(/^www\./, "") : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * A prospect texted STOP. Move them out of the leads pipeline (status → denied,
- * which the leads/call-room queries exclude) and blacklist the business so the
- * prospector never re-scrapes or re-adds it. Matches forge_sites by the last 10
- * digits of the opting-out number. Returns the business name(s) denied, or null
- * if no matching prospect was found.
- */
-export async function denyProspectByPhoneOptOut(phone: string): Promise<string | null> {
+/** Resolve a forge_sites prospect by the last 10 digits of a phone number. */
+export async function findProspectByPhone(phone: string): Promise<
+  { id: number; businessName: string; claimCode: string | null; city: string | null; slug: string | null; liveUrl: string | null } | null
+> {
   const last10 = (phone || "").replace(/[^0-9]/g, "").slice(-10);
   if (last10.length < 10) return null;
-
   const rows = (
     await db.execute(sql`
-      SELECT id, business_name AS "businessName", city, existing_website_url AS "existingWebsiteUrl"
+      SELECT id, business_name AS "businessName", claim_code AS "claimCode", city, slug, live_url AS "liveUrl"
       FROM forge_sites
       WHERE right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 10) = ${last10}
         AND status <> 'deleted'
-        AND status <> 'denied'`)
-  ).rows as Array<{ id: number; businessName: string; city: string | null; existingWebsiteUrl: string | null }>;
+      ORDER BY (status = 'denied') ASC, updated_at DESC
+      LIMIT 1`)
+  ).rows as Array<{ id: number; businessName: string; claimCode: string | null; city: string | null; slug: string | null; liveUrl: string | null }>;
+  return rows[0] ?? null;
+}
 
+/**
+ * A prospect texted STOP. Mark them OPTED OUT — suppressed from further texting and
+ * flagged so they surface in the "Declined / STOP" bucket on the leads page — but
+ * keep them visible (do NOT auto-delete/blacklist). Joe reviews these, can call once
+ * more to confirm the value prop, then removes them by hand. Returns the business
+ * name(s), or null if no matching prospect.
+ */
+export async function markProspectOptedOut(phone: string): Promise<string | null> {
+  const last10 = (phone || "").replace(/[^0-9]/g, "").slice(-10);
+  if (last10.length < 10) return null;
+  const rows = (
+    await db.execute(sql`
+      UPDATE forge_sites
+      SET outreach_status = 'opted_out',
+          denied_reason = 'Opted out of texts (replied STOP)',
+          updated_at = now()
+      WHERE right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 10) = ${last10}
+        AND status <> 'deleted'
+      RETURNING business_name`)
+  ).rows as Array<{ business_name: string }>;
   if (rows.length === 0) return null;
 
-  let name: string | null = null;
-  for (const s of rows) {
-    await db
-      .update(forgeSites)
-      .set({ status: "denied", deniedReason: "Opted out of texts (replied STOP)", updatedAt: sql`now()` })
-      .where(eq(forgeSites.id, s.id))
-      .catch(() => {});
-    await db
-      .insert(forgeBlacklist)
-      .values({
-        normKey: `${slugify(s.businessName)}|${slugify(s.city || "")}`,
-        businessName: s.businessName,
-        city: s.city || null,
-        domain: hostOf(s.existingWebsiteUrl || ""),
-        reason: "Opted out of texts (STOP)",
-      })
-      .onConflictDoNothing()
-      .catch(() => {});
-    name = name || s.businessName;
-  }
-
+  const name = rows[0].business_name;
   await db
     .insert(activityLog)
     .values({
       actor: "twilio",
       eventType: "prospect_opted_out",
-      summary: `🚫 ${name || phone} opted out (STOP) — moved to denied + blacklisted`,
-      metadata: { detail: { phone, deniedCount: rows.length } },
+      summary: `🛑 ${name} opted out (STOP) — moved to the Declined queue (call to confirm, then remove)`,
+      metadata: { detail: { phone, count: rows.length } },
     })
     .catch(() => {});
-
   return name;
 }

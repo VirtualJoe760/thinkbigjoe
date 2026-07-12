@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState, useEffect, useTransition } from "react";
 
-import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, type ContactSlot, type BookForContactState } from "../actions";
+import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, denyForgeSite, type ContactSlot, type BookForContactState } from "../actions";
 import type { ForgeSiteItem } from "../sites/sites-queue";
 import type { LeadHistoryEvent } from "@/lib/forge-outreach";
 
@@ -12,7 +12,7 @@ export type AttemptStat = { call: number; text: number; email: number; failed: n
 
 // The CRM pipeline: a lead becomes a contact (we reach out), then a user profile once they set up
 // on the site (claim), then a paying customer. Each stage is computed server-side (see page.tsx).
-export type LeadStage = "new" | "contacted" | "replied" | "bounced" | "claimed" | "customer";
+export type LeadStage = "new" | "contacted" | "replied" | "opted_out" | "bounced" | "claimed" | "customer";
 export type LeadMeta = {
   stage: LeadStage;
   accountNumber: string | null;
@@ -30,11 +30,12 @@ const STAGE: Record<LeadStage, { label: string; dot: string; chip: string; blurb
   new: { label: "New", dot: "bg-emerald-500", chip: "bg-emerald-50 text-emerald-700", blurb: "Not contacted yet" },
   contacted: { label: "Contacted", dot: "bg-blue-500", chip: "bg-blue-50 text-blue-700", blurb: "Reached out — waiting" },
   replied: { label: "Replied", dot: "bg-amber-500", chip: "bg-amber-50 text-amber-700", blurb: "They wrote back — follow up" },
+  opted_out: { label: "Declined / STOP", dot: "bg-rose-600", chip: "bg-rose-50 text-rose-700", blurb: "Texted STOP — call to confirm, then remove" },
   bounced: { label: "Bad contact", dot: "bg-red-500", chip: "bg-red-50 text-red-700", blurb: "Email bounced — hunting a new channel" },
   claimed: { label: "User", dot: "bg-violet-500", chip: "bg-violet-50 text-violet-700", blurb: "Signed up + claimed — not paid yet" },
   customer: { label: "Customer", dot: "bg-brand", chip: "bg-brand-tint text-brand", blurb: "Paying customer" },
 };
-const STAGE_ORDER: LeadStage[] = ["new", "contacted", "replied", "bounced", "claimed", "customer"];
+const STAGE_ORDER: LeadStage[] = ["new", "contacted", "replied", "opted_out", "bounced", "claimed", "customer"];
 
 const tel = (p: string) => p.replace(/[^\d+]/g, "");
 const firstName = (n: string) => (n || "").trim().split(/\s+/)[0] || "";
@@ -338,6 +339,18 @@ function ContactDetail({
     }
   }
 
+  const [removing, setRemoving] = useState(false);
+  async function handleRemove() {
+    if (!window.confirm(`Remove ${item.businessName} from the database? This denies + blacklists them so they're never re-added.`)) return;
+    setRemoving(true);
+    try {
+      await denyForgeSite(item.id, "Removed after opt-out (called to confirm value)");
+      onClose();
+    } finally {
+      setRemoving(false);
+    }
+  }
+
   const s = item.socialStats || {};
   const igF = s.instagram?.followers ? fmtNum(s.instagram.followers) : "";
   const fbF = s.facebook?.followers ? fmtNum(s.facebook.followers) : "";
@@ -573,6 +586,23 @@ function ContactDetail({
                 )}
               </>
             )}
+
+            {/* Declined / opted-out: they texted STOP. Call once to confirm value, then remove. */}
+            {meta.stage === "opted_out" && (
+              <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-rose-700">🛑 Opted out (texted STOP)</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-rose-700">
+                  They&apos;re suppressed from texts. Give them a call to make sure they understood the value prop — then remove them for good.
+                </p>
+                <button
+                  onClick={handleRemove}
+                  disabled={removing}
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white px-3 py-2.5 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-60 active:scale-[0.98]"
+                >
+                  {removing ? "Removing…" : "🗑️ Remove from database"}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* add a note — lands on the timeline below (e.g. what happened on a call) */}
@@ -661,7 +691,7 @@ export function LeadsCRM({
   const [openId, setOpenId] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<LeadStage | "all">("all");
-  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "reviews_high" | "reviews_low">("newest");
+  const [sortBy, setSortBy] = useState<"activity" | "newest" | "oldest" | "reviews_high" | "reviews_low">("activity");
   const [local, setLocal] = useState<Record<string, AttemptStat>>(attempts);
 
   const stat = (id: string): AttemptStat => local[id] || { call: 0, text: 0, email: 0, total: 0, lastAt: null };
@@ -706,15 +736,18 @@ export function LeadsCRM({
   const sorted = useMemo(() => {
     const rc = (l: ForgeSiteItem) => Number(l.reviewCount || 0);
     const created = (l: ForgeSiteItem) => l.createdAt || "";
+    const lastAt = (l: ForgeSiteItem) => local[l.id]?.lastAt || "";
     const arr = [...filtered];
-    if (sortBy === "oldest") arr.sort((a, b) => created(a).localeCompare(created(b)));
+    if (sortBy === "activity") arr.sort((a, b) => lastAt(b).localeCompare(lastAt(a)) || created(b).localeCompare(created(a)));
+    else if (sortBy === "oldest") arr.sort((a, b) => created(a).localeCompare(created(b)));
     else if (sortBy === "reviews_high") arr.sort((a, b) => rc(b) - rc(a) || created(b).localeCompare(created(a)));
     else if (sortBy === "reviews_low") arr.sort((a, b) => rc(a) - rc(b) || created(b).localeCompare(created(a)));
     else arr.sort((a, b) => created(b).localeCompare(created(a))); // newest
     return arr;
-  }, [filtered, sortBy]);
+  }, [filtered, sortBy, local]);
 
   const SORTS: Array<{ key: typeof sortBy; label: string }> = [
+    { key: "activity", label: "Recent activity" },
     { key: "newest", label: "Newest" },
     { key: "oldest", label: "Oldest" },
     { key: "reviews_high", label: "Most reviews" },
