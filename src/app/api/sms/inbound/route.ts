@@ -5,6 +5,7 @@ import { db, activityLog, smsConversations } from "@/db";
 import { notifyTelegram } from "@/lib/telegram";
 import { sendAdminAlert } from "@/lib/email";
 import { findProspectByPhone, markProspectOptedOut } from "@/lib/forge-optout";
+import { prospectSiteUrl } from "@/lib/forge-outreach";
 import { smsAgentReply, isSmsAgentConfigured, type SmsProspect } from "@/lib/sms-agent";
 import {
   encodeThreadCode,
@@ -170,7 +171,7 @@ export async function POST(req: Request) {
       businessName: prospect.businessName,
       ownerName: null,
       claimCode: prospect.claimCode,
-      site: prospect.liveUrl || (prospect.slug ? `thinkbigjoe.com/s/${prospect.slug}` : "thinkbigjoe.com"),
+      site: prospectSiteUrl({ liveUrl: prospect.liveUrl, slug: prospect.slug }),
       phone: sender,
     };
     after(async () => {

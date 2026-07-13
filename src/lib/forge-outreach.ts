@@ -2,6 +2,19 @@ import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 import { db, forgeSites, forgeReplies } from "@/db";
 
+const SITE_ORIGIN = (process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com").replace(/\/+$/, "");
+
+/**
+ * A prospect's site as a FULL, clickable absolute URL (always with `https://`) — so texts and
+ * link previews render it as a tappable link, never a bare `thinkbigjoe.com/s/…`. Prefers the
+ * live URL, falls back to the hosted preview `/s/<slug>`, then the site root.
+ */
+export function prospectSiteUrl(p: { liveUrl?: string | null; slug?: string | null }): string {
+  const raw = (p.liveUrl && p.liveUrl.trim()) || (p.slug ? `${SITE_ORIGIN}/s/${p.slug}` : SITE_ORIGIN);
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return `https://${raw.replace(/^\/+/, "")}`;
+}
+
 /**
  * The owner-outreach message for a built site — "I built you a website, claim it."
  * Shared by the 10am sender (/api/forge/send-outreach) and the dashboard review
@@ -42,7 +55,7 @@ export function composeSmsOutreach(p: {
   googleRating?: string | null;
   reviewCount?: string | null;
 }): string {
-  const site = p.liveUrl || (p.slug ? `thinkbigjoe.com/s/${p.slug}` : "thinkbigjoe.com");
+  const site = prospectSiteUrl(p);
   const rating = p.googleRating ? Number(p.googleRating) : 0;
   const reviews = p.reviewCount ? Number(p.reviewCount) : 0;
   // Casual + human — no fake name, no claim code up front. Just a friendly opener

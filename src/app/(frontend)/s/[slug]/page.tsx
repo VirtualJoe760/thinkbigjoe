@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { eq } from "drizzle-orm";
@@ -6,6 +7,43 @@ import { db, forgeSites } from "@/db";
 import { initials, nicheStockImage } from "@/lib/preview-assets";
 
 export const dynamic = "force-dynamic";
+
+function titleCaseMeta(s: string) {
+  return s.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Per-site link metadata — a real title + description so a texted/shared `/s/<slug>` link renders
+ * a proper preview. The OG/Twitter image comes from the sibling `opengraph-image.tsx`, which Next
+ * wires into this route's metadata automatically.
+ */
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const [site] = await db
+    .select({
+      businessName: forgeSites.businessName,
+      niche: forgeSites.niche,
+      city: forgeSites.city,
+      serviceArea: forgeSites.serviceArea,
+    })
+    .from(forgeSites)
+    .where(eq(forgeSites.slug, slug))
+    .limit(1);
+
+  if (!site) return { title: "Website preview · ThinkBigJoe" };
+
+  const nicheLabel = site.niche ? titleCaseMeta(site.niche.split(/[—-]/)[0].trim()) : "local service";
+  const place = site.city || site.serviceArea || "your area";
+  const title = `${site.businessName} — new website`;
+  const description = `A free, mobile-friendly website we built for ${site.businessName}, a ${nicheLabel.toLowerCase()} in ${place}. Take a look and claim it.`;
+
+  return {
+    title,
+    description,
+    openGraph: { title, description, type: "website", url: `/s/${slug}`, siteName: "ThinkBigJoe" },
+    twitter: { card: "summary_large_image", title, description },
+  };
+}
 
 type PreviewContent = {
   eyebrow?: string;
