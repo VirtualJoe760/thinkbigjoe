@@ -26,13 +26,12 @@ const forwardingNumber = process.env.DROPCOWBOY_FORWARDING_NUMBER;
 const poolId = process.env.DROPCOWBOY_POOL_ID;
 
 /**
- * True once the account + a voicemail source are wired — otherwise drops are skipped (no-op).
- * The voicemail can be a Drop Cowboy recording (DROPCOWBOY_RECORDING_ID) or a hosted audio file
- * (DROPCOWBOY_AUDIO_URL). brand_id is OPTIONAL: with the Twilio (bring-your-own-carrier)
- * integration, delivery goes through Joe's own Twilio, which bypasses Drop Cowboy's Trust Center
- * brand approval. If the account still requires a brand, set DROPCOWBOY_BRAND_ID.
+ * True once the account is fully wired — otherwise drops are skipped (no-op). Drop Cowboy will not
+ * DELIVER without a registered trusted brand (DROPCOWBOY_BRAND_ID from Trust Center) — without it a
+ * drop returns status:"queued" but never sends. The voicemail source is a Drop Cowboy recording
+ * (DROPCOWBOY_RECORDING_ID) or a hosted audio file (DROPCOWBOY_AUDIO_URL).
  */
-export const isDropCowboyConfigured = Boolean(teamId && secret && (recordingId || audioUrlEnv));
+export const isDropCowboyConfigured = Boolean(teamId && secret && brandId && (recordingId || audioUrlEnv));
 
 /** Normalize to E.164 (default US +1). Returns undefined if it can't. */
 export function toE164(raw?: string | null): string | undefined {

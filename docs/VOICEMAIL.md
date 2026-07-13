@@ -30,21 +30,21 @@ but we chose a recorded message.
 ## Setup (env)
 
 Set in Vercel + `.env.local` (drops are a **no-op** until the three core vars are present —
-`isDropCowboyConfigured` = team id + secret + recording id):
+`isDropCowboyConfigured` = team id + secret + brand id + (recording id or audio url)):
 
 | Var | What |
 |---|---|
 | `DROPCOWBOY_TEAM_ID` | Account team id (Settings → API) |
 | `DROPCOWBOY_SECRET` | Account API secret |
 | `DROPCOWBOY_RECORDING_ID` | The recorded voicemail's GUID (Recordings tab) |
-| `DROPCOWBOY_BRAND_ID` | *(optional)* Trust Center brand GUID. **Not needed with the Twilio (bring-your-own-carrier) integration** — delivery goes through Joe's own Twilio, which bypasses Drop Cowboy's brand-approval process. Only set it if the account still asks for one. |
+| `DROPCOWBOY_BRAND_ID` | **Required.** Trust Center brand GUID (the approved "JPS & Company LLC" brand). Drop Cowboy will NOT deliver without a trusted brand — a drop returns `status:"queued"` but never sends. BYOC does NOT bypass this. |
 | `DROPCOWBOY_FORWARDING_NUMBER` | E.164 number callbacks route to — set to the TBJ number so callbacks reach Ivy |
 | `DROPCOWBOY_POOL_ID` | *(optional)* private caller-id number pool |
 | `DROPCOWBOY_WEBHOOK_SECRET` | *(optional)* token appended to the callback URL + verified on delivery webhooks (falls back to `CRON_SECRET`) |
 
-**This account uses the Twilio integration** (Joe upgraded it), so brand registration/approval is
-handled by his Twilio A2P setup — no Drop Cowboy Trust Center brand needed. `brand_id` is only sent
-if `DROPCOWBOY_BRAND_ID` is set.
+**A trusted brand IS required for delivery** (learned the hard way): drops without `brand_id` come
+back `status:"queued"` and silently never deliver. Use the approved Trust Center brand. BYOC covers
+the carrier/numbers, not the sender brand — they're separate requirements.
 
 ## Rollout
 
@@ -60,3 +60,16 @@ if `DROPCOWBOY_BRAND_ID` is set.
 Ringless voicemail is TCPA-sensitive. Drop Cowboy handles brand registration, DNC scrubbing, and
 number pooling; we keep the same STOP/opt-out discipline as SMS — the batch route excludes
 `outreach_status = 'opted_out'` and AI-paused leads, and delivery failures/DNC ping Telegram.
+
+## Reading delivery results (webhook)
+
+Drop Cowboy POSTs each drop's outcome to `/api/dropcowboy/webhook` → logged to `activity_log` as
+`voicemail_delivered` / `voicemail_failed` (raw payload in `metadata.raw`). Common failure reasons:
+
+| Code | Reason | Meaning |
+|---|---|---|
+| 4000 | VoiceMail NotDetected | Call placed but no voicemail box detected to deposit into (phone answered, VM not set up, or timing). |
+| 4013 | Too Many Attempts | Repeat drops to the SAME number are capped — don't hammer one number when testing. |
+
+The payload also includes `network` (carrier/line-type) — a `wireless` MNO like VERIZON confirms
+the number can receive RVM.
