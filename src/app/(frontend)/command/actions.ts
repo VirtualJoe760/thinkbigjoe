@@ -360,7 +360,7 @@ export async function renameContact(phone: string, name: string): Promise<{ ok: 
  * they're not interested: suppresses further outreach (opted_out) and stamps declined_at so it can
  * be auto-removed after a few days if they never claim. New/Contacted clear the declined state.
  */
-export async function setLeadStage(siteId: number, stage: "new" | "contacted" | "declined"): Promise<{ ok: boolean; message?: string }> {
+export async function setLeadStage(siteId: number, stage: "new" | "contacted" | "hot" | "declined"): Promise<{ ok: boolean; message?: string }> {
   await assertAdmin();
   if (!Number.isFinite(siteId)) return { ok: false, message: "Bad lead id." };
   const [site] = await db.select({ businessName: forgeSites.businessName, outreachStatus: forgeSites.outreachStatus }).from(forgeSites).where(eq(forgeSites.id, siteId)).limit(1);
@@ -380,6 +380,14 @@ export async function setLeadStage(siteId: number, stage: "new" | "contacted" | 
     await db.update(forgeSites)
       .set({ leadStage: stage, declinedAt: null, ...(site.outreachStatus === "opted_out" ? { outreachStatus: "none" as const } : {}) })
       .where(eq(forgeSites.id, siteId));
+    if (stage === "hot") {
+      await db.insert(activityLog).values({
+        actor: "joe",
+        eventType: "lead_hot",
+        summary: `🔥 ${site.businessName} — marked Hot (strong interest)`,
+        metadata: { detail: { siteId, note: "Marked Hot — strong interest; prioritize for review + close." } },
+      }).catch(() => {});
+    }
   }
   revalidatePath("/command/leads");
   return { ok: true };
