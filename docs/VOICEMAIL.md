@@ -29,18 +29,22 @@ but we chose a recorded message.
 
 ## Setup (env)
 
-Set in Vercel + `.env.local` (drops are a **no-op** until all four core vars are present —
-`isDropCowboyConfigured`):
+Set in Vercel + `.env.local` (drops are a **no-op** until the three core vars are present —
+`isDropCowboyConfigured` = team id + secret + recording id):
 
 | Var | What |
 |---|---|
 | `DROPCOWBOY_TEAM_ID` | Account team id (Settings → API) |
 | `DROPCOWBOY_SECRET` | Account API secret |
-| `DROPCOWBOY_BRAND_ID` | Registered brand GUID (Trust Center) — required, TCPA |
 | `DROPCOWBOY_RECORDING_ID` | The recorded voicemail's GUID (Recordings tab) |
+| `DROPCOWBOY_BRAND_ID` | *(optional)* Trust Center brand GUID. **Not needed with the Twilio (bring-your-own-carrier) integration** — delivery goes through Joe's own Twilio, which bypasses Drop Cowboy's brand-approval process. Only set it if the account still asks for one. |
 | `DROPCOWBOY_FORWARDING_NUMBER` | E.164 number callbacks route to — set to the TBJ number so callbacks reach Ivy |
 | `DROPCOWBOY_POOL_ID` | *(optional)* private caller-id number pool |
 | `DROPCOWBOY_WEBHOOK_SECRET` | *(optional)* token appended to the callback URL + verified on delivery webhooks (falls back to `CRON_SECRET`) |
+
+**This account uses the Twilio integration** (Joe upgraded it), so brand registration/approval is
+handled by his Twilio A2P setup — no Drop Cowboy Trust Center brand needed. `brand_id` is only sent
+if `DROPCOWBOY_BRAND_ID` is set.
 
 ## Rollout
 

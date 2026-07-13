@@ -24,8 +24,13 @@ const recordingId = process.env.DROPCOWBOY_RECORDING_ID;
 const forwardingNumber = process.env.DROPCOWBOY_FORWARDING_NUMBER;
 const poolId = process.env.DROPCOWBOY_POOL_ID;
 
-/** True once the account + brand + recording are wired — otherwise drops are skipped (no-op). */
-export const isDropCowboyConfigured = Boolean(teamId && secret && brandId && recordingId);
+/**
+ * True once the account + recording are wired — otherwise drops are skipped (no-op).
+ * brand_id is OPTIONAL: with the Twilio (bring-your-own-carrier) integration, delivery goes
+ * through Joe's own Twilio, which bypasses Drop Cowboy's Trust Center brand approval. If the
+ * account still requires a brand, set DROPCOWBOY_BRAND_ID and it's included automatically.
+ */
+export const isDropCowboyConfigured = Boolean(teamId && secret && recordingId);
 
 /** Normalize to E.164 (default US +1). Returns undefined if it can't. */
 export function toE164(raw?: string | null): string | undefined {
@@ -56,11 +61,11 @@ export async function dropVoicemail(
   const body: Record<string, unknown> = {
     team_id: teamId,
     secret,
-    brand_id: brandId,
     recording_id: recordingId,
     phone_number: to,
     foreign_id: opts.foreignId || `tbj-${to}`,
   };
+  if (brandId) body.brand_id = brandId; // optional — omitted when Twilio BYOC bypasses brand approval
   if (forwardingNumber) body.forwarding_number = forwardingNumber;
   if (poolId) body.pool_id = poolId;
   if (opts.callbackUrl) body.callback_url = opts.callbackUrl;
