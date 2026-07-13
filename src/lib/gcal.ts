@@ -177,6 +177,53 @@ export async function createEvent(
   );
 }
 
+export type ListedEvent = {
+  id: string;
+  summary: string;
+  description: string;
+  start: string; // ISO datetime, or YYYY-MM-DD for all-day
+  end: string;
+  allDay: boolean;
+  hangoutLink: string | null;
+  htmlLink: string | null;
+  attendees: { email?: string; displayName?: string; responseStatus?: string }[];
+  location: string | null;
+};
+
+/**
+ * List calendar events in a window — the source of truth for the appointments calendar (every booked
+ * call, however it was created: the funnel, Ivy, or the call room's book-for-lead). singleEvents
+ * expands recurring series into individual instances so they plot correctly. Returns [] on any error
+ * so the calendar page degrades gracefully instead of 500ing.
+ */
+export async function listEvents(timeMinISO: string, timeMaxISO: string): Promise<ListedEvent[]> {
+  if (!isCalendarConfigured()) return [];
+  const url =
+    `${BASE_URL}/calendars/${encodeURIComponent(calendarId())}/events` +
+    `?singleEvents=true&orderBy=startTime&maxResults=250` +
+    `&timeMin=${encodeURIComponent(timeMinISO)}&timeMax=${encodeURIComponent(timeMaxISO)}`;
+  try {
+    const data = await gcalFetch(url, "GET");
+    return ((data.items || []) as any[])
+      .filter((e) => e.status !== "cancelled" && (e.start?.dateTime || e.start?.date))
+      .map((e) => ({
+        id: String(e.id),
+        summary: e.summary || "(no title)",
+        description: e.description || "",
+        start: e.start.dateTime || e.start.date,
+        end: e.end?.dateTime || e.end?.date || e.start.dateTime || e.start.date,
+        allDay: !!e.start.date,
+        hangoutLink: e.hangoutLink || null,
+        htmlLink: e.htmlLink || null,
+        attendees: e.attendees || [],
+        location: e.location || null,
+      }));
+  } catch (err) {
+    console.error("[gcal] listEvents failed:", err);
+    return [];
+  }
+}
+
 /**
  * Live connection check for the command overview — confirms the refresh token
  * still works by doing a tiny free/busy ping. `configured` = env vars present;

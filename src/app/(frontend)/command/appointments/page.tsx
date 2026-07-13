@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { desc, isNotNull } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 
-import { db, leads } from "@/db";
+import { db } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
-import { calendarHealth } from "@/lib/gcal";
+import { calendarHealth, listEvents } from "@/lib/gcal";
+import { AppointmentCalendar, type CalEvent } from "./appointments-calendar";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -13,115 +14,74 @@ export const metadata: Metadata = {
 };
 
 const TZ = "America/Los_Angeles";
-
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    timeZone: TZ,
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
-
-function whenLabel(ms: number): { text: string; tone: "soon" | "upcoming" | "past" } {
-  if (ms < 0) return { text: "past", tone: "past" };
-  const hrs = ms / 3_600_000;
-  if (hrs < 2) return { text: `in ${Math.max(1, Math.round(ms / 60000))} min`, tone: "soon" };
-  if (hrs < 24) return { text: `in ${Math.round(hrs)}h`, tone: hrs < 3 ? "soon" : "upcoming" };
-  const days = Math.round(hrs / 24);
-  return { text: days <= 1 ? "tomorrow" : `in ${days} days`, tone: "upcoming" };
-}
+const DAY = 86_400_000;
 
 export default async function AppointmentsPage() {
   await requireAdmin();
 
-  const [rows, cal] = await Promise.all([
-    db.select().from(leads).where(isNotNull(leads.bookedSlot)).orderBy(desc(leads.bookedSlot)).limit(200),
+  const now = new Date();
+  const timeMin = new Date(now.getTime() - 45 * DAY).toISOString();
+  const timeMax = new Date(now.getTime() + 120 * DAY).toISOString();
+
+  const [gcalEvents, cal, callbackRows] = await Promise.all([
+    listEvents(timeMin, timeMax),
     calendarHealth(),
+    db.execute(sql`
+      SELECT id, business_name AS "businessName", callback_at AS "callbackAt",
+             callback_note AS "callbackNote", phone
+      FROM forge_sites
+      WHERE callback_at IS NOT NULL
+        AND callback_at BETWEEN ${timeMin} AND ${timeMax}
+        AND status <> 'deleted'
+      ORDER BY callback_at ASC`),
   ]);
 
-  const now = Date.now();
-  const upcoming = rows
-    .filter((r) => r.bookedSlot && new Date(r.bookedSlot).getTime() >= now)
-    .sort((a, b) => new Date(a.bookedSlot!).getTime() - new Date(b.bookedSlot!).getTime());
-  const past = rows.filter((r) => !r.bookedSlot || new Date(r.bookedSlot).getTime() < now);
+  const callbacks = (Array.isArray(callbackRows) ? callbackRows : (callbackRows as { rows?: unknown[] }).rows ?? []) as Array<{
+    id: number; businessName: string; callbackAt: string; callbackNote: string | null; phone: string | null;
+  }>;
 
-  type Row = (typeof rows)[number];
-  const Card = ({ l, isPast }: { l: Row; isPast?: boolean }) => {
-    const t = l.bookedSlot ? new Date(l.bookedSlot).getTime() : 0;
-    const rel = whenLabel(t - now);
-    const chips = [l.industry, l.teamSize ? `${l.teamSize} team` : null, l.timeline ? `timeline: ${l.timeline}` : null].filter(Boolean) as string[];
-    return (
-      <div className={`rounded-2xl border border-line bg-background p-5 ${isPast ? "opacity-70" : ""}`}>
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              {l.prospectId ? (
-                <Link href={`/command/${l.prospectId}`} className="font-bold text-ink hover:text-brand hover:underline">{l.name}</Link>
-              ) : (
-                <span className="font-bold text-ink">{l.name}</span>
-              )}
-              {l.company ? <span className="text-sm text-ink-soft">· {l.company}</span> : null}
-              {l.role ? <span className="text-sm text-ink-soft">· {l.role}</span> : null}
-            </div>
-            {l.bookedSlot && (
-              <div className="mt-0.5 text-sm font-semibold text-brand">
-                {fmtDate(l.bookedSlot)} PT
-                <span className="font-normal text-ink-soft"> · 30 min{!isPast ? ` · ${rel.text}` : ""}</span>
-              </div>
-            )}
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-1.5">
-            {!isPast && (
-              <span
-                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                  rel.tone === "soon" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
-                }`}
-              >
-                {rel.tone === "soon" ? "Starting soon" : "Upcoming"}
-              </span>
-            )}
-            <div className="flex items-center gap-1.5">
-              {l.meetLink && (
-                <a href={l.meetLink} target="_blank" rel="noreferrer" className="rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white hover:bg-brand-dark">Join</a>
-              )}
-              {l.gcalHtmlLink && (
-                <a href={l.gcalHtmlLink} target="_blank" rel="noreferrer" className="rounded-full border border-line px-3 py-1 text-xs font-semibold hover:bg-surface">Calendar</a>
-              )}
-            </div>
-          </div>
-        </div>
+  // Unify Google Calendar events (booked calls, however created) + scheduled call-backs.
+  const events: CalEvent[] = [
+    ...gcalEvents.map((e): CalEvent => {
+      const guest = e.attendees.map((a) => a.displayName || a.email).filter(Boolean)[0] as string | undefined;
+      return {
+        id: `g-${e.id}`,
+        kind: "appt",
+        title: e.summary,
+        start: e.start,
+        end: e.end,
+        allDay: e.allDay,
+        meetLink: e.hangoutLink,
+        htmlLink: e.htmlLink,
+        note: e.description ? e.description.slice(0, 500) : undefined,
+        sub: [guest, e.location].filter(Boolean).join(" · ") || undefined,
+      };
+    }),
+    ...callbacks.map((c): CalEvent => ({
+      id: `c-${c.id}`,
+      kind: "callback",
+      title: `Call back — ${c.businessName}`,
+      start: c.callbackAt,
+      end: new Date(new Date(c.callbackAt).getTime() + 30 * 60000).toISOString(),
+      allDay: false,
+      note: c.callbackNote || undefined,
+      sub: c.phone || undefined,
+      href: "/command/leads",
+    })),
+  ];
 
-        {chips.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {chips.map((c, i) => (
-              <span key={i} className="rounded-full bg-surface px-2.5 py-0.5 text-[11px] text-ink-soft">{c}</span>
-            ))}
-          </div>
-        )}
+  // A compact "next up" rail — soonest upcoming items across both types.
+  const upcoming = [...events]
+    .filter((e) => new Date(e.start).getTime() >= now.getTime() - 60 * 60000)
+    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+    .slice(0, 6);
 
-        {l.problem && (
-          <p className="mt-3 rounded-xl bg-surface px-4 py-3 text-sm leading-relaxed">
-            <span className="font-semibold text-ink">What they want: </span>
-            {l.problem}
-          </p>
-        )}
-
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-soft">
-          <a href={`mailto:${l.email}`} className="hover:text-ink">{l.email}</a>
-          {l.phone && <a href={`tel:${l.phone}`} className="hover:text-ink">{l.phone}</a>}
-          {l.source && <span>via {String(l.source).replace(/-/g, " ")}</span>}
-        </div>
-      </div>
-    );
-  };
+  const fmtWhen = (iso: string) =>
+    new Date(iso).toLocaleString("en-US", { timeZone: TZ, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
   return (
     <div className="px-6 py-8">
-      <div className="mx-auto w-full max-w-4xl">
+      <div className="mx-auto w-full max-w-5xl">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl font-extrabold tracking-tight">Appointments</h1>
           <span
@@ -135,34 +95,40 @@ export default async function AppointmentsPage() {
           </span>
         </div>
         <p className="mt-1 text-sm text-ink-soft">
-          Booked strategy calls, with the intake each person filled out. Invites + Meet links go out via Google Calendar.
+          Every TBJ commitment in one place — booked strategy calls (Google Calendar), plus the call-backs you scheduled from the leads room. Switch between month, week, and day.
         </p>
 
-        {rows.length === 0 ? (
-          <div className="mt-6 rounded-2xl border border-line bg-background p-10 text-center text-ink-soft">
-            No booked calls yet. They appear here when someone completes the intake and books.
-          </div>
-        ) : (
-          <div className="mt-6 space-y-8">
-            <section>
-              <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-ink-soft">
-                Upcoming <span className="text-ink">{upcoming.length}</span>
-              </h2>
-              {upcoming.length === 0 ? (
-                <p className="text-sm text-ink-soft">Nothing on the books right now.</p>
-              ) : (
-                <div className="space-y-3">{upcoming.map((l) => <Card key={l.id} l={l} />)}</div>
-              )}
-            </section>
+        <div className="mt-6">
+          <AppointmentCalendar events={events} />
+        </div>
 
-            {past.length > 0 && (
-              <section>
-                <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-ink-soft">
-                  Past <span className="text-ink">{past.length}</span>
-                </h2>
-                <div className="space-y-3">{past.map((l) => <Card key={l.id} l={l} isPast />)}</div>
-              </section>
-            )}
+        {/* Next up — the soonest handful, for a quick linear read */}
+        {upcoming.length > 0 && (
+          <div className="mt-8">
+            <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-ink-soft">Next up</h2>
+            <div className="space-y-2">
+              {upcoming.map((e) => (
+                <div key={e.id} className="flex items-center gap-3 rounded-xl border border-line bg-background px-4 py-3">
+                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${e.kind === "callback" ? "bg-amber-500" : "bg-brand"}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-ink">{e.title}</div>
+                    <div className="truncate text-xs text-ink-soft">{fmtWhen(e.start)} PT{e.sub ? ` · ${e.sub}` : ""}</div>
+                  </div>
+                  {e.meetLink && (
+                    <a href={e.meetLink} target="_blank" rel="noreferrer" className="shrink-0 rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white hover:bg-brand-dark">Join</a>
+                  )}
+                  {!e.meetLink && e.href && (
+                    <Link href={e.href} className="shrink-0 rounded-full border border-line px-3 py-1 text-xs font-semibold text-ink hover:bg-surface">Open</Link>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {events.length === 0 && (
+          <div className="mt-6 rounded-2xl border border-line bg-background p-10 text-center text-ink-soft">
+            Nothing scheduled in this window. Booked calls and scheduled call-backs will appear here.
           </div>
         )}
       </div>
