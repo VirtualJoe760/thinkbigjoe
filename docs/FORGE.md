@@ -128,6 +128,15 @@ IT BECOMES A LEAD           ──▶  /command/leads "call room": photo, review
                   owner claims the site → /portal/claim → optional Stripe Identity verification
 ```
 
+**Manually building a hot lead before they claim.** A marketing-approved lead you haven't sold
+yet is only a `/s/<slug>` **preview** — the real deployed build normally fires on claim (sell-first).
+For a strong lead you want built out now, the **leads call room** (`/command/leads`, the contact
+sheet) has a **🏗️ Build the full site** control (`command/actions.ts:queueLeadBuild`) that sets
+`status='approved'` so forge-poll builds it on its next tick. It takes an optional plain-English
+**feature note** (online booking, Stripe checkout, etc.) that's injected into the build prompt as
+`revision_note` ("Joe requested this change, honor it fully"). It keeps the row a lead (marketing
+stays on) and costs one forge run.
+
 **The gate is the point.** A `built` site is a draft for Joe's eyes, not a lead. Nothing in the
 outreach path (agent drafting, the call room, the `list_forge_outreach_queue` MCP tool) considers
 a site a lead until `marketing_approved_at` is set. This was added specifically so "the forge

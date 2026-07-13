@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useRef, useState, useEffect, useTransition } from "react";
 
-import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, denyForgeSite, dropLeadVoicemail, setLeadStage, type ContactSlot, type BookForContactState } from "../actions";
+import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, denyForgeSite, dropLeadVoicemail, setLeadStage, queueLeadBuild, type ContactSlot, type BookForContactState } from "../actions";
 import type { ForgeSiteItem } from "../sites/sites-queue";
 import type { LeadHistoryEvent } from "@/lib/forge-outreach";
 
@@ -341,6 +341,100 @@ function CardSection({
 }
 
 // ── Contact detail (slide-over: full-screen on mobile, right sheet on desktop) ──
+/**
+ * Queue the FULL forge build for a hot lead — before they claim. A lead you haven't sold is
+ * only a /s/<slug> preview; the real deployed site normally builds on claim. For a strong lead
+ * you can build it now, optionally attaching must-have features (online booking, Stripe checkout,
+ * etc.) that the forge honors. Shows live build state (preview-only / queued / building / built).
+ */
+function BuildControl({ item }: { item: ForgeSiteItem }) {
+  const built = !!item.liveUrl || item.status === "built";
+  const building = item.status === "building";
+  const queued = item.status === "approved";
+
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [justQueued, setJustQueued] = useState(false);
+
+  async function submit() {
+    if (!window.confirm(`Queue a full build for ${item.businessName}? This runs the forge (~10–15 min) and uses one build run.`)) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await queueLeadBuild(item.id, note.trim() || undefined);
+      setMsg({ ok: r.ok, text: r.message });
+      if (r.ok) {
+        setJustQueued(true);
+        setOpen(false);
+      }
+    } catch {
+      setMsg({ ok: false, text: "Something went wrong queuing the build." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (built) {
+    return (
+      <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[11px] font-medium text-emerald-700">
+        ✅ Full site is built &amp; deployed.
+      </div>
+    );
+  }
+  if (building || queued || justQueued) {
+    return (
+      <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] font-medium text-amber-700">
+        {building ? "🏗️ Building the full site now — ~10–15 min." : "🕒 Queued — the forge builds the full site on its next tick."}
+        {msg && <span className="mt-1 block text-amber-600">{msg.text}</span>}
+      </div>
+    );
+  }
+  // Preview-only lead — offer the manual build.
+  return (
+    <div className="mt-2">
+      {!open ? (
+        <button
+          onClick={() => setOpen(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-violet-500/60 bg-violet-50 px-3 py-3 text-sm font-semibold text-violet-700 transition-colors hover:bg-violet-100 active:scale-[0.98]"
+        >
+          🏗️ Build the full site
+        </button>
+      ) : (
+        <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3">
+          <p className="text-xs font-bold text-violet-800">Queue the full build</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-violet-700">
+            Right now this lead only has a <b>preview</b>. This builds the real, deployed site. Add any
+            must-have features below (optional) — the forge honors them.
+          </p>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={3}
+            placeholder="e.g. Add online booking + Stripe checkout so customers can book and pay right on the site…"
+            className="mt-2 w-full resize-y rounded-lg border border-violet-200 bg-white p-2.5 text-sm text-ink outline-none placeholder:text-ink-soft focus:border-violet-500"
+          />
+          <div className="mt-2 flex gap-2">
+            <button onClick={() => setOpen(false)} disabled={busy} className="flex-1 rounded-lg border border-line bg-white px-3 py-2.5 text-sm font-medium text-ink disabled:opacity-60">
+              Cancel
+            </button>
+            <button onClick={submit} disabled={busy} className="flex-[2] rounded-lg bg-violet-600 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-60">
+              {busy ? "Queuing…" : "🏗️ Queue full build"}
+            </button>
+          </div>
+        </div>
+      )}
+      {msg && !msg.ok && <p className="mt-1.5 text-[11px] text-amber-700">{msg.text}</p>}
+      {!open && !msg && (
+        <p className="mt-1.5 text-[11px] text-ink-soft">
+          Builds the real deployed site from the preview (normally fires on claim). ~10–15 min · one forge run.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ContactDetail({
   item, meta, attempt, history, onClose, onContact,
 }: {
@@ -669,6 +763,9 @@ function ContactDetail({
               📅 {showBook ? "Hide booking" : "Book an appointment"}
             </button>
             {showBook && <BookForLead siteId={item.id} onBooked={() => onContact(item.id, "call")} />}
+
+            {/* Build the full deployed site for a hot lead — before they claim (else it's just a preview). */}
+            <BuildControl item={item} />
 
             {/* Drop a ringless voicemail (Drop Cowboy) + follow up with the first-touch text. */}
             {item.phone && (

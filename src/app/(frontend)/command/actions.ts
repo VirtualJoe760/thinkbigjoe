@@ -837,6 +837,49 @@ export async function requestForgeRebuild(id: string): Promise<{ ok: boolean; me
   return { ok: true, message: "Sent for a fresh rebuild with a different design — a few minutes." };
 }
 
+/**
+ * Queue a FULL forge build for a lead straight from the call room — for a hot prospect you
+ * want built out NOW, before they claim (normally the real build only fires on claim, so a
+ * lead you haven't sold yet is just a /s/<slug> preview). Sets status='approved' so forge-poll
+ * picks it up on its next tick; an optional feature note is injected into the build prompt
+ * (revision_note → "Joe requested this change, honor it fully") so the forge builds the
+ * requested features in. Keeps the row a lead (marketing stays on). Costs one forge run
+ * (~10–15 min); the poller respects the builds-enabled switch + weekly run budget.
+ */
+export async function queueLeadBuild(id: string, featureNote?: string): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  const [site] = await db.select().from(forgeSites).where(eq(forgeSites.id, Number(id))).limit(1);
+  if (!site) return { ok: false, message: "Site not found." };
+  if (site.status === "building") return { ok: false, message: `${site.businessName} is building right now — give it ~10 minutes.` };
+  if (site.status === "approved") return { ok: false, message: `${site.businessName} is already queued — it builds on the forge's next tick.` };
+
+  const note = (featureNote || "").trim();
+  await db
+    .update(forgeSites)
+    .set({
+      status: "approved", // enters the build queue; forge-poll → forge-build.sh runs the full build
+      approvedAt: now(),
+      ...(note ? { revisionNote: note, revisionRequestedAt: now() } : {}),
+      updatedAt: now(),
+    })
+    .where(eq(forgeSites.id, site.id));
+
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "forge_build_queued",
+    summary: `🏗️ Queued a full build for ${site.businessName}${note ? ` — features: "${note.slice(0, 100)}"` : ""}`,
+    metadata: { auto: true, target: site.slug, detail: { siteId: site.id, note: note || undefined, source: "leads" } },
+  });
+  await notifyTelegram(`🏗️ Queued a full build for ${site.businessName}${note ? `\nRequested features: ${note}` : ""}`).catch(() => {});
+
+  revalidatePath("/command/leads");
+  revalidatePath("/command/prospects");
+  return {
+    ok: true,
+    message: `${site.businessName} is queued — the forge builds the full deployed site on its next tick (~10–15 min). You'll get a Telegram when it's live.`,
+  };
+}
+
 // ── Book an appointment FOR a lead (from the call room) ─────────────────────
 // A rep, on a call with the prospect, books them a call with Joe. Books onto Joe's
 // calendar with the prospect as the attendee (their name/email from the site).
