@@ -61,6 +61,8 @@ export default async function LeadsPage() {
       createdAt: r.createdAt,
       outreachStatus: r.outreachStatus || "none",
       leadStage: r.leadStage || "",
+      callbackAt: r.callbackAt || "",
+      callbackNote: r.callbackNote || "",
       outreachSubject: r.outreachSubject || "",
       outreachDraft: r.outreachDraft || "",
       contactedAt: r.contactedAt || "",

@@ -411,6 +411,52 @@ export async function saveLeadNote(siteId: string, note: string): Promise<{ ok: 
 }
 
 /**
+ * Schedule a call-back reminder for a lead who needs time to think it over. Stores an absolute
+ * instant (the client sends an ISO string it built from the picker in Joe's local time) + an
+ * optional note. Resets callback_reminded_at so the reminder cron (api/leads/callback-reminders)
+ * fires a Telegram at the scheduled time. Surfaces in the "Callbacks" panel on the leads page.
+ */
+export async function scheduleCallback(siteId: string, whenIso: string, note?: string): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  const id = Number(siteId);
+  if (!Number.isFinite(id)) return { ok: false, message: "Bad lead id." };
+  const when = new Date(whenIso);
+  if (isNaN(when.getTime())) return { ok: false, message: "Pick a date & time." };
+  const [site] = await db.select({ businessName: forgeSites.businessName }).from(forgeSites).where(eq(forgeSites.id, id)).limit(1);
+  if (!site) return { ok: false, message: "Lead not found." };
+
+  const text = (note || "").trim();
+  await db
+    .update(forgeSites)
+    .set({ callbackAt: when.toISOString(), callbackNote: text || null, callbackRemindedAt: null, updatedAt: now() })
+    .where(eq(forgeSites.id, id));
+
+  const pretty = when.toLocaleString("en-US", { timeZone: "America/Los_Angeles", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "callback_scheduled",
+    summary: `📞 Callback scheduled for ${site.businessName} — ${pretty} PT${text ? `: ${text.slice(0, 80)}` : ""}`,
+    metadata: { detail: { siteId: id, callbackAt: when.toISOString(), note: text || undefined } },
+  }).catch(() => {});
+
+  revalidatePath("/command/leads");
+  return { ok: true, message: `Callback set for ${pretty} PT — you'll get a Telegram reminder.` };
+}
+
+/** Clear a scheduled call-back (done, or no longer needed). */
+export async function clearCallback(siteId: string): Promise<{ ok: boolean }> {
+  await assertAdmin();
+  const id = Number(siteId);
+  if (!Number.isFinite(id)) return { ok: false };
+  await db
+    .update(forgeSites)
+    .set({ callbackAt: null, callbackNote: null, callbackRemindedAt: null, updatedAt: now() })
+    .where(eq(forgeSites.id, id));
+  revalidatePath("/command/leads");
+  return { ok: true };
+}
+
+/**
  * Send Joe's reply to an inbound prospect message. The draft→approve→send gate: the poller
  * pre-wrote a draft (forge_replies), Joe reviewed/edited the text here, and this actually sends it
  * via SMTP (reply-to Joe, threaded on their subject). Marks the row 'sent' + logs the touch so it

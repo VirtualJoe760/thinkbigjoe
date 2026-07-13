@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useRef, useState, useEffect, useTransition } from "react";
 
-import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, denyForgeSite, dropLeadVoicemail, setLeadStage, queueLeadBuild, type ContactSlot, type BookForContactState } from "../actions";
+import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, denyForgeSite, dropLeadVoicemail, setLeadStage, queueLeadBuild, scheduleCallback, clearCallback, type ContactSlot, type BookForContactState } from "../actions";
 import type { ForgeSiteItem } from "../sites/sites-queue";
 import type { LeadHistoryEvent } from "@/lib/forge-outreach";
 
@@ -47,6 +47,23 @@ const mapsSearchUrl = (i: ForgeSiteItem) =>
 const fmtDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
 const fmtNum = (n?: number) => (n == null ? "" : n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
+// A stored UTC ISO → the value a <input type="datetime-local"> expects, in the browser's local time.
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+// Human label for a scheduled call-back + whether it's already due (overdue).
+function fmtCallback(iso: string): { text: string; overdue: boolean; soon: boolean } {
+  const d = new Date(iso);
+  const ms = d.getTime() - Date.now();
+  return {
+    text: d.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+    overdue: ms <= 0,
+    soon: ms > 0 && ms < 3 * 3600 * 1000,
+  };
+}
 const US_STATES = new Set(["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"]);
 function stateFrom(s: string): string {
   const t = (s || "").toUpperCase().match(/\b[A-Z]{2}\b/g);
@@ -342,6 +359,94 @@ function CardSection({
 }
 
 // ── Contact detail (slide-over: full-screen on mobile, right sheet on desktop) ──
+/**
+ * Schedule a call-back for a lead who needs time to think it over. Pick a date + time and jot a
+ * note; it stores the reminder (scheduleCallback) and a launchd cron Telegrams Joe when it's due.
+ * Surfaces in the "Callbacks" panel at the top of the leads list so nothing slips.
+ */
+function ScheduleCallback({ item }: { item: ForgeSiteItem }) {
+  const [when, setWhen] = useState<string>(item.callbackAt ? toLocalInput(item.callbackAt) : "");
+  const [note, setNote] = useState(item.callbackNote || "");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [scheduled, setScheduled] = useState<string>(item.callbackAt || "");
+
+  async function save() {
+    if (!when) { setMsg({ ok: false, text: "Pick a date & time first." }); return; }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const iso = new Date(when).toISOString(); // browser-local → absolute UTC instant
+      const r = await scheduleCallback(item.id, iso, note.trim() || undefined);
+      setMsg({ ok: r.ok, text: r.message });
+      if (r.ok) setScheduled(iso);
+    } catch {
+      setMsg({ ok: false, text: "Something went wrong scheduling the call-back." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clear() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await clearCallback(item.id);
+      setScheduled("");
+      setWhen("");
+      setNote("");
+      setMsg({ ok: true, text: "Call-back cleared." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const cur = scheduled ? fmtCallback(scheduled) : null;
+
+  return (
+    <CardSection title="Schedule a call-back">
+      {cur && (
+        <div className={`mb-2 rounded-xl border px-3 py-2 text-[11px] font-medium ${cur.overdue ? "border-rose-200 bg-rose-50 text-rose-700" : "border-sky-200 bg-sky-50 text-sky-700"}`}>
+          📞 {cur.overdue ? "Was due" : "Call back"} {cur.text}
+          {item.callbackNote ? ` — ${item.callbackNote}` : ""}
+          {cur.overdue ? " (overdue)" : ""}
+        </div>
+      )}
+      <input
+        type="datetime-local"
+        value={when}
+        onChange={(e) => setWhen(e.target.value)}
+        className="w-full rounded-xl border border-line bg-background p-2.5 text-sm text-ink outline-none focus:border-brand"
+      />
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={2}
+        placeholder="Why call back? e.g. wants to think it over, check with partner, follow up on pricing…"
+        className="mt-1.5 w-full resize-y rounded-xl border border-line bg-background p-2.5 text-sm text-ink outline-none placeholder:text-ink-soft focus:border-brand"
+      />
+      <div className="mt-1.5 flex gap-2">
+        {scheduled && (
+          <button onClick={clear} disabled={busy} className="rounded-xl border border-line px-3 py-2.5 text-sm font-medium text-ink-soft transition-colors hover:bg-surface disabled:opacity-50 active:scale-[0.98]">
+            Clear
+          </button>
+        )}
+        <button
+          onClick={save}
+          disabled={busy || !when}
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-sky-500/60 bg-sky-50 px-3 py-2.5 text-sm font-semibold text-sky-700 transition-colors hover:bg-sky-100 disabled:opacity-50 active:scale-[0.98]"
+        >
+          {busy ? "Saving…" : scheduled ? "📞 Update call-back" : "📞 Schedule call-back"}
+        </button>
+      </div>
+      {msg && <p className={`mt-1.5 text-[11px] ${msg.ok ? "text-sky-700" : "text-amber-700"}`}>{msg.text}</p>}
+      {!msg && !scheduled && (
+        <p className="mt-1.5 text-[11px] text-ink-soft">Sets a reminder for yourself — you&apos;ll get a Telegram when it&apos;s time to call.</p>
+      )}
+    </CardSection>
+  );
+}
+
 /**
  * Queue the FULL forge build for a hot lead — before they claim. A lead you haven't sold is
  * only a /s/<slug> preview; the real deployed site normally builds on claim. For a strong lead
@@ -846,6 +951,9 @@ function ContactDetail({
             </button>
           </CardSection>
 
+          {/* schedule a call-back for yourself — a reminder for a lead who needs time to decide */}
+          <ScheduleCallback item={item} />
+
           {/* contact facts */}
           <CardSection title="Contact details" defaultOpen>
             <dl className="grid grid-cols-[7rem,1fr] items-baseline gap-x-3 gap-y-2 text-sm">
@@ -972,6 +1080,15 @@ export function LeadsCRM({
   }, [leads, meta]);
   const payingCount = signedUp.filter((l) => metaOf(l.id).stage === "customer").length;
 
+  // Scheduled call-backs — reminders Joe set for leads who needed time to decide. Soonest first,
+  // so overdue + imminent calls sit at the top. Stays visible above the cold-call list.
+  const callbacks = useMemo(() => {
+    return leads
+      .filter((l) => l.callbackAt && (metaOf(l.id).stage !== "claimed" && metaOf(l.id).stage !== "customer"))
+      .sort((a, b) => (a.callbackAt || "").localeCompare(b.callbackAt || ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads, meta]);
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const digits = needle.replace(/\D/g, "");
@@ -1010,6 +1127,37 @@ export function LeadsCRM({
 
   return (
     <div>
+      {/* scheduled call-backs — leads who need a nudge; overdue first, always in view */}
+      {callbacks.length > 0 && (
+        <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50/60 p-4">
+          <div className="mb-2.5 flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-bold text-sky-800">📞 Call-backs scheduled</h3>
+            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-700">{callbacks.length}</span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {callbacks.map((l) => {
+              const cb = fmtCallback(l.callbackAt!);
+              return (
+                <button
+                  key={l.id}
+                  onClick={() => setOpenId(l.id)}
+                  className="flex items-center gap-3 rounded-xl border border-sky-100 bg-background px-3 py-2 text-left transition-colors hover:bg-surface"
+                >
+                  <Thumb item={l} size={32} rounded="rounded-md" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-ink">{l.businessName}</div>
+                    {l.callbackNote ? <div className="truncate text-xs text-ink-soft">{l.callbackNote}</div> : null}
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${cb.overdue ? "bg-rose-50 text-rose-700" : cb.soon ? "bg-amber-50 text-amber-700" : "bg-sky-100 text-sky-700"}`}>
+                    {cb.overdue ? "Overdue" : cb.text}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* conversions scoreboard — who actually signed up (claimed) + who's paying */}
       {signedUp.length > 0 && (
         <div className="mb-4 rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
