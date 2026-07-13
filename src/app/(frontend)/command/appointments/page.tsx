@@ -9,12 +9,38 @@ import { AppointmentCalendar, type CalEvent } from "./appointments-calendar";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  title: "Appointments",
+  title: "Calendar",
   robots: { index: false, follow: false },
 };
 
 const TZ = "America/Los_Angeles";
 const DAY = 86_400_000;
+
+/**
+ * Google Calendar event descriptions are HTML (often pasted from external booking tools like Fyxer),
+ * so rendering them verbatim shows raw <b>/<br>/<a> tags + &amp; entities. Flatten to clean, readable
+ * text: links become "text (url)", block tags become line breaks, entities decode, tags strip out.
+ */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gis, (_m, url, text) => {
+      const t = text.replace(/<[^>]+>/g, "").trim();
+      return t && !/^https?:/i.test(t) ? `${t} (${url})` : url;
+    })
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "• ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0?39;|&apos;/gi, "'")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 export default async function AppointmentsPage() {
   await requireAdmin();
@@ -62,7 +88,7 @@ export default async function AppointmentsPage() {
         allDay: e.allDay,
         meetLink: e.hangoutLink,
         htmlLink: e.htmlLink,
-        note: e.description ? e.description.slice(0, 500) : undefined,
+        note: e.description ? htmlToText(e.description).slice(0, 600) : undefined,
         sub: [guest, e.location].filter(Boolean).join(" · ") || undefined,
       };
     }),
@@ -92,7 +118,7 @@ export default async function AppointmentsPage() {
     <div className="px-6 py-8">
       <div className="mx-auto w-full max-w-5xl">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-2xl font-extrabold tracking-tight">Appointments</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight">Calendar</h1>
           <span
             title={cal.ok ? "Live free/busy check succeeded" : cal.configured ? `Check failed: ${cal.error || "unknown"}` : "GCAL_* not set"}
             className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
