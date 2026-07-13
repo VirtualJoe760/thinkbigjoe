@@ -144,7 +144,7 @@ export async function getPendingReplies(): Promise<PendingReply[]> {
 
 export type LeadHistoryEvent = {
   at: string;
-  kind: "email-sent" | "call" | "text" | "email" | "bounce" | "reply" | "note" | "code";
+  kind: "email-sent" | "call" | "text" | "email" | "bounce" | "reply" | "note" | "code" | "voicemail";
   label: string;
   subject?: string;
   body?: string;
@@ -174,7 +174,7 @@ export async function getLeadHistories(leads: HistLead[]): Promise<Record<string
            (metadata->'detail'->>'sent') AS sent,
            event_type, created_at
     FROM activity_log
-    WHERE event_type IN ('forge_outreach_sent','lead_contact_attempt','email_bounced','email_reply','email_reply_sent','lead_note','callback_code_sent','sms_outreach_sent','sms_inbound','sms_outbound')
+    WHERE event_type IN ('forge_outreach_sent','lead_contact_attempt','email_bounced','email_reply','email_reply_sent','lead_note','callback_code_sent','sms_outreach_sent','sms_inbound','sms_outbound','voicemail_dropped','voicemail_delivered','voicemail_failed')
       AND (metadata->'detail'->>'siteId') IS NOT NULL
     ORDER BY created_at ASC`);
   const rows = (Array.isArray(res) ? res : (res as { rows?: unknown }).rows ?? []) as Record<string, unknown>[];
@@ -204,6 +204,12 @@ export async function getLeadHistories(leads: HistLead[]): Promise<Record<string
       ev = { at, kind: "text", label: "We replied", body: r.note ? String(r.note) : undefined };
     } else if (r.event_type === "sms_outreach_sent") {
       ev = { at, kind: "text", label: "Texted (first touch)", body: r.note ? String(r.note) : smsText(lead) };
+    } else if (r.event_type === "voicemail_dropped") {
+      ev = { at, kind: "voicemail", label: "Dropped a voicemail" };
+    } else if (r.event_type === "voicemail_delivered") {
+      ev = { at, kind: "voicemail", label: "Voicemail delivered" };
+    } else if (r.event_type === "voicemail_failed") {
+      ev = { at, kind: "voicemail", label: "Voicemail failed", failed: true };
     } else if (r.event_type === "callback_code_sent") {
       const delivered = String(r.sent) === "true";
       ev = {

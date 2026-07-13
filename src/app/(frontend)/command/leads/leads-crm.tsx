@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState, useEffect, useTransition } from "react";
 
-import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, denyForgeSite, type ContactSlot, type BookForContactState } from "../actions";
+import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, denyForgeSite, dropLeadVoicemail, type ContactSlot, type BookForContactState } from "../actions";
 import type { ForgeSiteItem } from "../sites/sites-queue";
 import type { LeadHistoryEvent } from "@/lib/forge-outreach";
 
@@ -118,6 +118,7 @@ const HIST: Record<LeadHistoryEvent["kind"], { icon: string; verb: string; outco
   bounce: { icon: "⚠️", verb: "Bounced", outcome: "negative" },
   note: { icon: "📝", verb: "Note", outcome: "neutral" },
   code: { icon: "🎟️", verb: "Texted callback code", outcome: "sent" },
+  voicemail: { icon: "📞", verb: "Dropped a voicemail", outcome: "sent" },
 };
 const OUTCOME_CLS: Record<Outcome, string> = {
   positive: "bg-emerald-50 text-emerald-700",
@@ -306,6 +307,8 @@ function ContactDetail({
   const [showBook, setShowBook] = useState(false);
   const [codeBusy, setCodeBusy] = useState(false);
   const [codeMsg, setCodeMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [vmBusy, setVmBusy] = useState(false);
+  const [vmMsg, setVmMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [note, setNote] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
@@ -320,6 +323,20 @@ function ContactDetail({
       setCodeMsg({ ok: false, text: "Something went wrong sending the code." });
     } finally {
       setCodeBusy(false);
+    }
+  }
+
+  async function handleDropVoicemail() {
+    setVmBusy(true);
+    setVmMsg(null);
+    try {
+      const r = await dropLeadVoicemail(Number(item.id), true);
+      setVmMsg({ ok: r.ok, text: r.message });
+      if (r.ok) onContact(item.id, "call");
+    } catch {
+      setVmMsg({ ok: false, text: "Something went wrong dropping the voicemail." });
+    } finally {
+      setVmBusy(false);
     }
   }
 
@@ -569,6 +586,27 @@ function ContactDetail({
               📅 {showBook ? "Hide booking" : "Book an appointment"}
             </button>
             {showBook && <BookForLead siteId={item.id} onBooked={() => onContact(item.id, "call")} />}
+
+            {/* Drop a ringless voicemail (Drop Cowboy) + follow up with the first-touch text. */}
+            {item.phone && (
+              <>
+                <button
+                  onClick={handleDropVoicemail}
+                  disabled={vmBusy}
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-500/60 bg-indigo-50 px-3 py-3 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 disabled:opacity-60 active:scale-[0.98]"
+                >
+                  📞 {vmBusy ? "Dropping…" : "Drop voicemail + text"}
+                </button>
+                {vmMsg && (
+                  <p className={`mt-1.5 text-[11px] ${vmMsg.ok ? "text-indigo-700" : "text-amber-700"}`}>{vmMsg.text}</p>
+                )}
+                {!vmMsg && (
+                  <p className="mt-1.5 text-[11px] text-ink-soft">
+                    Drops a pre-recorded voicemail in their inbox (no ring), then texts them the site link. Callbacks reach Ivy.
+                  </p>
+                )}
+              </>
+            )}
 
             {/* Text a priority callback code — they call the TBJ number, give the code, Ivy transfers them to Joe. */}
             {item.phone && (

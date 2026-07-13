@@ -1533,11 +1533,32 @@ async function toolIssueCallbackCode({ phone, name = null, expires_hours = 720 }
   };
 }
 
+async function toolDropVoicemail({ site_id, text = true } = {}) {
+  const id = Number(site_id);
+  if (!Number.isFinite(id)) return { content: [{ type: "text", text: "Need a numeric `site_id`." }], isError: true };
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return { content: [{ type: "text", text: "❌ CRON_SECRET is not set in environment." }], isError: true };
+  try {
+    const resp = await fetch(`${APP_SITE_URL}/api/dropcowboy/drop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` },
+      body: JSON.stringify({ siteId: id, text: text !== false }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.ok === false) {
+      return { content: [{ type: "text", text: `❌ ${data.message || `HTTP ${resp.status}`}` }], isError: true };
+    }
+    return { content: [{ type: "text", text: `✅ ${data.message || "Voicemail dropped."}` }] };
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Drop failed: ${err?.message || err}` }], isError: true };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.22.0" },
+  { name: "tbj-mcp", version: "2.23.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -2044,6 +2065,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: [],
       },
     },
+    {
+      name: "drop_voicemail",
+      description: "Drop a ringless voicemail (Drop Cowboy) into a lead's inbox WITHOUT ringing their phone — a pre-recorded message from ThinkBigJoe — then (by default) send the first-touch text with their site link right after. The 'call, then follow up with a text' opener. Callbacks route to the ThinkBigJoe number → Ivy. Pass the forge site id. Both touches land on the lead's timeline. Never voicemail someone who opted out (STOP).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          site_id: { type: "number", description: "The forge_sites lead id to voicemail." },
+          text: { type: "boolean", description: "Also send the first-touch text with the site link right after the drop (default true)." },
+        },
+        required: ["site_id"],
+      },
+    },
   ],
 }));
 
@@ -2093,6 +2126,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "list_design_reports": return toolListDesignReports(args);
     case "send_sms": return toolSendSms(args);
     case "issue_callback_code": return toolIssueCallbackCode(args);
+    case "drop_voicemail": return toolDropVoicemail(args);
     default:
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }

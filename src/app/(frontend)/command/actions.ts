@@ -11,6 +11,7 @@ import { sendForgeOutreachEmail, sendReplyEmail, sendBookingConfirmationEmail } 
 import { notifyTelegram } from "@/lib/telegram";
 import { sendSms } from "@/lib/sms";
 import { mintCallbackCode, callbackCodeMessage } from "@/lib/callback-codes";
+import { dropToSite } from "@/lib/voicemail-outreach";
 import {
   BOOKING_TIMEZONE,
   SLOT_DURATION_MIN,
@@ -287,6 +288,35 @@ export async function sendConversationMessage(siteId: string, text: string): Pro
   await db.update(forgeSites).set({ contactedAt: now() }).where(eq(forgeSites.id, id));
   revalidatePath("/command/messages");
   return { ok: true };
+}
+
+/**
+ * Drop a ringless voicemail to a lead (Drop Cowboy), then send the first-touch text right after —
+ * the "call, then follow up with a text" opener. Both land on the lead timeline.
+ */
+export async function dropLeadVoicemail(siteId: number, withText = true): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  if (!Number.isFinite(siteId)) return { ok: false, message: "Bad lead id." };
+  const [site] = await db
+    .select({
+      id: forgeSites.id,
+      businessName: forgeSites.businessName,
+      phone: forgeSites.phone,
+      ownerName: forgeSites.ownerName,
+      claimCode: forgeSites.claimCode,
+      liveUrl: forgeSites.liveUrl,
+      slug: forgeSites.slug,
+      googleRating: forgeSites.googleRating,
+      reviewCount: forgeSites.reviewCount,
+    })
+    .from(forgeSites)
+    .where(eq(forgeSites.id, siteId))
+    .limit(1);
+  if (!site) return { ok: false, message: "Lead not found." };
+  const r = await dropToSite(site, { withText });
+  revalidatePath("/command/leads");
+  revalidatePath("/command/messages");
+  return { ok: r.ok, message: r.message };
 }
 
 /**
