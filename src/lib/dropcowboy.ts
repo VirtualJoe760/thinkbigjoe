@@ -44,9 +44,9 @@ export function toE164(raw?: string | null): string | undefined {
 }
 
 export type DropResult =
-  | { ok: true; id?: string }
+  | { ok: true; id?: string; raw?: unknown }
   | { skipped: true; reason: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; status?: number; raw?: unknown };
 
 /**
  * Drop a ringless voicemail to one phone number. `foreignId` is echoed back on the delivery
@@ -54,15 +54,17 @@ export type DropResult =
  */
 export async function dropVoicemail(
   phone: string,
-  opts: { foreignId?: string; callbackUrl?: string; audioUrl?: string } = {},
+  opts: { foreignId?: string; callbackUrl?: string; audioUrl?: string; recordingId?: string } = {},
 ): Promise<DropResult> {
   if (!teamId || !secret) return { skipped: true, reason: "Drop Cowboy not configured" };
   const to = toE164(phone);
   if (!to) return { skipped: true, reason: "no valid phone number" };
 
-  // Voicemail source: a hosted audio URL (per-call or DROPCOWBOY_AUDIO_URL) or a DC recording id.
+  // Voicemail source: a DC recording id (preferred/supported) or a hosted audio URL (per-call or
+  // DROPCOWBOY_AUDIO_URL). recording_id wins when both are set.
+  const rec = opts.recordingId || recordingId;
   const audioUrl = opts.audioUrl || audioUrlEnv;
-  if (!audioUrl && !recordingId) return { skipped: true, reason: "no recording_id or audio_url set" };
+  if (!rec && !audioUrl) return { skipped: true, reason: "no recording_id or audio_url set" };
 
   const body: Record<string, unknown> = {
     team_id: teamId,
@@ -70,8 +72,8 @@ export async function dropVoicemail(
     phone_number: to,
     foreign_id: opts.foreignId || `tbj-${to}`,
   };
-  if (audioUrl) body.audio_url = audioUrl;
-  else body.recording_id = recordingId;
+  if (rec) body.recording_id = rec;
+  else body.audio_url = audioUrl;
   if (brandId) body.brand_id = brandId; // optional — omitted when Twilio BYOC bypasses brand approval
   if (forwardingNumber) body.forwarding_number = forwardingNumber;
   if (poolId) body.pool_id = poolId;
@@ -86,9 +88,9 @@ export async function dropVoicemail(
     });
     const data = (await r.json().catch(() => ({}))) as Record<string, unknown>;
     if (!r.ok) {
-      return { ok: false, error: String(data.message || data.error || `HTTP ${r.status}`) };
+      return { ok: false, error: String(data.message || data.error || `HTTP ${r.status}`), status: r.status, raw: data };
     }
-    return { ok: true, id: String(data.rvm_id || data.id || body.foreign_id) };
+    return { ok: true, id: String(data.rvm_id || data.id || body.foreign_id), raw: data };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

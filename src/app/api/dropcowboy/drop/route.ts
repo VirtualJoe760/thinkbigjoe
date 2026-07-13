@@ -17,14 +17,15 @@ export async function POST(req: Request) {
   if (!expected || req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") !== expected) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const body = (await req.json().catch(() => ({}))) as { siteId?: number; text?: boolean; phone?: string; audioUrl?: string };
+  const body = (await req.json().catch(() => ({}))) as { siteId?: number; text?: boolean; phone?: string; audioUrl?: string; recordingId?: string };
 
   // Raw-number test drop (no lead, no follow-up text) — e.g. dropping to Joe's own phone.
+  // Returns Drop Cowboy's raw response so we can see exactly what it did with the drop.
   if (body.phone && body.siteId == null) {
-    const r = await dropVoicemail(body.phone, { foreignId: "test", audioUrl: body.audioUrl, callbackUrl: dropCowboyCallbackUrl() });
+    const r = await dropVoicemail(body.phone, { foreignId: "test", audioUrl: body.audioUrl, recordingId: body.recordingId, callbackUrl: dropCowboyCallbackUrl() });
     if ("skipped" in r) return NextResponse.json({ ok: false, message: r.reason });
-    if ("error" in r) return NextResponse.json({ ok: false, message: r.error });
-    return NextResponse.json({ ok: true, message: `Test voicemail dropped to ${body.phone}`, id: r.id });
+    if ("error" in r) return NextResponse.json({ ok: false, message: r.error, status: r.status, raw: r.raw });
+    return NextResponse.json({ ok: true, message: `Test voicemail dropped to ${body.phone}`, id: r.id, raw: r.raw });
   }
 
   const id = Number(body.siteId);
