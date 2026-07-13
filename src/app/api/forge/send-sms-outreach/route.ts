@@ -50,6 +50,7 @@ export async function POST(req: Request) {
         AND status <> 'deleted'
         AND claimed_by_user_id IS NULL
         AND ai_paused = false
+        AND outreach_status IS DISTINCT FROM 'opted_out'
         AND NOT EXISTS (
           SELECT 1 FROM activity_log al
           WHERE al.event_type = 'sms_outreach_sent'
