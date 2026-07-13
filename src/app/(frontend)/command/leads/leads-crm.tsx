@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState, useEffect, useTransition } from "react";
 
-import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, denyForgeSite, dropLeadVoicemail, type ContactSlot, type BookForContactState } from "../actions";
+import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, denyForgeSite, dropLeadVoicemail, setLeadStage, type ContactSlot, type BookForContactState } from "../actions";
 import type { ForgeSiteItem } from "../sites/sites-queue";
 import type { LeadHistoryEvent } from "@/lib/forge-outreach";
 
@@ -309,6 +309,7 @@ function ContactDetail({
   const [codeMsg, setCodeMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [vmBusy, setVmBusy] = useState(false);
   const [vmMsg, setVmMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [stageBusy, setStageBusy] = useState(false);
   const [note, setNote] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
@@ -499,6 +500,43 @@ function ContactDetail({
                   <span className="text-ink-soft">↗</span>
                 </a>
               ))}
+            </div>
+          )}
+
+          {/* stage control — manually move a lead through the pipeline (New · Contacted · Declined) */}
+          {!isUser && (
+            <div className="mt-3">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Stage</p>
+              <div className="inline-flex overflow-hidden rounded-full border border-line">
+                {(["new", "contacted", "declined"] as const).map((s, i) => {
+                  const active = meta.stage === s || (s === "declined" && meta.stage === "opted_out");
+                  const label = s === "declined" ? "Declined" : s === "contacted" ? "Contacted" : "New";
+                  return (
+                    <button
+                      key={s}
+                      disabled={stageBusy}
+                      onClick={() => {
+                        setStageBusy(true);
+                        setLeadStage(Number(item.id), s).finally(() => setStageBusy(false));
+                      }}
+                      className={`px-3.5 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${i > 0 ? "border-l border-line" : ""} ${
+                        active
+                          ? s === "declined" ? "bg-rose-600 text-white" : "bg-brand text-white"
+                          : "bg-background text-ink-soft hover:bg-surface"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              {(meta.stage === "opted_out" || meta.stage === "new" || meta.stage === "contacted") && (
+                <p className="mt-1 text-[11px] text-ink-soft">
+                  {meta.stage === "opted_out"
+                    ? "Declined — suppressed from outreach, kept live a few days, then removed if unclaimed."
+                    : "Set by hand; overrides the auto-computed stage."}
+                </p>
+              )}
             </div>
           )}
 

@@ -355,6 +355,36 @@ export async function renameContact(phone: string, name: string): Promise<{ ok: 
   return { ok: true };
 }
 
+/**
+ * Manually set a lead's pipeline stage (New · Contacted · Declined). "Declined" = someone said
+ * they're not interested: suppresses further outreach (opted_out) and stamps declined_at so it can
+ * be auto-removed after a few days if they never claim. New/Contacted clear the declined state.
+ */
+export async function setLeadStage(siteId: number, stage: "new" | "contacted" | "declined"): Promise<{ ok: boolean; message?: string }> {
+  await assertAdmin();
+  if (!Number.isFinite(siteId)) return { ok: false, message: "Bad lead id." };
+  const [site] = await db.select({ businessName: forgeSites.businessName, outreachStatus: forgeSites.outreachStatus }).from(forgeSites).where(eq(forgeSites.id, siteId)).limit(1);
+  if (!site) return { ok: false, message: "Lead not found." };
+
+  if (stage === "declined") {
+    await db.update(forgeSites)
+      .set({ leadStage: "declined", outreachStatus: "opted_out", declinedAt: now(), deniedReason: "Not interested" })
+      .where(eq(forgeSites.id, siteId));
+    await db.insert(activityLog).values({
+      actor: "joe",
+      eventType: "lead_declined",
+      summary: `🚫 ${site.businessName} — marked Declined (not interested)`,
+      metadata: { detail: { siteId, note: "Marked Declined — not interested. Kept live a few days, then removed if unclaimed." } },
+    }).catch(() => {});
+  } else {
+    await db.update(forgeSites)
+      .set({ leadStage: stage, declinedAt: null, ...(site.outreachStatus === "opted_out" ? { outreachStatus: "none" as const } : {}) })
+      .where(eq(forgeSites.id, siteId));
+  }
+  revalidatePath("/command/leads");
+  return { ok: true };
+}
+
 /** Save a free-text note on a lead (e.g. what happened on a call). Lands on the lead's timeline. */
 export async function saveLeadNote(siteId: string, note: string): Promise<{ ok: boolean; message?: string }> {
   await assertAdmin();

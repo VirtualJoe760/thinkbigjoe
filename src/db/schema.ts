@@ -449,6 +449,8 @@ export const forgeSites = pgTable("forge_sites", {
 	receptionistStatus: text("receptionist_status").default('none'),
 	themeOverrides: jsonb("theme_overrides"),
 	aiPaused: boolean("ai_paused").default(false).notNull(),
+	leadStage: text("lead_stage"),
+	declinedAt: timestamp("declined_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
 	uniqueIndex("forge_sites_claim_code_key").using("btree", table.claimCode.asc().nullsLast().op("text_ops")),
 	index("forge_sites_outreach_status_idx").using("btree", table.outreachStatus.asc().nullsLast().op("text_ops")),

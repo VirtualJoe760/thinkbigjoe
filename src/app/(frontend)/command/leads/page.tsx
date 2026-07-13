@@ -60,6 +60,7 @@ export default async function LeadsPage() {
       claimed: Boolean(r.claimedByUserId),
       createdAt: r.createdAt,
       outreachStatus: r.outreachStatus || "none",
+      leadStage: r.leadStage || "",
       outreachSubject: r.outreachSubject || "",
       outreachDraft: r.outreachDraft || "",
       contactedAt: r.contactedAt || "",
@@ -139,10 +140,14 @@ export default async function LeadsPage() {
     const subActive = row?.subscriptionStatus === "active" || row?.subscriptionStatus === "trialing";
     const paid = !!row?.oneTimePaid || subActive;
     const claimed = !!row?.claimedByUserId;
+    // Real states (claimed/paying) always win. Otherwise a manual stage override (Joe set it by
+    // hand — new/contacted/declined) takes precedence over the auto-computed stage.
     let stage: LeadStage;
     if (paid) stage = "customer";
     else if (claimed) stage = "claimed";
-    else if (lead.outreachStatus === "opted_out") stage = "opted_out";
+    else if (lead.leadStage === "declined" || lead.outreachStatus === "opted_out") stage = "opted_out";
+    else if (lead.leadStage === "contacted") stage = "contacted";
+    else if (lead.leadStage === "new") stage = "new";
     else if (lead.outreachStatus === "bounced") stage = "bounced";
     else if (hist.some((h) => h.kind === "reply")) stage = "replied";
     else if ((a?.total ?? 0) > 0 || lead.outreachStatus === "sent") stage = "contacted";

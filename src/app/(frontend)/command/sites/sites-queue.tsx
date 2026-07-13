@@ -35,6 +35,7 @@ export type ForgeSiteItem = {
   claimed: boolean;
   createdAt: string;
   outreachStatus: string;
+  leadStage?: string;
   outreachSubject: string;
   outreachDraft: string;
   contactedAt: string;
