@@ -1558,7 +1558,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.23.0" },
+  { name: "tbj-mcp", version: "2.24.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -2047,7 +2047,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         type: "object",
         properties: {
           to: { type: "string", description: "Recipient phone, US format (e.g. '480-555-1212' or '+14805551212')." },
-          body: { type: "string", description: "The message text. Short, plain, identify as ThinkBigJoe. Include an opt-out hint (e.g. 'reply STOP to opt out') for cold/promo texts." },
+          body: { type: "string", description: "The message text. Short, plain, identify as ThinkBigJoe. Include a soft opt-out hint (e.g. \"reply 'No thanks' and I'll stop\") for cold/promo texts — prefer this over 'STOP' so we don't rack up carrier opt-out records." },
         },
         required: ["to", "body"],
       },

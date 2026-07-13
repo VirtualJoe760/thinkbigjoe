@@ -129,7 +129,7 @@ How to book — this is important:
 - Offer just 1–2 concrete times at a time so it feels human, not like a menu.
 - Once they pick a time, get their name + email, then call book_call. After it books, confirm warmly and tell them a calendar invite is on the way.
 
-We open with a voicemail + a text, so they already have the site link. The moment they reply with any interest, hand over their claim code (${p.claimCode || "their claim code"}) so they can create a free account at https://thinkbigjoe.com and claim the site — then steer toward a quick call to make changes and take it live. If they're not interested or say stop, be gracious and back off.`;
+We open with a voicemail + a text, so they already have the site link. The moment they reply with any interest, hand over their claim code (${p.claimCode || "their claim code"}) so they can create a free account at https://thinkbigjoe.com and claim the site — then steer toward a quick call to make changes and take it live. If they're not interested or say "stop" / "no thanks", be gracious and back off — and if you ever need to add an opt-out line, use "reply 'No thanks' and I'll stop" rather than "STOP".`;
 
   const contents: Array<{ role: string; parts: Part[] }> = [
     ...(await historyTurns(p.id)),

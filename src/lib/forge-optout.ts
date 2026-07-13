@@ -4,39 +4,44 @@ import { db, activityLog } from "@/db";
 
 /** Resolve a forge_sites prospect by the last 10 digits of a phone number. */
 export async function findProspectByPhone(phone: string): Promise<
-  { id: number; businessName: string; claimCode: string | null; city: string | null; slug: string | null; liveUrl: string | null; aiPaused: boolean } | null
+  { id: number; businessName: string; claimCode: string | null; city: string | null; slug: string | null; liveUrl: string | null; aiPaused: boolean; outreachStatus: string | null } | null
 > {
   const last10 = (phone || "").replace(/[^0-9]/g, "").slice(-10);
   if (last10.length < 10) return null;
   const rows = (
     await db.execute(sql`
-      SELECT id, business_name AS "businessName", claim_code AS "claimCode", city, slug, live_url AS "liveUrl", ai_paused AS "aiPaused"
+      SELECT id, business_name AS "businessName", claim_code AS "claimCode", city, slug, live_url AS "liveUrl", ai_paused AS "aiPaused", outreach_status AS "outreachStatus"
       FROM forge_sites
       WHERE right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 10) = ${last10}
         AND status <> 'deleted'
       ORDER BY (status = 'denied') ASC, updated_at DESC
       LIMIT 1`)
-  ).rows as Array<{ id: number; businessName: string; claimCode: string | null; city: string | null; slug: string | null; liveUrl: string | null; aiPaused: boolean }>;
+  ).rows as Array<{ id: number; businessName: string; claimCode: string | null; city: string | null; slug: string | null; liveUrl: string | null; aiPaused: boolean; outreachStatus: string | null }>;
   return rows[0] ?? null;
 }
 
 /**
- * A prospect texted STOP. Mark them OPTED OUT — suppressed from further texting and
- * flagged so they surface in the "Declined / STOP" bucket on the leads page — but
- * keep them visible (do NOT auto-delete/blacklist). Joe reviews these, can call once
- * more to confirm the value prop, then removes them by hand. Returns the business
- * name(s), or null if no matching prospect.
+ * A prospect opted out — either the hard carrier keyword STOP, or our soft internal "No thanks".
+ * Mark them OPTED OUT — suppressed from further texting and moved to the Declined queue — but keep
+ * them visible (do NOT auto-delete/blacklist). Joe reviews these, can call once more, then removes
+ * by hand. `via` distinguishes the channel for the record ("stop" vs "soft"); it does NOT change the
+ * suppression (both fully stop outreach). Returns the business name, or null if no matching prospect.
  */
-export async function markProspectOptedOut(phone: string): Promise<string | null> {
+export async function markProspectOptedOut(
+  phone: string,
+  opts: { via?: "stop" | "soft" } = {},
+): Promise<string | null> {
   const last10 = (phone || "").replace(/[^0-9]/g, "").slice(-10);
   if (last10.length < 10) return null;
+  const soft = opts.via === "soft";
+  const reason = soft ? "Opted out of texts (replied “No thanks”)" : "Opted out of texts (replied STOP)";
   const rows = (
     await db.execute(sql`
       UPDATE forge_sites
       SET outreach_status = 'opted_out',
           lead_stage = 'declined',
           declined_at = COALESCE(declined_at, now()),
-          denied_reason = 'Opted out of texts (replied STOP)',
+          denied_reason = ${reason},
           updated_at = now()
       WHERE right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 10) = ${last10}
         AND status <> 'deleted'
@@ -50,8 +55,8 @@ export async function markProspectOptedOut(phone: string): Promise<string | null
     .values({
       actor: "twilio",
       eventType: "prospect_opted_out",
-      summary: `🛑 ${name} opted out (STOP) — moved to the Declined queue (call to confirm, then remove)`,
-      metadata: { detail: { phone, count: rows.length } },
+      summary: `🛑 ${name} opted out (${soft ? "“No thanks”" : "STOP"}) — moved to the Declined queue (call to confirm, then remove)`,
+      metadata: { detail: { phone, count: rows.length, via: soft ? "soft" : "stop" } },
     })
     .catch(() => {});
   return name;

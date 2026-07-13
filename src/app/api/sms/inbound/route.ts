@@ -10,6 +10,7 @@ import { smsAgentReply, isSmsAgentConfigured, type SmsProspect } from "@/lib/sms
 import {
   encodeThreadCode,
   isOptOut,
+  isSoftOptOut,
   normalizePhone,
   parseThreadCode,
   sendSms,
@@ -74,7 +75,13 @@ export async function POST(req: Request) {
 
   // ── A LEAD texting in → log, remember the conversation, forward to Joe ─────
   const sender = from || params.From || "unknown";
-  const optOut = isOptOut(body);
+  // Two opt-out paths: the hard carrier keyword STOP (Twilio records it) and our SOFT internal
+  // "No thanks" (we honor it ourselves so it never hits Twilio's opt-out metrics). Both fully
+  // suppress; only the soft one gets a courtesy confirmation from us (Twilio auto-confirms STOP).
+  const hardStop = isOptOut(body);
+  const softOptOut = !hardStop && isSoftOptOut(body);
+  const optOut = hardStop || softOptOut;
+  const optLabel = softOptOut ? "“No thanks”" : "STOP";
 
   // Upsert the conversation so replies can route back. (Opt-outs still get a row
   // logged but we don't invite Joe to reply to a STOP.)
@@ -102,7 +109,7 @@ export async function POST(req: Request) {
       actor: "twilio",
       eventType: optOut ? "sms_opt_out" : "sms_inbound",
       summary: optOut
-        ? `📵 ${prospect?.businessName || sender} texted STOP (opted out)`
+        ? `📵 ${prospect?.businessName || sender} opted out (${optLabel})`
         : `📱 ${prospect?.businessName ? prospect.businessName + " " : ""}${code ? code + " " : ""}replied: ${body.slice(0, 200)}`,
       metadata: { detail: { siteId: prospect?.id ?? null, note: body, from: sender, code }, from: sender, body, code, messageSid: params.MessageSid || null, to: params.To || null },
     });
@@ -110,14 +117,20 @@ export async function POST(req: Request) {
     console.error("[sms:inbound] activity log failed:", err);
   }
 
-  // On STOP: flag the prospect as opted-out and move them to the Declined queue —
+  // On opt-out (STOP or "No thanks"): flag the prospect opted-out + move to the Declined queue —
   // visible so Joe can call once more before removing. NOT auto-deleted/blacklisted.
   let optedName: string | null = null;
   if (optOut) {
     try {
-      optedName = await markProspectOptedOut(sender);
+      optedName = await markProspectOptedOut(sender, { via: softOptOut ? "soft" : "stop" });
     } catch (err) {
       console.error("[sms:inbound] opt-out mark failed:", err);
+    }
+    // Courtesy confirmation for the SOFT opt-out only — Twilio auto-confirms STOP, and texting a
+    // hard-STOP number would error. This closes the loop so they know "No thanks" worked.
+    if (softOptOut) {
+      const res = await sendSms(sender, "No problem — I won't reach out again. If you ever change your mind, we're right here. — Joe");
+      if ("ok" in res && !res.ok) console.error("[sms:inbound] soft opt-out confirm failed:", res.error);
     }
   }
   const optedNote = optedName ? ` ${optedName} → Declined queue (call to confirm, then remove).` : "";
@@ -126,11 +139,12 @@ export async function POST(req: Request) {
   // the AI on this contact (he's handling them himself). When it will reply, tell Joe
   // it's handled so he doesn't also; he can still jump in via #code either way.
   const aiPaused = !!prospect?.aiPaused;
-  const agentHandling = !optOut && !!prospect && !aiPaused && isSmsAgentConfigured();
+  const alreadyOptedOut = prospect?.outreachStatus === "opted_out";
+  const agentHandling = !optOut && !alreadyOptedOut && !!prospect && !aiPaused && isSmsAgentConfigured();
 
   if (forwardTo) {
     const note = optOut
-      ? `🛑 ${prospect?.businessName || sender} replied STOP — opted out of texts.${optedNote}`
+      ? `🛑 ${prospect?.businessName || sender} opted out (${optLabel}) — suppressed from texts.${optedNote}`
       : agentHandling
         ? `📱 ${prospect!.businessName} (${code}) replied:\n\n${body}\n\n🤖 The agent is replying. Text "${code} your message" to jump in yourself.`
         : `📱 ${code} — ${prospect?.businessName || sender} replied:\n\n${body}\n\n${aiPaused ? "⏸️ AI is paused on this contact — you're handling it. " : ""}↩︎ Reply "${code} your message" to answer (or just reply for the latest). "#list" to see all.`;
@@ -140,7 +154,7 @@ export async function POST(req: Request) {
 
   const who = prospect?.businessName ? `${prospect.businessName} (${sender})` : sender;
   await notifyTelegram(
-    optOut ? `📵 SMS opt-out — ${who}.${optedNote}` : `📱 ${who} texted back ${code}:\n${body || "(no text)"}`,
+    optOut ? `📵 SMS opt-out (${optLabel}) — ${who}.${optedNote}` : `📱 ${who} texted back ${code}:\n${body || "(no text)"}`,
   );
 
   // Email notification to the admin address (josephsardella@gmail.com by default) —
@@ -149,8 +163,8 @@ export async function POST(req: Request) {
     optOut
       ? {
           subject: `SMS opt-out — ${who}`,
-          heading: "Prospect opted out (STOP)",
-          message: `${who} replied STOP and is now opted out of TBJ texts.${optedNote}`,
+          heading: `Prospect opted out (${optLabel})`,
+          message: `${who} replied ${optLabel} and is now opted out of TBJ texts.${optedNote}`,
           ctaUrl: `${SITE}/command/leads`,
           ctaLabel: "View leads",
         }

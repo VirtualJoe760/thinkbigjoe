@@ -12,9 +12,19 @@ uses, which is compliant because **both businesses are the one `jsardella` LLC**
 | **Campaign** | Verified, use case **"Low Volume Mixed"** (notifications + marketing + customer care) | "Mixed" + a generic description covers TBJ's texts too |
 | **Messaging Service** | `MG16903417c850629410adc09b63f7788f` | What we send through; picks the sending number + handles STOP/HELP |
 
-Opt-out (STOP/UNSUBSCRIBE/…) is handled by Twilio's **Advanced Opt-Out** on the Messaging
-Service — we never text a number that opted out, and Twilio auto-suppresses it. We only *detect*
-the keyword in the webhook so an inbound STOP is labeled rather than forwarded as a normal reply.
+**Opt-out — two paths (`src/lib/sms.ts`):**
+- **Hard STOP** (`isOptOut`: stop/stopall/unsubscribe/cancel/end/quit) — the carrier keyword. Twilio's
+  **Advanced Opt-Out** auto-suppresses the number *and records it against sender metrics*. We only
+  *detect* it in the webhook to label + move the lead to Declined.
+- **Soft "No thanks"** (`isSoftOptOut`: "no thanks"/"no thank you"/"not interested"/"remove me"/…) —
+  our **internal** opt-out. It never hits Twilio's opt-out records. The inbound webhook suppresses
+  the lead ourselves (`markProspectOptedOut(phone, {via:'soft'})` → `outreach_status='opted_out'`,
+  `lead_stage='declined'`) and sends **one** courtesy confirmation. This is what our **outreach copy
+  advertises** ("reply 'No thanks' and I'll stop") so prospects use the soft path instead of the
+  hard STOP. STOP still works as the legally-required backstop (documented in the privacy policy +
+  signup consent disclosure); we just don't put "Reply STOP" at the end of every marketing text.
+
+Either path fully stops outreach, and the AI agent won't re-engage an `opted_out` contact.
 
 ## The layers
 

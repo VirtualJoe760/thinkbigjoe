@@ -108,6 +108,14 @@ export function isOptOut(body: string): boolean {
   return OPT_OUT.test(body || "");
 }
 
+// A SOFT, internal opt-out: a friendly "no thanks" we honor ourselves so the prospect never has to
+// text the carrier keyword STOP (which Twilio records as a hard opt-out and dings sender metrics).
+// We advertise THIS in our outreach copy; STOP still works as the legally-required backstop.
+const SOFT_OPT_OUT = /^\s*(no[,\s]*thanks?|no[,\s]*thank\s*you|no[,\s]*thx|not\s+interested|remove\s+me|unsubscribe\s+me)\b/i;
+export function isSoftOptOut(body: string): boolean {
+  return SOFT_OPT_OUT.test(body || "");
+}
+
 /**
  * Two-way relay uses one Google Voice number for every conversation, so all
  * forwards land in a single GV thread. A short per-conversation code (the

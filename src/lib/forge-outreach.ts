@@ -65,7 +65,7 @@ export function composeSmsOutreach(p: {
     rating && reviews >= 5
       ? `Hi, I found your business online and saw you've got a ton of awesome Google reviews but no website, so I made you one!`
       : `Hi, I found your business online and noticed you don't have a website, so I made you one!`;
-  return `${opener} Here's the link to check it out: ${site}. Let me know what you think! (Not interested? Reply STOP.)`;
+  return `${opener} Here's the link to check it out: ${site}. Let me know what you think! (Not interested? Just reply 'No thanks' and I'll stop.)`;
 }
 
 /**
@@ -75,7 +75,7 @@ export function composeSmsOutreach(p: {
  */
 export function composeVoicemailFollowupSms(p: { liveUrl: string | null; slug: string | null }): string {
   const site = prospectSiteUrl(p);
-  return `Hey, did you get my voicemail? Here's the link to the website I made you: ${site} — let me know if you like it, and we can make any changes during our appointment and take it live. (Not interested? Reply STOP.)`;
+  return `Hey, did you get my voicemail? Here's the link to the website I made you: ${site} — let me know if you like it, and we can make any changes during our appointment and take it live. (Not interested? Just reply 'No thanks' and I'll stop.)`;
 }
 
 /**
@@ -84,7 +84,7 @@ export function composeVoicemailFollowupSms(p: { liveUrl: string | null; slug: s
  */
 export function composeVoicemailFallbackSms(p: { liveUrl: string | null; slug: string | null }): string {
   const site = prospectSiteUrl(p);
-  return `Hey, it's Joe — I just tried to reach you. Here's the link to the website I made you: ${site} — take a look and let me know what you think, and we can make any changes during our appointment and take it live. (Not interested? Reply STOP.)`;
+  return `Hey, it's Joe — I just tried to reach you. Here's the link to the website I made you: ${site} — take a look and let me know what you think, and we can make any changes during our appointment and take it live. (Not interested? Just reply 'No thanks' and I'll stop.)`;
 }
 
 export type OutreachQueueItem = {
