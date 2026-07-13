@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState, useEffect, useTransition } from "react";
+import { useActionState, useMemo, useRef, useState, useEffect, useTransition } from "react";
 
 import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, denyForgeSite, dropLeadVoicemail, setLeadStage, type ContactSlot, type BookForContactState } from "../actions";
 import type { ForgeSiteItem } from "../sites/sites-queue";
@@ -105,6 +105,51 @@ function Stars({ rating }: { rating: string }) {
   const s = Math.round(Number(rating) || 0);
   if (!rating) return null;
   return <span className="text-amber-500 text-xs">{"★".repeat(Math.max(0, Math.min(5, s)))}<span className="text-line">{"★".repeat(Math.max(0, 5 - s))}</span></span>;
+}
+
+// Inline stage editor on each leads row — set New/Contacted/Declined straight from the list,
+// without opening the contact. Claimed/paying rows aren't editable (those are real states).
+function StageDropdown({ itemId, stage }: { itemId: string; stage: LeadStage }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+  const st = STAGE[stage];
+  const set = (v: "new" | "contacted" | "declined") => {
+    setBusy(true);
+    setOpen(false);
+    setLeadStage(Number(itemId), v).finally(() => setBusy(false));
+  };
+  return (
+    <span ref={ref} className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+      <button
+        disabled={busy}
+        onClick={() => setOpen((v) => !v)}
+        title="Change stage"
+        className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.chip} disabled:opacity-50`}
+      >
+        {st.label}
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="opacity-70"><path d="M6 9l6 6 6-6" /></svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-30 mt-1 w-32 overflow-hidden rounded-xl border border-line bg-background py-1 text-left shadow-lg">
+          {([["new", "New"], ["contacted", "Contacted"], ["declined", "Declined"]] as const).map(([v, l]) => {
+            const active = stage === v || (v === "declined" && stage === "opted_out");
+            return (
+              <button key={v} onClick={() => set(v)} className={`block w-full px-3 py-1.5 text-left text-xs font-medium hover:bg-surface ${active ? "text-brand" : "text-ink"}`}>
+                {l}{active ? " ✓" : ""}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </span>
+  );
 }
 
 // ── Communication timeline: each AI/manual attempt with a clear success/failure outcome ──
@@ -996,8 +1041,12 @@ export function LeadsCRM({
                     <td className={`hidden whitespace-nowrap px-3 py-2.5 text-xs sm:table-cell ${touchFailed ? "text-red-600" : "text-ink-soft"}`}>
                       {touches}{a.lastAt && !touchFailed ? <span className="block text-[11px]" suppressHydrationWarning>last {relTime(a.lastAt)}</span> : null}
                     </td>
-                    <td className="whitespace-nowrap py-2.5 pl-3 text-right">
-                      <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.chip}`}>{st.label}</span>
+                    <td className="py-2.5 pl-3 text-right">
+                      {m.stage === "claimed" || m.stage === "customer" ? (
+                        <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.chip}`}>{st.label}</span>
+                      ) : (
+                        <StageDropdown itemId={item.id} stage={m.stage} />
+                      )}
                     </td>
                   </tr>
                 );
