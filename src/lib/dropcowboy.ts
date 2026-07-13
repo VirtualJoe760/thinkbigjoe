@@ -19,19 +19,18 @@ const API = "https://api.dropcowboy.com/v1/rvm";
 
 const teamId = process.env.DROPCOWBOY_TEAM_ID;
 const secret = process.env.DROPCOWBOY_SECRET;
-const brandId = process.env.DROPCOWBOY_BRAND_ID;
 const recordingId = process.env.DROPCOWBOY_RECORDING_ID;
 const audioUrlEnv = process.env.DROPCOWBOY_AUDIO_URL; // alt to recording_id: a hosted MP3/WAV URL
-const forwardingNumber = process.env.DROPCOWBOY_FORWARDING_NUMBER;
-const poolId = process.env.DROPCOWBOY_POOL_ID;
+const poolId = process.env.DROPCOWBOY_POOL_ID; // the BYOC (Twilio) number pool
 
 /**
- * True once the account is fully wired — otherwise drops are skipped (no-op). Drop Cowboy will not
- * DELIVER without a registered trusted brand (DROPCOWBOY_BRAND_ID from Trust Center) — without it a
- * drop returns status:"queued" but never sends. The voicemail source is a Drop Cowboy recording
- * (DROPCOWBOY_RECORDING_ID) or a hosted audio file (DROPCOWBOY_AUDIO_URL).
+ * True once the account is wired — otherwise drops are skipped (no-op). We deliver over BYOC (Joe's
+ * Twilio), so every request carries `byoc: {}` + the Twilio `pool_id`, and NO `forwarding_number`
+ * (callbacks are handled by the pool number's own Twilio voice webhook → Ivy) and NO `brand_id`
+ * (per Drop Cowboy support: brand is for their native network, not BYOC). Voicemail source is a
+ * hosted audio file (DROPCOWBOY_AUDIO_URL) or a Drop Cowboy recording (DROPCOWBOY_RECORDING_ID).
  */
-export const isDropCowboyConfigured = Boolean(teamId && secret && brandId && (recordingId || audioUrlEnv));
+export const isDropCowboyConfigured = Boolean(teamId && secret && poolId && (recordingId || audioUrlEnv));
 
 /** Normalize to E.164 (default US +1). Returns undefined if it can't. */
 export function toE164(raw?: string | null): string | undefined {
@@ -70,16 +69,19 @@ export async function dropVoicemail(
     secret,
     phone_number: to,
     foreign_id: opts.foreignId || `tbj-${to}`,
+    byoc: {}, // REQUIRED for BYOC delivery — routes ringless through Joe's Twilio (per DC support)
   };
-  if (rec) body.recording_id = rec;
-  else body.audio_url = audioUrl;
-  if (brandId) body.brand_id = brandId;
-  if (forwardingNumber) body.forwarding_number = forwardingNumber;
-  // pool_id routes RVM through a specific number pool. Omitting it uses Drop Cowboy's default
-  // (public shared numbers = their native carrier network). Pass poolId:null to force-omit.
+  if (rec) {
+    body.recording_id = rec;
+  } else if (audioUrl) {
+    body.audio_url = audioUrl;
+    body.audio_type = /\.wav(\?|$)/i.test(audioUrl) ? "wav" : "mp3"; // DC needs the audio format
+  }
+  // pool_id routes RVM through the BYOC (Twilio) pool. poolId:null force-omits (not used on BYOC).
   const pool = opts.poolId === null ? undefined : (opts.poolId || poolId);
   if (pool) body.pool_id = pool;
   if (opts.callbackUrl) body.callback_url = opts.callbackUrl;
+  // Deliberately NOT sent on BYOC: forwarding_number (Twilio/SIP handles callbacks) and brand_id.
 
   try {
     const r = await fetch(API, {
