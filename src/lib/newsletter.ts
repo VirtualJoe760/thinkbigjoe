@@ -69,7 +69,9 @@ Return "html" as clean email body HTML using only <h2>, <p>, and <ul>/<li> tags 
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.85,
-          maxOutputTokens: 900,
+          // 2.5-flash spends "thinking" tokens from this budget, so keep it generous or the
+          // JSON gets truncated mid-string (the newsletter body itself is only ~250 tokens).
+          maxOutputTokens: 4096,
           responseMimeType: "application/json",
           responseSchema: { type: "OBJECT", properties: { subject: { type: "STRING" }, html: { type: "STRING" } }, required: ["subject", "html"] },
         },
