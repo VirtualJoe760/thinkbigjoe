@@ -23,9 +23,40 @@ const transporter = isConfigured
 
 // Transactional emails always send from the brand no-reply address.
 const FROM = process.env.EMAIL_FROM || "ThinkBigJoe <no-reply@thinkbigjoe.com>";
+// Just the address portion of FROM — reused as the envelope for client newsletters
+// (only the display name changes, so deliverability/auth stays on our verified domain).
+const FROM_ADDRESS = FROM.match(/<([^>]+)>/)?.[1] || FROM;
 
 /** True when SMTP env vars are present (host + user + pass). */
 export const isEmailConfigured = isConfigured;
+
+/**
+ * Send a client's customer newsletter. Sends "from" the business's name (envelope stays on our
+ * verified no-reply domain so it authenticates), includes the one-click List-Unsubscribe header,
+ * and does NOT BCC the admin (it's bulk to the client's list, not a transactional touch).
+ */
+export async function sendNewsletterEmail(args: {
+  to: string; subject: string; html: string; fromName: string; unsubscribeUrl: string; replyTo?: string;
+}) {
+  if (!transporter) return { skipped: true as const };
+  try {
+    const info = await transporter.sendMail({
+      from: `"${args.fromName.replace(/["\\<>]/g, "")}" <${FROM_ADDRESS}>`,
+      to: args.to,
+      subject: args.subject,
+      html: args.html,
+      ...(args.replyTo ? { replyTo: args.replyTo } : {}),
+      headers: {
+        "List-Unsubscribe": `<${args.unsubscribeUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
+    });
+    return { data: info };
+  } catch (err) {
+    console.error("[newsletter] send failed:", err);
+    return { error: err };
+  }
+}
 
 /**
  * Health check: confirms the SMTP transport can connect + authenticate with the

@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { prospects, outreach, followUps, conversations, meetingBriefs, agentTasks, leads } from "./schema";
+import { prospects, outreach, followUps, conversations, meetingBriefs, agentTasks, leads, forgeSites, newsletterContacts, newsletters } from "./schema";
 
 export const outreachRelations = relations(outreach, ({one}) => ({
 	prospect: one(prospects, {
@@ -49,5 +49,24 @@ export const leadsRelations = relations(leads, ({one}) => ({
 	prospect: one(prospects, {
 		fields: [leads.prospectId],
 		references: [prospects.id]
+	}),
+}));
+
+export const newsletterContactsRelations = relations(newsletterContacts, ({one}) => ({
+	forgeSite: one(forgeSites, {
+		fields: [newsletterContacts.siteId],
+		references: [forgeSites.id]
+	}),
+}));
+
+export const forgeSitesRelations = relations(forgeSites, ({many}) => ({
+	newsletterContacts: many(newsletterContacts),
+	newsletters: many(newsletters),
+}));
+
+export const newslettersRelations = relations(newsletters, ({one}) => ({
+	forgeSite: one(forgeSites, {
+		fields: [newsletters.siteId],
+		references: [forgeSites.id]
 	}),
 }));

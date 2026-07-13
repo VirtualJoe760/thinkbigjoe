@@ -23,12 +23,12 @@ export const PLANS: Record<
 > = {
   website: {
     label: "Website",
-    blurb: "A modern site, hosted and maintained.",
+    blurb: "A modern site, plus a monthly newsletter to your customers.",
     monthly: 99,
     annual: 999,
     priceEnv: "STRIPE_PRICE_WEBSITE",
     annualPriceEnv: "STRIPE_PRICE_WEBSITE_ANNUAL",
-    features: ["Custom website", "Hosting, updates & maintenance", "Ongoing content edits"],
+    features: ["Custom website", "Hosting, updates & maintenance", "Ongoing content edits", "Monthly customer newsletter (AI-drafted)"],
   },
   voice: {
     label: "Website + Voice",

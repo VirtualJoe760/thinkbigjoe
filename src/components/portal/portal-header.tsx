@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 
 const LINKS: NavLink[] = [
   { href: "/portal", label: "Overview", exact: true },
+  { href: "/portal/newsletter", label: "Newsletter" },
   { href: "/solutions", label: "Agentic Solutions" },
   { href: "/portal/book", label: "Book a call" },
   { href: "/portal/billing", label: "Billing" },
