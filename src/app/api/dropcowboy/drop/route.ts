@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 
 import { db, forgeSites } from "@/db";
 import { dropToSite } from "@/lib/voicemail-outreach";
+import { dropVoicemail, dropCowboyCallbackUrl } from "@/lib/dropcowboy";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,16 @@ export async function POST(req: Request) {
   if (!expected || req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") !== expected) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const body = (await req.json().catch(() => ({}))) as { siteId?: number; text?: boolean };
+  const body = (await req.json().catch(() => ({}))) as { siteId?: number; text?: boolean; phone?: string; audioUrl?: string };
+
+  // Raw-number test drop (no lead, no follow-up text) — e.g. dropping to Joe's own phone.
+  if (body.phone && body.siteId == null) {
+    const r = await dropVoicemail(body.phone, { foreignId: "test", audioUrl: body.audioUrl, callbackUrl: dropCowboyCallbackUrl() });
+    if ("skipped" in r) return NextResponse.json({ ok: false, message: r.reason });
+    if ("error" in r) return NextResponse.json({ ok: false, message: r.error });
+    return NextResponse.json({ ok: true, message: `Test voicemail dropped to ${body.phone}`, id: r.id });
+  }
+
   const id = Number(body.siteId);
   if (!Number.isFinite(id)) return NextResponse.json({ ok: false, message: "siteId required" }, { status: 400 });
 

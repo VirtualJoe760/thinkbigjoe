@@ -21,16 +21,18 @@ const teamId = process.env.DROPCOWBOY_TEAM_ID;
 const secret = process.env.DROPCOWBOY_SECRET;
 const brandId = process.env.DROPCOWBOY_BRAND_ID;
 const recordingId = process.env.DROPCOWBOY_RECORDING_ID;
+const audioUrlEnv = process.env.DROPCOWBOY_AUDIO_URL; // alt to recording_id: a hosted MP3/WAV URL
 const forwardingNumber = process.env.DROPCOWBOY_FORWARDING_NUMBER;
 const poolId = process.env.DROPCOWBOY_POOL_ID;
 
 /**
- * True once the account + recording are wired — otherwise drops are skipped (no-op).
- * brand_id is OPTIONAL: with the Twilio (bring-your-own-carrier) integration, delivery goes
- * through Joe's own Twilio, which bypasses Drop Cowboy's Trust Center brand approval. If the
- * account still requires a brand, set DROPCOWBOY_BRAND_ID and it's included automatically.
+ * True once the account + a voicemail source are wired — otherwise drops are skipped (no-op).
+ * The voicemail can be a Drop Cowboy recording (DROPCOWBOY_RECORDING_ID) or a hosted audio file
+ * (DROPCOWBOY_AUDIO_URL). brand_id is OPTIONAL: with the Twilio (bring-your-own-carrier)
+ * integration, delivery goes through Joe's own Twilio, which bypasses Drop Cowboy's Trust Center
+ * brand approval. If the account still requires a brand, set DROPCOWBOY_BRAND_ID.
  */
-export const isDropCowboyConfigured = Boolean(teamId && secret && recordingId);
+export const isDropCowboyConfigured = Boolean(teamId && secret && (recordingId || audioUrlEnv));
 
 /** Normalize to E.164 (default US +1). Returns undefined if it can't. */
 export function toE164(raw?: string | null): string | undefined {
@@ -52,19 +54,24 @@ export type DropResult =
  */
 export async function dropVoicemail(
   phone: string,
-  opts: { foreignId?: string; callbackUrl?: string } = {},
+  opts: { foreignId?: string; callbackUrl?: string; audioUrl?: string } = {},
 ): Promise<DropResult> {
-  if (!isDropCowboyConfigured) return { skipped: true, reason: "Drop Cowboy not configured" };
+  if (!teamId || !secret) return { skipped: true, reason: "Drop Cowboy not configured" };
   const to = toE164(phone);
   if (!to) return { skipped: true, reason: "no valid phone number" };
+
+  // Voicemail source: a hosted audio URL (per-call or DROPCOWBOY_AUDIO_URL) or a DC recording id.
+  const audioUrl = opts.audioUrl || audioUrlEnv;
+  if (!audioUrl && !recordingId) return { skipped: true, reason: "no recording_id or audio_url set" };
 
   const body: Record<string, unknown> = {
     team_id: teamId,
     secret,
-    recording_id: recordingId,
     phone_number: to,
     foreign_id: opts.foreignId || `tbj-${to}`,
   };
+  if (audioUrl) body.audio_url = audioUrl;
+  else body.recording_id = recordingId;
   if (brandId) body.brand_id = brandId; // optional — omitted when Twilio BYOC bypasses brand approval
   if (forwardingNumber) body.forwarding_number = forwardingNumber;
   if (poolId) body.pool_id = poolId;
