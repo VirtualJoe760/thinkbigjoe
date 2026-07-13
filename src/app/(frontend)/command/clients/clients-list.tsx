@@ -91,7 +91,7 @@ export function ClientsList({ clients }: { clients: Client[] }) {
 
                 {open && (
                   <div className="border-t border-line bg-surface/40 px-4 py-3 text-sm">
-                    <dl className="grid grid-cols-[7rem,1fr] gap-x-3 gap-y-1.5">
+                    <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1.5">
                       <dt className="text-ink-soft">Account #</dt><dd className="font-mono tabular-nums">{c.accountNumber || "—"}</dd>
                       <dt className="text-ink-soft">Plan</dt><dd>{c.plan || "—"}{c.subscriptionStatus ? ` · ${c.subscriptionStatus.replace(/_/g, " ")}` : ""}</dd>
                       <dt className="text-ink-soft">Email</dt><dd className="min-w-0 truncate">{c.ownerEmail ? <a href={`mailto:${c.ownerEmail}`} className="text-brand hover:underline">{c.ownerEmail}</a> : "—"}</dd>
