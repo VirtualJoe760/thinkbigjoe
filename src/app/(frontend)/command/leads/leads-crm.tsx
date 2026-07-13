@@ -30,7 +30,7 @@ const STAGE: Record<LeadStage, { label: string; dot: string; chip: string; blurb
   new: { label: "New", dot: "bg-emerald-500", chip: "bg-emerald-50 text-emerald-700", blurb: "Not contacted yet" },
   contacted: { label: "Contacted", dot: "bg-blue-500", chip: "bg-blue-50 text-blue-700", blurb: "Reached out — waiting" },
   replied: { label: "Replied", dot: "bg-amber-500", chip: "bg-amber-50 text-amber-700", blurb: "They wrote back — follow up" },
-  opted_out: { label: "Declined / STOP", dot: "bg-rose-600", chip: "bg-rose-50 text-rose-700", blurb: "Texted STOP — call to confirm, then remove" },
+  opted_out: { label: "Declined", dot: "bg-rose-600", chip: "bg-rose-50 text-rose-700", blurb: "Texted STOP — call to confirm, then remove" },
   bounced: { label: "Bad contact", dot: "bg-red-500", chip: "bg-red-50 text-red-700", blurb: "Email bounced — hunting a new channel" },
   claimed: { label: "User", dot: "bg-violet-500", chip: "bg-violet-50 text-violet-700", blurb: "Signed up + claimed — not paid yet" },
   customer: { label: "Customer", dot: "bg-brand", chip: "bg-brand-tint text-brand", blurb: "Paying customer" },
@@ -908,14 +908,14 @@ export function LeadsCRM({
       {sorted.length === 0 ? (
         <p className="py-8 text-sm text-ink-soft">No contacts match.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
+        <div>
+          <table className="w-full table-fixed border-collapse text-sm">
             <thead>
               <tr className="border-y border-line text-left text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
                 <th className="py-2 pr-3 font-semibold">Business</th>
-                <th className="hidden px-3 py-2 font-semibold md:table-cell">Rating</th>
-                <th className="hidden px-3 py-2 font-semibold sm:table-cell">Activity</th>
-                <th className="py-2 pl-3 text-right font-semibold">Stage</th>
+                <th className="hidden w-28 px-3 py-2 font-semibold md:table-cell">Rating</th>
+                <th className="hidden w-36 px-3 py-2 font-semibold sm:table-cell">Activity</th>
+                <th className="w-24 py-2 pl-3 text-right font-semibold">Stage</th>
               </tr>
             </thead>
             <tbody>
