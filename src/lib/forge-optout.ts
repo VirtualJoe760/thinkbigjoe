@@ -34,6 +34,8 @@ export async function markProspectOptedOut(phone: string): Promise<string | null
     await db.execute(sql`
       UPDATE forge_sites
       SET outreach_status = 'opted_out',
+          lead_stage = 'declined',
+          declined_at = COALESCE(declined_at, now()),
           denied_reason = 'Opted out of texts (replied STOP)',
           updated_at = now()
       WHERE right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 10) = ${last10}

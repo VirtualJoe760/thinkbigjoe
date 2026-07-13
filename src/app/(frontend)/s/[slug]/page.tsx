@@ -76,7 +76,8 @@ function Logo({ name, brand, size = 40 }: { name: string; brand: string; size?: 
 export default async function SitePreview({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const [site] = await db.select().from(forgeSites).where(eq(forgeSites.slug, slug)).limit(1);
-  if (!site) notFound();
+  // Declined + unclaimed leads have their site torn down after a few days — the preview link dies.
+  if (!site || site.siteDeletedAt) notFound();
 
   const brand = site.brandColor?.match(/^#?[0-9a-fA-F]{3,8}$/)
     ? site.brandColor.startsWith("#")
