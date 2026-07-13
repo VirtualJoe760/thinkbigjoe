@@ -23,7 +23,7 @@ const DAY = 86_400_000;
  */
 function htmlToText(html: string): string {
   return html
-    .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gis, (_m, url, text) => {
+    .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_m, url, text) => {
       const t = text.replace(/<[^>]+>/g, "").trim();
       return t && !/^https?:/i.test(t) ? `${t} (${url})` : url;
     })
