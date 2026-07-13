@@ -22,17 +22,17 @@ export const MIN_NOTICE_MS = 3 * 60 * 60 * 1000; // 3 hours
 
 /**
  * Sales-call windows in 24h clock, per weekday (0 = Sunday). null = closed.
- * Joe's booking hours: 10am–4pm Pacific, weekdays, with a midday lunch break
+ * Joe's booking hours: 10am–5pm Pacific, weekdays, with a midday lunch break
  * (see LUNCH_BREAK) that removes the noon slot. Weekends stay closed.
  */
 export type DayHours = { open: [number, number]; close: [number, number] };
 
-const WEEKDAY_HOURS: DayHours = { open: [10, 0], close: [16, 0] };
+const WEEKDAY_HOURS: DayHours = { open: [10, 0], close: [17, 0] };
 
 /** Lunch — no appointments book in this window (Pacific), applied to every open day. */
 export const LUNCH_BREAK: { start: [number, number]; end: [number, number] } = { start: [12, 0], end: [13, 0] };
 
-/** Agentic ($999) strategy calls share the standard 10am–4pm weekday window. Passed as an
+/** Agentic ($999) strategy calls share the standard 10am–5pm weekday window. Passed as an
  *  override to getAvailableSlots; weekends stay closed regardless (BUSINESS_HOURS gates the day). */
 export const AGENTIC_HOURS: DayHours = WEEKDAY_HOURS;
 

@@ -1,7 +1,7 @@
 // Shared helpers for the Retell voice-agent booking webhooks (/api/voice/*).
 import { BOOKING_TIMEZONE, ADVANCE_BOOKING_DAYS, getAvailableSlots, AGENTIC_HOURS, type DayHours } from "@/lib/gcal";
 
-/** Booking types the receptionist can create. Both "regular" and "agentic" ($999) use the Mon–Fri 10–4 PT window. */
+/** Booking types the receptionist can create. Both "regular" and "agentic" ($999) use the Mon–Fri 10–5 PT window. */
 export type CallType = "regular" | "agentic";
 export function hoursForType(type?: string): DayHours | undefined {
   return type === "agentic" ? AGENTIC_HOURS : undefined;

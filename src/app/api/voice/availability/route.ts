@@ -34,7 +34,7 @@ export async function POST(req: Request) {
   const args = parseRetellArgs(body);
   const date = typeof args.date === "string" ? args.date.trim() : "";
   const hours = hoursForType(typeof args.type === "string" ? args.type : undefined);
-  const windowText = "10 AM and 4 PM";
+  const windowText = "10 AM and 5 PM";
 
   try {
     const slots = date ? await getSlotsForDate(date, hours) : await getUpcomingSlots(5, hours);

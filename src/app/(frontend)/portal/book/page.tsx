@@ -43,7 +43,7 @@ export default async function BookPage() {
         </div>
 
         <p className="mt-8 rounded-xl border border-line bg-surface p-4 text-xs leading-relaxed text-ink-soft">
-          Calls run Monday–Friday, 10 AM–4 PM Pacific (lunch break at noon), in 30-minute slots. Need a different time?
+          Calls run Monday–Friday, 10 AM–5 PM Pacific (lunch break at noon), in 30-minute slots. Need a different time?
           Email <span className="font-semibold text-ink">joe@thinkbigjoe.com</span>.
         </p>
       </main>

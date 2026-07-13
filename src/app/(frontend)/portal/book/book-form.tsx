@@ -157,7 +157,7 @@ export function BookForm({ defaultName, email }: { defaultName?: string | null; 
 
 const owInitial: BookState = { ok: false, message: "" };
 
-/** Ask for a time outside the 10–4 PT window — recorded as a request Joe confirms manually. */
+/** Ask for a time outside the 10–5 PT window — recorded as a request Joe confirms manually. */
 function OutOfWindowRequest() {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(requestCallOutsideWindow, owInitial);
@@ -179,7 +179,7 @@ function OutOfWindowRequest() {
       ) : (
         <form action={action} className="space-y-3">
           <p className="text-sm text-ink-soft">
-            Tell Joe when works and he&apos;ll confirm a time outside the usual 10am–4pm window and send you an invite.
+            Tell Joe when works and he&apos;ll confirm a time outside the usual 10am–5pm window and send you an invite.
           </p>
           <label className="block">
             <span className="text-sm font-semibold text-ink">When works for you?</span>

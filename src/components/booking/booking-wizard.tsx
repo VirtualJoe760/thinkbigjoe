@@ -428,7 +428,7 @@ export function BookingWizard({
               )}
             </div>
             <p className="mt-4 text-xs text-ink-soft">
-              Call windows are weekdays 10am–4pm Pacific · times shown in your
+              Call windows are weekdays 10am–5pm Pacific · times shown in your
               timezone ({visitorZone}).
             </p>
           </div>
