@@ -18,7 +18,7 @@ export const SLOT_DURATION_MIN = 30;
 export const SLOT_BUFFER_MIN = 30;
 export const ADVANCE_BOOKING_DAYS = 30;
 /** Minimum notice before a slot can be booked (ms). */
-export const MIN_NOTICE_MS = 3 * 60 * 60 * 1000; // 3 hours
+export const MIN_NOTICE_MS = 12 * 60 * 60 * 1000; // 12 hours — Joe wants ≥12h lead time on any booking
 
 /**
  * Sales-call windows in 24h clock, per weekday (0 = Sunday). null = closed.
@@ -305,6 +305,37 @@ function weekdayInZone(dateStr: string): number {
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(name);
 }
 
+/**
+ * The earliest instant a new appointment may start, per Joe's rule: never same-day — always the
+ * NEXT business day (morning or afternoon is fine); if the request comes in AFTER business hours
+ * (a weekday evening, ≥ close), push to 2 days out; always ≥12h notice. Weekends snap to Monday.
+ * Returns the target business day's open time (UTC ms), which the slot filter uses as the floor.
+ */
+function earliestBookableInstant(): number {
+  const now = new Date();
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: BOOKING_TIMEZONE, weekday: "short", hour: "2-digit", hour12: false, year: "numeric", month: "2-digit", day: "2-digit" })
+      .formatToParts(now).map((x) => [x.type, x.value]),
+  );
+  const hourPT = Number(p.hour) % 24;
+  const dowNow = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday as string);
+  const afterHours = dowNow >= 1 && dowNow <= 5 && hourPT >= WEEKDAY_HOURS.close[0]; // weekday evening
+
+  const cur = new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), 12)); // noon UTC ≡ same PT day
+  const dateStrOf = (dt: Date) => `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+  cur.setUTCDate(cur.getUTCDate() + (afterHours ? 2 : 1));
+
+  // Snap to a weekday whose open time is still ≥12h out; otherwise roll to the next business day.
+  for (let i = 0; i < 10; i++) {
+    const ds = dateStrOf(cur);
+    const wd = weekdayInZone(ds);
+    const openMs = zonedTimeToUtc(ds, WEEKDAY_HOURS.open[0], WEEKDAY_HOURS.open[1]).getTime();
+    if (wd >= 1 && wd <= 5 && openMs >= now.getTime() + MIN_NOTICE_MS) return openMs;
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return now.getTime() + MIN_NOTICE_MS; // fallback (unreached in practice)
+}
+
 // ── Slot generation (same algorithm as jpsrealtor) ────────────────────────────
 
 export async function getAvailableSlots(
@@ -330,7 +361,7 @@ export async function getAvailableSlots(
     return [];
   }
 
-  const earliestStart = Date.now() + MIN_NOTICE_MS;
+  const earliestStart = earliestBookableInstant();
   const slots: TimeSlot[] = [];
   let current = new Date(openTime);
 
