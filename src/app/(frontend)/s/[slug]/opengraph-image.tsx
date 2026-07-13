@@ -123,7 +123,13 @@ export default async function SiteOgImage({ params }: { params: Promise<{ slug: 
           </div>
           {rating ? (
             <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 32, color: "#e7e9ee" }}>
-              <span style={{ display: "flex", color: "#f6c945" }}>{"★".repeat(Math.min(5, Math.round(rating)))}</span>
+              <div style={{ display: "flex", gap: 4 }}>
+                {Array.from({ length: Math.min(5, Math.max(1, Math.round(rating))) }).map((_, i) => (
+                  <svg key={i} width="34" height="34" viewBox="0 0 24 24" fill="#f6c945">
+                    <path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 18.9 5.9 21.4l1.4-6.8L2.2 9.9l6.9-.8z" />
+                  </svg>
+                ))}
+              </div>
               <span style={{ display: "flex", fontWeight: 700 }}>{rating.toFixed(1)}</span>
               {reviews ? <span style={{ display: "flex", color: "#9aa0ad" }}>· {reviews} reviews</span> : null}
             </div>
