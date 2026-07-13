@@ -77,6 +77,23 @@ export async function generateDraft(siteId: number): Promise<{ ok: boolean; mess
   return { ok: true };
 }
 
+/**
+ * Pause (or resume) this month's auto-send. Paused = status 'cancelled' → the monthly cron skips it;
+ * resuming puts it back to 'draft' so it auto-sends on the 15th again. Only affects the current month.
+ */
+export async function setNewsletterPaused(siteId: number, newsletterId: number, paused: boolean): Promise<{ ok: boolean; message?: string }> {
+  await requireOwnedSite(siteId);
+  const [nl] = await db.select({ status: newsletters.status }).from(newsletters)
+    .where(and(eq(newsletters.id, newsletterId), eq(newsletters.siteId, siteId))).limit(1);
+  if (!nl) return { ok: false, message: "Newsletter not found." };
+  if (nl.status === "sent") return { ok: false, message: "This month's newsletter already went out." };
+  await db.update(newsletters)
+    .set({ status: paused ? "cancelled" : "draft", updatedAt: new Date().toISOString() })
+    .where(and(eq(newsletters.id, newsletterId), eq(newsletters.siteId, siteId)));
+  revalidatePath("/portal/newsletter");
+  return { ok: true, message: paused ? "Paused — this month's newsletter won't auto-send." : "Resumed — it'll auto-send on the 15th." };
+}
+
 /** Save the client's edits to a draft. */
 export async function saveDraft(siteId: number, newsletterId: number, subject: string, bodyHtml: string): Promise<{ ok: boolean }> {
   await requireOwnedSite(siteId);

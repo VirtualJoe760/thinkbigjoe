@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 
-import { uploadContacts, removeContact, generateDraft, saveDraft, approveAndSend } from "./actions";
+import { uploadContacts, removeContact, generateDraft, saveDraft, approveAndSend, setNewsletterPaused } from "./actions";
 
 export type NewsletterView = {
   siteId: number;
@@ -43,6 +43,13 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
   const [body, setBody] = useState(view.current?.bodyHtml ?? "");
   const [editorMsg, setEditorMsg] = useState<string | null>(null);
   const alreadySent = view.current?.status === "sent";
+  const paused = view.current?.status === "cancelled";
+  const doPause = (next: boolean) =>
+    start(async () => {
+      setEditorMsg(null);
+      const r = await setNewsletterPaused(view.siteId, view.current!.id, next);
+      setEditorMsg(r.message || null);
+    });
 
   const doGenerate = () =>
     start(async () => {
@@ -133,7 +140,16 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-base font-bold">{view.monthLabel} newsletter</h2>
           {alreadySent && <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">Sent ✓</span>}
+          {paused && <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">Paused</span>}
         </div>
+
+        {view.current && !alreadySent && (
+          <div className={`mt-2 rounded-xl border px-3 py-2 text-xs ${paused ? "border-amber-200 bg-amber-50 text-amber-800" : "border-sky-200 bg-sky-50 text-sky-800"}`}>
+            {paused
+              ? "⏸ Paused — this month's newsletter won't send automatically. Resume it below to put it back on schedule."
+              : "📅 This sends automatically on the 15th at 12:00 PM Pacific. Review and edit it below anytime before then — or send it now, or pause this month."}
+          </div>
+        )}
 
         {!view.current ? (
           <div className="mt-3">
@@ -166,6 +182,9 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
                 </button>
                 <button onClick={doSave} disabled={pending} className="rounded-full border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-surface disabled:opacity-50">Save draft</button>
                 <button onClick={doGenerate} disabled={pending} className="rounded-full border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-surface disabled:opacity-50">↻ Re-draft with AI</button>
+                <button onClick={() => doPause(!paused)} disabled={pending} className="rounded-full border border-line px-4 py-2.5 text-sm font-semibold text-ink-soft hover:bg-surface disabled:opacity-50">
+                  {paused ? "▶ Resume auto-send" : "⏸ Pause this month"}
+                </button>
                 {view.subscribed === 0 && <span className="text-xs text-amber-700">Add customers above before sending.</span>}
                 {editorMsg && <span className="text-xs text-ink-soft">{editorMsg}</span>}
               </div>
