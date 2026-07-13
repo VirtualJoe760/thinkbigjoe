@@ -27,7 +27,7 @@ const num = (v: unknown) => (v == null ? 0 : Number(v));
 export default async function OverviewPage() {
   await requireAdmin();
 
-  const [digest, counts, recentSales, recentBuilds, pendingReplies, upcomingAppointments, recentActivity, calHealth, signupCounts, recentSignups] =
+  const [digest, counts, recentSales, recentBuilds, pendingReplies, upcomingAppointments, recentActivity, calHealth, signupCounts, recentSignups, commsCounts] =
     await Promise.all([
       getForgeDigest(),
       db.execute(sql`SELECT
@@ -74,6 +74,14 @@ export default async function OverviewPage() {
           EXISTS(SELECT 1 FROM forge_sites f WHERE f.claimed_by_user_id = u.id) AS claimed,
           EXISTS(SELECT 1 FROM forge_sites f WHERE f.claimed_by_user_id = u.id AND f.one_time_paid = true) AS paid
         FROM better_auth."user" u ORDER BY u."createdAt" DESC LIMIT 6`),
+      // Outreach volume — texts sent + voicemail drops (today PT + last 7d) so Joe sees results.
+      db.execute(sql`SELECT
+          count(*) FILTER (WHERE event_type = 'sms_outreach_sent' AND created_at >= date_trunc('day', now() AT TIME ZONE 'America/Los_Angeles') AT TIME ZONE 'America/Los_Angeles') AS texts_today,
+          count(*) FILTER (WHERE event_type = 'sms_outreach_sent' AND created_at > now()-interval '7 days') AS texts_7d,
+          count(*) FILTER (WHERE event_type = 'voicemail_dropped' AND created_at >= date_trunc('day', now() AT TIME ZONE 'America/Los_Angeles') AT TIME ZONE 'America/Los_Angeles') AS drops_today,
+          count(*) FILTER (WHERE event_type = 'voicemail_dropped' AND created_at > now()-interval '7 days') AS drops_7d,
+          count(*) FILTER (WHERE event_type = 'voicemail_delivered' AND created_at > now()-interval '7 days') AS delivered_7d
+        FROM activity_log`),
     ]);
 
   const c = firstRow(counts);
@@ -85,12 +93,20 @@ export default async function OverviewPage() {
   const booked = upcomingAppointments.length;
   const signups = num(firstRow(signupCounts).total);
   const signups30d = num(firstRow(signupCounts).recent30);
+  const cc = firstRow(commsCounts);
+  const textsToday = num(cc.texts_today);
+  const texts7d = num(cc.texts_7d);
+  const dropsToday = num(cc.drops_today);
+  const drops7d = num(cc.drops_7d);
+  const delivered7d = num(cc.delivered_7d);
   const signupRows = (Array.isArray(recentSignups) ? recentSignups : (recentSignups as { rows?: unknown[] }).rows ?? []) as Record<string, unknown>[];
 
   // Growth-oriented health tiles — is the machine producing, and is the pipeline moving?
   const metrics = [
     { label: "Sites built · 7d", value: digest.throughput.built7d, sub: `${liveSites} live`, accent: "" },
     { label: "Emails sent · 7d", value: digest.throughput.outreachSent7d, sub: `${digest.throughput.previews7d} previews`, accent: "" },
+    { label: "Texts sent · 7d", value: texts7d, sub: `${textsToday} today`, accent: textsToday > 0 ? "text-brand" : "" },
+    { label: "Voicemails · 7d", value: drops7d, sub: `${dropsToday} today${delivered7d ? ` · ${delivered7d} delivered` : ""}`, accent: dropsToday > 0 ? "text-brand" : "" },
     { label: "Replies to handle", value: repliesWaiting, sub: "inbound", accent: repliesWaiting > 0 ? "text-brand" : "" },
     { label: "Customers", value: customers, sub: `${customers30d} in 30d`, accent: "text-brand" },
     { label: "Sign-ups", value: signups, sub: `${signups30d} in 30d`, accent: signups30d > 0 ? "text-brand" : "" },

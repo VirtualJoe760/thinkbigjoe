@@ -31,12 +31,13 @@ const MAX_DROPS_PER_3_DAYS = 3;
 
 /**
  * The "call, then follow up with a text" first-touch: drop a ringless voicemail and mark the lead
- * so the follow-up text is sent LATER — gated on Drop Cowboy's delivery webhook, not fired at the
- * same instant. A voicemail deposits onto the carrier's voicemail server and the device is notified
- * seconds-to-minutes later (visual voicemail lags most), so texting immediately means "did you get
- * my voicemail?" arrives before the voicemail does. Instead we set vm_text_pending; the webhook
- * (on delivered → the VM-referencing text; on failed → a non-VM text) or the ~8-min fallback sweep
- * sends it. Shared by the lead-page button, the batch cron, and the MCP tool. `dry` previews.
+ * so the follow-up text is sent LATER — on a deliberate ~60s delay, not fired at the same instant.
+ * A voicemail deposits onto the carrier's voicemail server and the device is notified seconds-to-
+ * minutes later (visual voicemail lags most), so texting immediately means "did you get my
+ * voicemail?" arrives before the voicemail does. Instead we set vm_text_pending + vm_dropped_at; the
+ * timed sender (/api/leads/vm-text-send, launchd ~every 60s) sends the text ~60s after the drop —
+ * non-VM wording if the delivery webhook reported a failure, else the VM-referencing text. Shared by
+ * the lead-page button, the batch cron, and the MCP tool. `dry` previews.
  */
 export async function dropToSite(
   site: VmSite,
@@ -76,7 +77,7 @@ export async function dropToSite(
     summary: `📞 Dropped a voicemail to ${site.businessName}${drop.id ? ` (${drop.id})` : ""}`,
     metadata: { detail: { siteId: site.id, note: "Dropped a ringless voicemail", to: site.phone, rvmId: drop.id ?? null } },
   }).catch(() => {});
-  await notifyTelegram(`📞 Voicemail dropped → ${site.businessName} (${site.phone}). Follow-up text sends once it's confirmed delivered.`).catch(() => {});
+  await notifyTelegram(`📞 Voicemail dropped → ${site.businessName} (${site.phone}). Follow-up text sends ~60s later.`).catch(() => {});
 
   // Arm the delivery-gated follow-up text instead of sending it now.
   if (withText) {
@@ -90,15 +91,15 @@ export async function dropToSite(
     ok: true,
     dropped: true,
     texted: false,
-    message: `Voicemail dropped to ${site.businessName}${withText ? " — follow-up text will send once it's confirmed delivered (or ~8-min fallback)." : "."}`,
+    message: `Voicemail dropped to ${site.businessName}${withText ? " — follow-up text sends ~60s later." : "."}`,
   };
 }
 
 /**
- * Send the armed follow-up text for a lead whose voicemail drop is resolved. Called by the Drop
- * Cowboy delivery webhook (`delivered` → the "did you get my voicemail?" text; `failed` → a non-VM
- * text) and by the fallback sweep (`fallback` → non-VM, when no webhook ever arrived). The pending
- * flag is cleared ATOMICALLY first so the webhook and the fallback cron can never both send.
+ * Send the armed follow-up text for a lead ~60s after the drop. Called by the timed sender cron
+ * (/api/leads/vm-text-send): `delivered` → the "did you get my voicemail?" text; `failed`/`fallback`
+ * → a non-VM text (used when the delivery webhook reported a failure). The pending flag is cleared
+ * ATOMICALLY first so concurrent cron ticks can never double-send.
  */
 export async function sendPendingVmText(
   siteId: number,

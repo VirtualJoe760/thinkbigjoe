@@ -4,18 +4,17 @@ A third outreach channel alongside SMS + email: drop a **pre-recorded voicemail 
 prospect's inbox without ringing their phone**, then follow up with the first-touch text. The
 "call, then follow up with a text" opener. Callbacks route to the ThinkBigJoe number → **Ivy**.
 
-**The text is delivery-gated — it is NOT sent at the same instant as the drop.** A voicemail
+**The text is sent on a deliberate ~60s delay — NOT at the same instant as the drop.** A voicemail
 deposits onto the carrier's voicemail server and the phone is notified seconds-to-minutes later
 (visual voicemail lags most), so an immediate text means *"did you get my voicemail?"* arrives
-before the voicemail does. Instead, `dropToSite` sets `forge_sites.vm_text_pending` + `vm_dropped_at`
-and the text is sent later:
-- **Drop Cowboy delivery webhook** — on `delivered` → the VM-referencing text
-  (`composeVoicemailFollowupSms`); on `failed` → a non-VM text (`composeVoicemailFallbackSms`, since
-  they never got a voicemail).
-- **Fallback sweep** (`POST /api/leads/vm-text-fallback`, launchd `com.thinkbigjoe.vmtextfallback`,
-  ~every 5 min) — ~30% of drops never fire a webhook; any lead still `vm_text_pending` ~8+ min after
-  the drop gets the non-VM text so nobody is left with zero touches. `sendPendingVmText` claims the
-  pending flag atomically, so the webhook and the sweep can never both send.
+before the voicemail does. Instead, `dropToSite` sets `forge_sites.vm_text_pending` + `vm_dropped_at`,
+and the **timed sender** (`POST /api/leads/vm-text-send`, launchd `com.thinkbigjoe.vmtextsend`,
+~every 60s) sends the text once **≥ `VM_TEXT_DELAY_SECONDS` (default 60)** have passed since the drop.
+Text choice: if the Drop Cowboy **delivery webhook** logged `voicemail_failed` for that lead, it uses
+the non-VM text (`composeVoicemailFallbackSms` — they never got a voicemail); otherwise the
+VM-referencing text (`composeVoicemailFollowupSms`). The delivery webhook only *records* status now;
+it does not send, so the 60s wait is always honored. `sendPendingVmText` claims the pending flag
+atomically, so concurrent cron ticks can never double-send.
 
 **Rate guard:** Drop Cowboy rejects a 4th drop to the same contact within 3 days ("Too Many
 Attempts", 4013). `dropToSite` counts `voicemail_dropped` events for the lead in the trailing 3 days
