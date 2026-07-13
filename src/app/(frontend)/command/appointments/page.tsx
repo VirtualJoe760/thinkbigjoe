@@ -40,9 +40,18 @@ export default async function AppointmentsPage() {
     id: number; businessName: string; callbackAt: string; callbackNote: string | null; phone: string | null;
   }>;
 
+  // Keep only TBJ bookings — the calendar is the PRIMARY Google Calendar, so it's full of Joe's
+  // personal events (birthdays, etc.). Every TBJ booking is created with a Google Meet link and a
+  // "Strategy Call —" / "Call —" summary (see the 5 createEvent callers); nothing personal matches
+  // all of that, so filter on it. Never all-day (bookings are timed 30-min slots).
+  const TBJ_SUMMARY = /^(strategy call|call|booked strategy call)\b|thinkbigjoe|\btbj\b/i;
+  const tbjEvents = gcalEvents.filter(
+    (e) => !e.allDay && (!!e.hangoutLink || TBJ_SUMMARY.test(e.summary) || /thinkbigjoe|call room|claim code|booked from/i.test(e.description)),
+  );
+
   // Unify Google Calendar events (booked calls, however created) + scheduled call-backs.
   const events: CalEvent[] = [
-    ...gcalEvents.map((e): CalEvent => {
+    ...tbjEvents.map((e): CalEvent => {
       const guest = e.attendees.map((a) => a.displayName || a.email).filter(Boolean)[0] as string | undefined;
       return {
         id: `g-${e.id}`,
