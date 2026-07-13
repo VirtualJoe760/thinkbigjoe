@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { db, activityLog } from "@/db";
 import { notifyTelegram } from "@/lib/telegram";
+import { sendPendingVmText } from "@/lib/voicemail-outreach";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,15 @@ export async function POST(req: Request) {
 
   if (failed) {
     await notifyTelegram(`📞❌ Voicemail ${status}${phone ? ` — ${phone}` : ""} (Drop Cowboy).`).catch(() => {});
+  }
+
+  // Send the armed follow-up text now that the drop is resolved: on delivered → the VM-referencing
+  // text; on failed → a non-VM text (they never got a voicemail). Unknown statuses are left for the
+  // ~8-min fallback sweep. sendPendingVmText no-ops if there's no pending text or it was already sent.
+  if (siteId && (delivered || failed)) {
+    await sendPendingVmText(Number(siteId), delivered ? "delivered" : "failed").catch((err) => {
+      console.error("[dropcowboy:webhook] follow-up text failed:", err);
+    });
   }
 
   return NextResponse.json({ ok: true });

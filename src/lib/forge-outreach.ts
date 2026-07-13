@@ -78,6 +78,15 @@ export function composeVoicemailFollowupSms(p: { liveUrl: string | null; slug: s
   return `Hey, did you get my voicemail? Here's the link to the website I made you: ${site} — let me know if you like it, and we can make any changes during our appointment and take it live. (Not interested? Reply STOP.)`;
 }
 
+/**
+ * Follow-up text for the case where the voicemail did NOT land (delivery failed, or we never got
+ * a delivery confirmation). Must NOT reference a voicemail — many of these people never got one.
+ */
+export function composeVoicemailFallbackSms(p: { liveUrl: string | null; slug: string | null }): string {
+  const site = prospectSiteUrl(p);
+  return `Hey, it's Joe — I just tried to reach you. Here's the link to the website I made you: ${site} — take a look and let me know what you think, and we can make any changes during our appointment and take it live. (Not interested? Reply STOP.)`;
+}
+
 export type OutreachQueueItem = {
   id: number;
   businessName: string;

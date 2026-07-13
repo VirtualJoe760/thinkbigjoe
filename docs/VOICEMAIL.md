@@ -4,15 +4,34 @@ A third outreach channel alongside SMS + email: drop a **pre-recorded voicemail 
 prospect's inbox without ringing their phone**, then follow up with the first-touch text. The
 "call, then follow up with a text" opener. Callbacks route to the ThinkBigJoe number → **Ivy**.
 
+**The text is delivery-gated — it is NOT sent at the same instant as the drop.** A voicemail
+deposits onto the carrier's voicemail server and the phone is notified seconds-to-minutes later
+(visual voicemail lags most), so an immediate text means *"did you get my voicemail?"* arrives
+before the voicemail does. Instead, `dropToSite` sets `forge_sites.vm_text_pending` + `vm_dropped_at`
+and the text is sent later:
+- **Drop Cowboy delivery webhook** — on `delivered` → the VM-referencing text
+  (`composeVoicemailFollowupSms`); on `failed` → a non-VM text (`composeVoicemailFallbackSms`, since
+  they never got a voicemail).
+- **Fallback sweep** (`POST /api/leads/vm-text-fallback`, launchd `com.thinkbigjoe.vmtextfallback`,
+  ~every 5 min) — ~30% of drops never fire a webhook; any lead still `vm_text_pending` ~8+ min after
+  the drop gets the non-VM text so nobody is left with zero touches. `sendPendingVmText` claims the
+  pending flag atomically, so the webhook and the sweep can never both send.
+
+**Rate guard:** Drop Cowboy rejects a 4th drop to the same contact within 3 days ("Too Many
+Attempts", 4013). `dropToSite` counts `voicemail_dropped` events for the lead in the trailing 3 days
+and refuses a 4th. RVM delivers to **traditional carrier voicemail boxes, not VOIP** (a Google Voice
+number will *ring* instead of dropping) and runs ~60–70%, not 100% — per Drop Cowboy support.
+
 ## The three layers (per the full-stack rule)
 
 1. **UI** — a **📞 Drop voicemail + text** button on each lead's card
    (`src/app/(frontend)/command/leads/leads-crm.tsx` → `dropLeadVoicemail` action). Voicemail
    events show on the lead timeline (`voicemail` kind) via `getLeadHistories`.
 2. **Send path** — `src/lib/dropcowboy.ts` (`dropVoicemail`, the raw Drop Cowboy API client) +
-   `src/lib/voicemail-outreach.ts` (`dropToSite` — drop + log + optional follow-up text, shared by
-   every caller). Single-drop endpoint `POST /api/dropcowboy/drop` ({siteId, text?}, Bearer
-   `CRON_SECRET`) backs the MCP tool. Delivery status → `POST /api/dropcowboy/webhook?token=…`.
+   `src/lib/voicemail-outreach.ts` (`dropToSite` — drop + log + ARM the delivery-gated follow-up
+   text; `sendPendingVmText` actually sends it later — shared by every caller). Single-drop endpoint
+   `POST /api/dropcowboy/drop` ({siteId, text?}, Bearer `CRON_SECRET`) backs the MCP tool. Delivery
+   status → `POST /api/dropcowboy/webhook?token=…` (which triggers the follow-up text).
 3. **Batch / schedule** — `POST /api/forge/send-voicemail-outreach` (Bearer `CRON_SECRET`):
    worst-first fresh prospects, `?dry=1` preview, `?batch=N` manual kickoff, else weekday-window
    drip like the SMS sender. **Not auto-scheduled yet** — verify a live drop first, then add a cron.

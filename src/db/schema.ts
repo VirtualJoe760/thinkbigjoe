@@ -455,6 +455,8 @@ export const forgeSites = pgTable("forge_sites", {
 	callbackAt: timestamp("callback_at", { withTimezone: true, mode: 'string' }),
 	callbackNote: text("callback_note"),
 	callbackRemindedAt: timestamp("callback_reminded_at", { withTimezone: true, mode: 'string' }),
+	vmTextPending: boolean("vm_text_pending").default(false).notNull(),
+	vmDroppedAt: timestamp("vm_dropped_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
 	uniqueIndex("forge_sites_claim_code_key").using("btree", table.claimCode.asc().nullsLast().op("text_ops")),
 	index("forge_sites_outreach_status_idx").using("btree", table.outreachStatus.asc().nullsLast().op("text_ops")),
