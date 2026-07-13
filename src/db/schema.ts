@@ -574,3 +574,20 @@ export const newsletters = pgTable("newsletters", {
 			name: "newsletters_site_id_fkey"
 		}).onDelete("cascade"),
 ]);
+
+export const googleConnections = pgTable("google_connections", {
+	id: serial().primaryKey().notNull(),
+	userId: text("user_id").notNull(),
+	siteId: integer("site_id"),
+	googleEmail: text("google_email"),
+	accessToken: text("access_token").notNull(),
+	refreshToken: text("refresh_token"),
+	scope: text(),
+	tokenExpiry: timestamp("token_expiry", { withTimezone: true, mode: 'string' }),
+	calendarConnected: boolean("calendar_connected").default(false).notNull(),
+	contactsConnected: boolean("contacts_connected").default(false).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	unique("google_connections_user_id_key").on(table.userId),
+]);
