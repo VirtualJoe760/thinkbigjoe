@@ -153,10 +153,11 @@ export const auth = betterAuth({
         }
       : {}),
   },
-  // Every account carries a human-friendly account number (100001, 100002, …) —
-  // the DB assigns it via a column default (see scripts/db/add-account-numbers.mjs),
-  // so it's read-only here (`input: false`): better-auth never sets it, just returns
-  // it on the session as `user.accountNumber`. Customers read it to the voice agent.
+  // Every account carries a 6-digit account number the DB assigns via a column default:
+  // a SCRAMBLED sequence — (nextval * 486847 + 315413) % 900000 + 100000 — a bijection
+  // that's always unique but non-sequential, so the numbers don't leak how many customers
+  // exist (no 100001/100002). Read-only here (`input: false`): better-auth never sets it,
+  // just returns it on the session as `user.accountNumber`. Customers read it to the voice agent.
   user: {
     additionalFields: {
       accountNumber: { type: "string", required: false, input: false, fieldName: "account_number" },
@@ -172,7 +173,7 @@ export const auth = betterAuth({
           // column default — idempotent (only fills a NULL).
           try {
             await authPool.query(
-              `UPDATE "user" SET account_number = nextval('account_number_seq')::text WHERE id = $1 AND account_number IS NULL`,
+              `UPDATE "user" SET account_number = ((nextval('account_number_seq') * 486847 + 315413) % 900000 + 100000)::text WHERE id = $1 AND account_number IS NULL`,
               [user.id],
             );
           } catch (err) {
