@@ -1,7 +1,7 @@
 import { db, activityLog } from "@/db";
 import { dropVoicemail, dropCowboyCallbackUrl } from "@/lib/dropcowboy";
 import { sendSms } from "@/lib/sms";
-import { composeSmsOutreach } from "@/lib/forge-outreach";
+import { composeVoicemailFollowupSms } from "@/lib/forge-outreach";
 import { notifyTelegram } from "@/lib/telegram";
 
 export type VmSite = {
@@ -57,16 +57,8 @@ export async function dropToSite(
   await notifyTelegram(`📞 Voicemail dropped → ${site.businessName} (${site.phone}).`).catch(() => {});
 
   let texted = false;
-  if (withText && site.claimCode) {
-    const msg = composeSmsOutreach({
-      businessName: site.businessName,
-      ownerName: site.ownerName ?? null,
-      liveUrl: site.liveUrl,
-      slug: site.slug,
-      claimCode: site.claimCode,
-      googleRating: site.googleRating,
-      reviewCount: site.reviewCount,
-    });
+  if (withText) {
+    const msg = composeVoicemailFollowupSms({ liveUrl: site.liveUrl, slug: site.slug });
     const res = await sendSms(site.phone, msg);
     if ("ok" in res && res.ok) {
       texted = true;

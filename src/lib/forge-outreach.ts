@@ -68,6 +68,16 @@ export function composeSmsOutreach(p: {
   return `${opener} Here's the link to check it out: ${site}. Let me know what you think! (Not interested? Reply STOP.)`;
 }
 
+/**
+ * The text that follows a ringless voicemail drop — references the voicemail ("did you get my
+ * voicemail?") since the call is the opener now. Like the plain opener: full https link, no claim
+ * code up front (the agent hands the code over once they reply).
+ */
+export function composeVoicemailFollowupSms(p: { liveUrl: string | null; slug: string | null }): string {
+  const site = prospectSiteUrl(p);
+  return `Hey, did you get my voicemail? Here's the link to the website I made you: ${site} — let me know if you like it, and we can make any changes during our appointment and take it live. (Not interested? Reply STOP.)`;
+}
+
 export type OutreachQueueItem = {
   id: number;
   businessName: string;
