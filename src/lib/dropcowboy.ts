@@ -53,7 +53,7 @@ export type DropResult =
  */
 export async function dropVoicemail(
   phone: string,
-  opts: { foreignId?: string; callbackUrl?: string; audioUrl?: string; recordingId?: string } = {},
+  opts: { foreignId?: string; callbackUrl?: string; audioUrl?: string; recordingId?: string; poolId?: string | null } = {},
 ): Promise<DropResult> {
   if (!teamId || !secret) return { skipped: true, reason: "Drop Cowboy not configured" };
   const to = toE164(phone);
@@ -73,9 +73,12 @@ export async function dropVoicemail(
   };
   if (rec) body.recording_id = rec;
   else body.audio_url = audioUrl;
-  if (brandId) body.brand_id = brandId; // optional — omitted when Twilio BYOC bypasses brand approval
+  if (brandId) body.brand_id = brandId;
   if (forwardingNumber) body.forwarding_number = forwardingNumber;
-  if (poolId) body.pool_id = poolId;
+  // pool_id routes RVM through a specific number pool. Omitting it uses Drop Cowboy's default
+  // (public shared numbers = their native carrier network). Pass poolId:null to force-omit.
+  const pool = opts.poolId === null ? undefined : (opts.poolId || poolId);
+  if (pool) body.pool_id = pool;
   if (opts.callbackUrl) body.callback_url = opts.callbackUrl;
 
   try {
