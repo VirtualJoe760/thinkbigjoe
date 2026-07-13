@@ -279,7 +279,7 @@ function EventModal({ ev, onClose }: { ev: Parsed; onClose: () => void }) {
         </div>
         <p className="mt-2 text-sm font-semibold text-brand">{when} PT</p>
         {ev.sub && <p className="mt-1 text-sm text-ink-soft">{ev.sub}</p>}
-        {ev.note && <p className="mt-3 whitespace-pre-wrap rounded-xl bg-surface px-3 py-2.5 text-sm leading-relaxed text-ink">{ev.note}</p>}
+        {ev.note && <p className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-surface px-3 py-2.5 text-sm leading-relaxed text-ink">{ev.note}</p>}
         <div className="mt-4 flex flex-wrap gap-2">
           {ev.meetLink && (
             <a href={ev.meetLink} target="_blank" rel="noreferrer" className="rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white hover:bg-brand-dark">Join Meet</a>
