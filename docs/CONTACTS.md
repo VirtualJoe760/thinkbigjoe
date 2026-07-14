@@ -61,6 +61,30 @@ Everything goes through this — don't hand-write `contacts` queries in pages/ro
 - **`scripts/lead-engine.mjs`** — now stores `b.address` on the `forge_sites` insert, so future
   prospects carry an address for the backfill / prepopulation.
 
+## Sync to Google Contacts (`src/lib/contact-sync.ts`)
+
+`syncCrmContactsToGoogle(userId)` pushes the **engaged** CRM contacts into the owner's Google Contacts
+under a group (default **"TBJ Leads"**), the same way `site-booking.ts` writes a single booking customer.
+"Engaged" is deliberate (Joe's call — never dump cold prospects into a personal phone): a contact syncs
+only if it's a **client**, or its site has an email reply (`forge_replies`), an inbound text
+(`sms_inbound`), or a booking (`booking_made` / `site_booking_made`). Deduped against Google
+(`googleContactExists`) and against prior runs (`activity_log` `google_contact_synced`, keyed by
+**`contactId`** now, not `siteId`). Internal sites are excluded.
+
+- **Cron:** `com.thinkbigjoe.gcontacts` → `/api/google/sync-tbj-contacts` (now a thin wrapper over the
+  lib; it reads `contacts`, not the legacy `forge_sites` columns — step-3 cutover progress).
+- **On demand:** `/portal/settings` → "Sync contacts to Google Contacts" → `syncContactsToGoogleAction`
+  (**admin-only** — it syncs the TBJ CRM). A client-facing version that syncs a client's OWN customers
+  (their `newsletter_contacts` + booking leads) is a separate, not-yet-built feature.
+
+## The `is_internal` self-site
+
+**ThinkBigJoe is itself a `forge_sites` row** (`slug='thinkbigjoe'`, `is_internal=true`), claimed by the
+admin account `josephsardella@gmail.com`, so the admin has a real portal/Settings context. It is inert
+by construction: `claimed` → skipped by outreach, `built` (not `approved`) → never rebuilt by the forge,
+and `is_internal` → the portal hides the client editing tools (TBJ's own site is edited in code). Contact
+sync **excludes** internal sites, so TBJ's own owner-contact never syncs into its own list.
+
 ## Migration status — READ before "cleaning up" forge_sites
 
 `forge_sites` STILL carries the legacy contact columns: `email`, `phone`, `owner_name`, `city`,

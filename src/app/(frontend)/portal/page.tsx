@@ -80,10 +80,19 @@ export default async function PortalPage({
       domain: forgeSites.domain,
       domainStatus: forgeSites.domainStatus,
       receptionistStatus: forgeSites.receptionistStatus,
+      isInternal: forgeSites.isInternal,
     })
     .from(forgeSites)
     // Deleted sites are retired — never surface them (or their action buttons) in the portal.
-    .where(and(eq(forgeSites.claimedByUserId, user.id), ne(forgeSites.status, "deleted")));
+    // Internal sites (TBJ itself) are edited in code, not the portal — hide them from the site cards
+    // so the admin doesn't see "Request edits / Studio / rebuild" for a site we don't edit here.
+    .where(
+      and(
+        eq(forgeSites.claimedByUserId, user.id),
+        ne(forgeSites.status, "deleted"),
+        ne(forgeSites.isInternal, true),
+      ),
+    );
 
   // Upcoming strategy call for this user (the booking flow stores it on `leads`,
   // matched by email). Future, booked slots only — past calls shouldn't nag.

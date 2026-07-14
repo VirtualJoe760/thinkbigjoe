@@ -7,8 +7,10 @@ import { and, desc, eq, ne } from "drizzle-orm";
 
 import { db, forgeSites } from "@/db";
 import { auth } from "@/lib/auth";
+import { isAdminEmail } from "@/lib/admin";
 import { disconnectGoogle } from "@/lib/google-oauth";
 import { ensureOwnerContact, updateOwnerContact, type EditableContact } from "@/lib/contacts";
+import { syncCrmContactsToGoogle } from "@/lib/contact-sync";
 
 /**
  * Revoke Google access and forget the tokens. One Google account is stored per portal user, so this
@@ -73,4 +75,25 @@ export async function saveContactAction(
 
   revalidatePath("/portal/settings");
   return { ok: true, message: "Saved." };
+}
+
+/**
+ * Push TBJ's engaged contacts into the admin's Google Contacts on demand (the same code the cron
+ * runs). Admin-only: this syncs the TBJ CRM, not a client's own customers.
+ */
+export async function syncContactsToGoogleAction(): Promise<{ ok: boolean; message: string }> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return { ok: false, message: "Please sign in." };
+  if (!isAdminEmail(session.user.email)) return { ok: false, message: "Not available on this account." };
+
+  const r = await syncCrmContactsToGoogle(session.user.id);
+  revalidatePath("/portal/settings");
+  if (!r.ok) return { ok: false, message: r.message };
+  return {
+    ok: true,
+    message:
+      r.added === 0 && r.alreadyThere === 0
+        ? "Nothing new to sync — all caught up."
+        : `Synced to “${r.group}”: ${r.added} added${r.alreadyThere ? `, ${r.alreadyThere} already there` : ""}.`,
+  };
 }

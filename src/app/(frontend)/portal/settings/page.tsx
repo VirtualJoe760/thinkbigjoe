@@ -10,8 +10,10 @@ import { isAdminEmail } from "@/lib/admin";
 import { PortalHeader } from "@/components/portal/portal-header";
 import { getConnection } from "@/lib/google-oauth";
 import { ensureOwnerContact } from "@/lib/contacts";
+import { DEFAULT_GROUP } from "@/lib/contact-sync";
 import { disconnectGoogleAction } from "./actions";
 import { ContactForm } from "./contact-form";
+import { SyncContactsCard } from "./sync-contacts";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Settings", robots: { index: false, follow: false } };
@@ -164,6 +166,15 @@ export default async function PortalSettingsPage({
             </section>
           ))}
         </div>
+
+        {/* Admin-only: sync the TBJ CRM (engaged contacts) into Joe's Google Contacts. This is the
+            company-contacts sync, distinct from the per-booking Website Leads write; a client's own
+            customer sync is a separate future feature. */}
+        {isAdminEmail(user.email) && (
+          <div className="mt-4">
+            <SyncContactsCard group={DEFAULT_GROUP} connected={Boolean(conn?.contactsConnected)} />
+          </div>
+        )}
 
         {conn && (
           <form action={disconnectGoogleAction} className="mt-6">
