@@ -13,8 +13,11 @@ import { db, googleConnections } from "@/db";
  * screen (which is "in production" so any client can authorize — sensitive scopes may need review).
  */
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com").replace(/\/+$/, "");
-const CLIENT_ID = process.env.GCAL_CLIENT_ID || "";
-const CLIENT_SECRET = process.env.GCAL_CLIENT_SECRET || "";
+// The CLIENT-CONNECT flow uses ThinkBigJoe's OWN OAuth client (so clients see "ThinkBigJoe" on the
+// consent screen and it verifies under the thinkbigjoe project) — NOT the jpsrealtor client that
+// GCAL_* uses for Joe's internal booking calendar. Falls back to GCAL_* for local dev.
+const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.GCAL_CLIENT_ID || "";
+const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || process.env.GCAL_CLIENT_SECRET || "";
 export const GOOGLE_REDIRECT_URI = `${SITE}/api/google/callback`;
 
 export const GOOGLE_SCOPES = [
