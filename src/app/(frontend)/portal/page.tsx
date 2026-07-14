@@ -11,7 +11,6 @@ import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
 import { PLANS, type PlanKey } from "@/lib/plans";
 import { trialStatus } from "@/lib/trial";
-import { SiteBilling } from "./site-billing";
 import { TemplatePicker } from "./template-picker";
 
 export const metadata: Metadata = {
@@ -70,6 +69,8 @@ export default async function PortalPage({
       id: forgeSites.id,
       businessName: forgeSites.businessName,
       liveUrl: forgeSites.liveUrl,
+      slug: forgeSites.slug,
+      screenshotUrl: forgeSites.screenshotUrl,
       status: forgeSites.status,
       builtAt: forgeSites.builtAt,
       preferredTemplate: forgeSites.preferredTemplate,
@@ -258,6 +259,31 @@ export default async function PortalPage({
                   )}
                 </div>
 
+                {/* Site preview thumbnail — the stored screenshot, else a scaled live snapshot of the site. */}
+                {(site.screenshotUrl || site.liveUrl || site.slug) && (
+                  <a
+                    href={site.liveUrl || (site.slug ? `/s/${site.slug}` : "#")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-4 block aspect-[16/10] w-full overflow-hidden rounded-xl border border-line bg-white"
+                  >
+                    {site.screenshotUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={site.screenshotUrl} alt={`${site.businessName} preview`} className="h-full w-full object-cover object-top" />
+                    ) : (
+                      <div className="pointer-events-none relative h-full w-full">
+                        <iframe
+                          src={site.liveUrl || `/s/${site.slug}`}
+                          title={`${site.businessName} preview`}
+                          loading="lazy"
+                          className="absolute left-0 top-0 origin-top-left"
+                          style={{ width: "1280px", height: "800px", transform: "scale(0.36)", border: 0 }}
+                        />
+                      </div>
+                    )}
+                  </a>
+                )}
+
                 {(site.status === "approved" || site.status === "building") && (
                   <div className="mt-3 flex items-center gap-2 rounded-xl border border-brand/40 bg-brand-tint px-4 py-3 text-sm text-brand">
                     <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-brand" />
@@ -350,6 +376,18 @@ export default async function PortalPage({
                         >
                           🎙️ {site.receptionistStatus && site.receptionistStatus !== "none" ? "Receptionist setup" : "Set up AI receptionist"}
                         </Link>
+                        <Link
+                          href="/portal/calendar"
+                          className="inline-flex items-center justify-center rounded-full border border-line bg-background px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                        >
+                          📅 Calendar &amp; contacts
+                        </Link>
+                        <Link
+                          href="/portal/newsletter"
+                          className="inline-flex items-center justify-center rounded-full border border-line bg-background px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                        >
+                          📰 Newsletter
+                        </Link>
                       </div>
                     )}
                   </>
@@ -392,7 +430,12 @@ export default async function PortalPage({
                     </div>
 
                     <div className="mt-4">
-                      <SiteBilling siteId={site.id} />
+                      <Link
+                        href="/portal/billing"
+                        className="inline-flex items-center justify-center rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
+                      >
+                        Choose a plan &amp; go live →
+                      </Link>
                     </div>
                   </>
                 ) : (
@@ -400,7 +443,14 @@ export default async function PortalPage({
                     <p className="mt-2 text-sm text-ink-soft">
                       Claimed — pick a plan to activate hosting{site.liveUrl ? " and go live" : ""}.
                     </p>
-                    <SiteBilling siteId={site.id} />
+                    <div className="mt-4">
+                      <Link
+                        href="/portal/billing"
+                        className="inline-flex items-center justify-center rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
+                      >
+                        Choose a plan →
+                      </Link>
+                    </div>
                   </>
                 )}
               </div>
