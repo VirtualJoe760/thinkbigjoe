@@ -12,8 +12,10 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
   const url = new URL(req.url);
+  // Land back on Settings — that's where both connections are managed now. (The Calendar page still
+  // works; it just isn't where you grant access from any more.)
   const done = (status: string) => {
-    const dest = new URL("/portal/calendar", req.url);
+    const dest = new URL("/portal/settings", req.url);
     dest.searchParams.set("google", status);
     const res = NextResponse.redirect(dest);
     res.cookies.delete("g_oauth_state");

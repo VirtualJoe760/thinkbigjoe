@@ -20,27 +20,59 @@ const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.GCAL_CLIENT_ID || 
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || process.env.GCAL_CLIENT_SECRET || "";
 export const GOOGLE_REDIRECT_URI = `${SITE}/api/google/callback`;
 
-export const GOOGLE_SCOPES = [
-  "openid",
-  "https://www.googleapis.com/auth/userinfo.email",
-  "https://www.googleapis.com/auth/calendar.events", // book/read appointments
-  "https://www.googleapis.com/auth/contacts", // read (newsletter sync) + write (TBJ label groups)
-];
+/**
+ * SCOPES ARE REQUESTED PER FEATURE, NOT ALL AT ONCE.
+ *
+ * Google's verification reviewers want the narrowest scope, requested in context — and a small
+ * business deciding whether to trust us is far likelier to grant "see your calendar events" on the
+ * Calendar card than a single wall of permissions up front. `include_granted_scopes` below makes
+ * this incremental: connecting Contacts later ADDS to the existing grant rather than replacing it.
+ *
+ * These must stay in sync with THREE other places or verification is revoked:
+ *   1. the Google Cloud console's Data Access page (declared scopes),
+ *   2. the scope justification submitted with it,
+ *   3. section 5 "Google user data" in /privacy-policy.
+ */
+export type GoogleFeature = "calendar" | "contacts";
+
+/** Identity only — non-sensitive, needed to know which account was connected. */
+const BASE_SCOPES = ["openid", "https://www.googleapis.com/auth/userinfo.email"];
+
+export const FEATURE_SCOPES: Record<GoogleFeature, string[]> = {
+  // Read availability + write the customer's appointment onto the owner's calendar.
+  // NOT the full `auth/calendar` scope — that one reads "permanently delete all your calendars".
+  calendar: ["https://www.googleapis.com/auth/calendar.events"],
+  // Read: import the owner's contacts into their newsletter list.
+  // Write: when a customer books, save them into the owner's contacts under "Website Leads" so the
+  // owner can call the new customer straight from their phone. Read-only cannot do that.
+  contacts: ["https://www.googleapis.com/auth/contacts"],
+};
+
+export function scopesFor(features: GoogleFeature[]): string[] {
+  return [...BASE_SCOPES, ...features.flatMap((f) => FEATURE_SCOPES[f])];
+}
+
+/** Every scope the app can ever ask for — what must be declared in the Cloud console. */
+export const GOOGLE_SCOPES = scopesFor(["calendar", "contacts"]);
 
 export function isGoogleOAuthConfigured(): boolean {
   return Boolean(CLIENT_ID && CLIENT_SECRET);
 }
 
-/** The Google consent URL. `state` carries our CSRF token + which user/site is connecting. */
-export function buildAuthUrl(state: string): string {
+/**
+ * The Google consent URL. `state` carries our CSRF token + which user/site is connecting.
+ * `features` scopes the ask to just the one the customer clicked (defaults to everything for
+ * backwards compatibility with any older link).
+ */
+export function buildAuthUrl(state: string, features: GoogleFeature[] = ["calendar", "contacts"]): string {
   const p = new URLSearchParams({
     client_id: CLIENT_ID,
     redirect_uri: GOOGLE_REDIRECT_URI,
     response_type: "code",
-    scope: GOOGLE_SCOPES.join(" "),
+    scope: scopesFor(features).join(" "),
     access_type: "offline", // get a refresh_token
     prompt: "consent", // force refresh_token even on re-connect
-    include_granted_scopes: "true",
+    include_granted_scopes: "true", // incremental: adding Contacts keeps the Calendar grant
     state,
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${p.toString()}`;
@@ -90,7 +122,17 @@ export async function storeConnection(input: {
   tokens: TokenResponse;
   googleEmail: string | null;
 }): Promise<void> {
-  const scopes = input.tokens.scope || "";
+  // UNION the granted scopes with whatever we already had. Scopes are now requested per feature, so
+  // a customer who connects Calendar and later connects Contacts triggers a second grant. Google
+  // *should* return the cumulative set (include_granted_scopes), but if it ever returned only the
+  // new scope, overwriting here would silently mark Calendar as disconnected and break their
+  // bookings. Never downgrade an existing grant on a re-connect.
+  const prior = await getConnection(input.userId);
+  const scopes = [
+    ...new Set([...(prior?.scope || "").split(/\s+/), ...(input.tokens.scope || "").split(/\s+/)]),
+  ]
+    .filter(Boolean)
+    .join(" ");
   const expiry = new Date(Date.now() + (input.tokens.expires_in || 3600) * 1000).toISOString();
   const row = {
     userId: input.userId,

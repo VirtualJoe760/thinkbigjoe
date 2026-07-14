@@ -11,6 +11,7 @@ const LINKS: NavLink[] = [
   { href: "/solutions", label: "Agentic Solutions" },
   { href: "/portal/book", label: "Book a call" },
   { href: "/portal/billing", label: "Billing" },
+  { href: "/portal/settings", label: "Settings" },
   { href: "/portal/account", label: "Account" },
 ];
 
