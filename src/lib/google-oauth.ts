@@ -147,7 +147,11 @@ export async function getValidAccessToken(conn: GoogleConnection): Promise<strin
 export type ClientCalEvent = {
   id: string; summary: string; description: string; start: string; end: string;
   allDay: boolean; hangoutLink: string | null; htmlLink: string | null; location: string | null;
+  tbjBooking: boolean; // created by ThinkBigJoe (their website/AI receptionist)
 };
+
+// The private extended-property we stamp on every TBJ-created event so the client can filter them.
+export const TBJ_BOOKING_KEY = "tbjBooking";
 
 /** List a client's primary-calendar events (using their token). Returns [] on any error. */
 export async function listCalendarEvents(accessToken: string, timeMinISO: string, timeMaxISO: string): Promise<ClientCalEvent[]> {
@@ -171,6 +175,12 @@ export async function listCalendarEvents(accessToken: string, timeMinISO: string
         hangoutLink: e.hangoutLink || null,
         htmlLink: e.htmlLink || null,
         location: e.location || null,
+        // Booking if we stamped it, OR (for events created before the marker existed) it looks like
+        // a TBJ booking by summary/description.
+        tbjBooking:
+          e.extendedProperties?.private?.[TBJ_BOOKING_KEY] === "1" ||
+          /^(strategy call|call|booked strategy call)\b|thinkbigjoe|\btbj\b/i.test(e.summary || "") ||
+          /thinkbigjoe|call room|claim code|booked from|booked by venus/i.test(e.description || ""),
       }));
   } catch {
     return [];
@@ -267,13 +277,16 @@ export async function googleContactExists(accessToken: string, phone?: string | 
   }
 }
 
-/** Create an event in a user's OWN primary calendar (their receptionist books here). */
+/** Create an event in a user's OWN primary calendar (their receptionist books here). Stamped with
+ *  the TBJ marker so the client can filter website/AI bookings apart from their personal events. */
 export async function createEventForClient(accessToken: string, event: Record<string, unknown>): Promise<{ ok: boolean; htmlLink?: string; hangoutLink?: string }> {
   try {
+    const existingExt = (event.extendedProperties as { private?: Record<string, string> } | undefined)?.private || {};
+    const body = { ...event, extendedProperties: { private: { ...existingExt, [TBJ_BOOKING_KEY]: "1" } } };
     const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all&conferenceDataVersion=1", {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify(event),
+      body: JSON.stringify(body),
     });
     if (!res.ok) return { ok: false };
     const data = await res.json();

@@ -6,7 +6,7 @@ import Link from "next/link";
 /** A unified calendar item — a booked call (from Google Calendar) or a scheduled call-back. */
 export type CalEvent = {
   id: string;
-  kind: "appt" | "callback";
+  kind: "appt" | "callback" | "other";
   title: string;
   start: string; // ISO
   end: string; // ISO
@@ -39,9 +39,17 @@ const minsFromMidnight = (d: Date) => d.getHours() * 60 + d.getMinutes();
 const KIND_STYLE: Record<CalEvent["kind"], { chip: string; block: string; dot: string; label: string }> = {
   appt: { chip: "bg-brand-tint text-brand", block: "bg-brand text-white border-brand-dark", dot: "bg-brand", label: "Booked call" },
   callback: { chip: "bg-amber-100 text-amber-800", block: "bg-amber-500 text-white border-amber-600", dot: "bg-amber-500", label: "Call-back" },
+  other: { chip: "bg-surface text-ink-soft", block: "bg-slate-400 text-white border-slate-500", dot: "bg-slate-400", label: "Other" },
 };
 
-export function AppointmentCalendar({ events }: { events: CalEvent[] }) {
+export function AppointmentCalendar({
+  events, hideLegend, kindLabels,
+}: {
+  events: CalEvent[];
+  hideLegend?: boolean; // the client calendar shows its own filter bar instead
+  kindLabels?: Partial<Record<CalEvent["kind"], string>>; // override the display name of a category
+}) {
+  const label = (k: CalEvent["kind"]) => kindLabels?.[k] || KIND_STYLE[k].label;
   const [view, setView] = useState<View>("month");
   const [cursor, setCursor] = useState<Date>(() => new Date());
   const [selected, setSelected] = useState<Parsed | null>(null);
@@ -99,20 +107,22 @@ export function AppointmentCalendar({ events }: { events: CalEvent[] }) {
       </div>
 
       {/* legend */}
-      <div className="mb-3 flex flex-wrap items-center gap-4 text-xs text-ink-soft">
-        {(["appt", "callback"] as const).map((k) => (
-          <span key={k} className="inline-flex items-center gap-1.5">
-            <span className={`h-2.5 w-2.5 rounded-full ${KIND_STYLE[k].dot}`} />
-            {KIND_STYLE[k].label}
-          </span>
-        ))}
-      </div>
+      {!hideLegend && (
+        <div className="mb-3 flex flex-wrap items-center gap-4 text-xs text-ink-soft">
+          {(["appt", "callback"] as const).map((k) => (
+            <span key={k} className="inline-flex items-center gap-1.5">
+              <span className={`h-2.5 w-2.5 rounded-full ${KIND_STYLE[k].dot}`} />
+              {label(k)}
+            </span>
+          ))}
+        </div>
+      )}
 
       {view === "month" && <MonthView cursor={cursor} today={today} eventsOn={eventsOn} onPick={setSelected} onDay={(d) => { setCursor(d); setView("day"); }} />}
       {view === "week" && <TimeGrid days={Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(cursor), i))} today={today} parsed={parsed} onPick={setSelected} />}
       {view === "day" && <TimeGrid days={[startOfDay(cursor)]} today={today} parsed={parsed} onPick={setSelected} />}
 
-      {selected && <EventModal ev={selected} onClose={() => setSelected(null)} />}
+      {selected && <EventModal ev={selected} label={label(selected.kind)} onClose={() => setSelected(null)} />}
     </div>
   );
 }
@@ -263,7 +273,7 @@ function NowLine() {
   );
 }
 
-function EventModal({ ev, onClose }: { ev: Parsed; onClose: () => void }) {
+function EventModal({ ev, label, onClose }: { ev: Parsed; label?: string; onClose: () => void }) {
   const when = ev.allDay
     ? ev.s.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) + " · all day"
     : `${ev.s.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · ${fmtTime(ev.s)}–${fmtTime(ev.e)}`;
@@ -272,7 +282,7 @@ function EventModal({ ev, onClose }: { ev: Parsed; onClose: () => void }) {
       <div className="w-full max-w-md rounded-t-2xl bg-background p-5 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <span className={`mb-1.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${KIND_STYLE[ev.kind].chip}`}>{KIND_STYLE[ev.kind].label}</span>
+            <span className={`mb-1.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${KIND_STYLE[ev.kind].chip}`}>{label || KIND_STYLE[ev.kind].label}</span>
             <h3 className="text-base font-bold text-ink">{ev.title}</h3>
           </div>
           <button onClick={onClose} className="shrink-0 rounded-full p-1 text-ink-soft hover:bg-surface" aria-label="Close">✕</button>

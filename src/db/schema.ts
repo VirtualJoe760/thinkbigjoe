@@ -588,6 +588,7 @@ export const googleConnections = pgTable("google_connections", {
 	contactsConnected: boolean("contacts_connected").default(false).notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	bookingLabel: text("booking_label").default('Website & AI bookings'),
 }, (table) => [
 	unique("google_connections_user_id_key").on(table.userId),
 ]);
