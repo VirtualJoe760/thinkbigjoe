@@ -30,7 +30,9 @@ never used · cron with no UI → invisible work):
 
 Full detail + the shipping checklist: [`docs/VENUS_UI_MAPPING.md`](docs/VENUS_UI_MAPPING.md).
 Agent/cron mechanics: [`docs/OPENCLAW.md`](docs/OPENCLAW.md). Forge lifecycle + **cost-safety
-rules — read before queuing any site build**: [`docs/FORGE.md`](docs/FORGE.md).
+rules — read before queuing any site build**: [`docs/FORGE.md`](docs/FORGE.md). Email delivery
+standards + the live health board — **read before touching anything that sends email, especially
+on behalf of a client**: [`docs/DELIVERABILITY.md`](docs/DELIVERABILITY.md).
 
 ## Docs protocol — how this file stays fast AND current
 
@@ -54,6 +56,13 @@ when the new thing changed again). Before you consider a change done:
 
 ## Working rules
 - **Run `pnpm run build` before every push** — it runs `tsc`; a clean build is the merge gate.
+- **Email delivery health is a gate for any sending change.** Before shipping anything that sends
+  email — transactional, outreach, or a client newsletter — verify the live health board in
+  [`docs/DELIVERABILITY.md`](docs/DELIVERABILITY.md) and **re-check + date the rows you affect**.
+  Deliverability is a shared, exhaustible reserve: one send to a bounced address, without an
+  unsubscribe, or from an un-authenticated domain degrades **every** future send on that domain. Never
+  push bulk through the transactional mailbox, and don't promise a client "thousands of emails" until
+  that doc's onboarding checklist is green.
 - **Never commit secrets or PII**: no `.env*` files, no prospecting CSVs (gitignored under `/prospecting/`).
 - Commit at each logical milestone; end commit messages with the `Co-Authored-By:` trailer.
 - DB is the source of truth for schema — pull with `npm run db:pull`, don't hand-edit `src/db/schema.ts`.
