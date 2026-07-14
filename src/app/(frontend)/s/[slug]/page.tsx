@@ -162,7 +162,21 @@ export default async function SitePreview({ params }: { params: Promise<{ slug: 
   // We frame the built site rather than redirecting to it, because a redirect would drop the claim
   // bar — and the claim code is the entire conversion mechanism. (The portal already iframes
   // `live_url` the same way, so our sites are known to embed.)
-  if (site.status === "built" && site.liveUrl) {
+  //
+  // The gate is "did a CLEAN build produce a real deployment?" — not `status`, and not `live_url`
+  // alone. Both of those are wrong in a way that bites:
+  //
+  //  • `status === 'built'` breaks during a REBUILD. Status flips to approved → building for ~15
+  //    minutes while the PREVIOUS deployment is still up and serving fine, so prospects clicking
+  //    their text in that window would get dumped back to the stale mock-up.
+  //  • `live_url` alone frames 404s. forge-build.sh sets LIVE to a GUESSED `tbj-<slug>.vercel.app`
+  //    even when the build never deployed (see its `else` branch + the deploy_failed path), and
+  //    registers it. 6 rows in prod carry a live_url with status='build_failed' — those URLs are
+  //    dead, and framing one is strictly worse than showing the preview.
+  //
+  // build_status='clean' is the only field that means "a deploy actually succeeded", and it survives
+  // a rebuild (it holds the previous build's verdict until the new one registers).
+  if (site.liveUrl && site.buildStatus === "clean") {
     return <BuiltSiteFrame site={site} brand={brand} />;
   }
 
