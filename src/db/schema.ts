@@ -378,52 +378,6 @@ export const designReports = pgTable("design_reports", {
 	index("design_reports_created_idx").using("btree", table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
 ]);
 
-export const forgeEngine = pgTable("forge_engine", {
-	id: serial().primaryKey().notNull(),
-	enabled: boolean().default(false).notNull(),
-	avgBuildMinutes: integer("avg_build_minutes").default(12).notNull(),
-	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
-	lastRunSummary: text("last_run_summary"),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	buildsEnabled: boolean("builds_enabled").default(true).notNull(),
-	editsEnabled: boolean("edits_enabled").default(true).notNull(),
-	idleTemplatesEnabled: boolean("idle_templates_enabled").default(false).notNull(),
-	weeklyRunBudget: integer("weekly_run_budget").default(40).notNull(),
-	templatesPerDay: integer("templates_per_day").default(2).notNull(),
-	lastTemplateAt: timestamp("last_template_at", { withTimezone: true, mode: 'string' }),
-	lastWarnPct: integer("last_warn_pct").default(0).notNull(),
-	lastWarnWeek: text("last_warn_week"),
-});
-
-export const forgeReplies = pgTable("forge_replies", {
-	id: serial().primaryKey().notNull(),
-	siteId: integer("site_id").notNull(),
-	fromEmail: text("from_email"),
-	subject: text(),
-	inboundText: text("inbound_text"),
-	draft: text(),
-	finalText: text("final_text"),
-	status: text().default('awaiting').notNull(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	index("forge_replies_site_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops")),
-	index("forge_replies_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
-]);
-
-export const smsConversations = pgTable("sms_conversations", {
-	id: serial().primaryKey().notNull(),
-	contactPhone: varchar("contact_phone").notNull(),
-	lastInboundAt: timestamp("last_inbound_at", { withTimezone: true, mode: 'string' }),
-	lastOutboundAt: timestamp("last_outbound_at", { withTimezone: true, mode: 'string' }),
-	lastDirection: varchar("last_direction", { length: 8 }),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	index("sms_conversations_last_inbound_idx").using("btree", table.lastInboundAt.desc().nullsFirst().op("timestamptz_ops")),
-	unique("sms_conversations_contact_phone_key").on(table.contactPhone),
-]);
-
 export const forgeSites = pgTable("forge_sites", {
 	id: serial().primaryKey().notNull(),
 	slug: text().notNull(),
@@ -504,11 +458,58 @@ export const forgeSites = pgTable("forge_sites", {
 	vmTextPending: boolean("vm_text_pending").default(false).notNull(),
 	vmDroppedAt: timestamp("vm_dropped_at", { withTimezone: true, mode: 'string' }),
 	bookingTimezone: text("booking_timezone").default('America/New_York').notNull(),
+	address: text(),
 }, (table) => [
 	uniqueIndex("forge_sites_claim_code_key").using("btree", table.claimCode.asc().nullsLast().op("text_ops")),
 	index("forge_sites_outreach_status_idx").using("btree", table.outreachStatus.asc().nullsLast().op("text_ops")),
 	index("forge_sites_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
 	unique("forge_sites_slug_key").on(table.slug),
+]);
+
+export const forgeEngine = pgTable("forge_engine", {
+	id: serial().primaryKey().notNull(),
+	enabled: boolean().default(false).notNull(),
+	avgBuildMinutes: integer("avg_build_minutes").default(12).notNull(),
+	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
+	lastRunSummary: text("last_run_summary"),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	buildsEnabled: boolean("builds_enabled").default(true).notNull(),
+	editsEnabled: boolean("edits_enabled").default(true).notNull(),
+	idleTemplatesEnabled: boolean("idle_templates_enabled").default(false).notNull(),
+	weeklyRunBudget: integer("weekly_run_budget").default(40).notNull(),
+	templatesPerDay: integer("templates_per_day").default(2).notNull(),
+	lastTemplateAt: timestamp("last_template_at", { withTimezone: true, mode: 'string' }),
+	lastWarnPct: integer("last_warn_pct").default(0).notNull(),
+	lastWarnWeek: text("last_warn_week"),
+});
+
+export const forgeReplies = pgTable("forge_replies", {
+	id: serial().primaryKey().notNull(),
+	siteId: integer("site_id").notNull(),
+	fromEmail: text("from_email"),
+	subject: text(),
+	inboundText: text("inbound_text"),
+	draft: text(),
+	finalText: text("final_text"),
+	status: text().default('awaiting').notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("forge_replies_site_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops")),
+	index("forge_replies_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+]);
+
+export const smsConversations = pgTable("sms_conversations", {
+	id: serial().primaryKey().notNull(),
+	contactPhone: varchar("contact_phone").notNull(),
+	lastInboundAt: timestamp("last_inbound_at", { withTimezone: true, mode: 'string' }),
+	lastOutboundAt: timestamp("last_outbound_at", { withTimezone: true, mode: 'string' }),
+	lastDirection: varchar("last_direction", { length: 8 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("sms_conversations_last_inbound_idx").using("btree", table.lastInboundAt.desc().nullsFirst().op("timestamptz_ops")),
+	unique("sms_conversations_contact_phone_key").on(table.contactPhone),
 ]);
 
 export const callbackCodes = pgTable("callback_codes", {
@@ -574,6 +575,42 @@ export const newsletters = pgTable("newsletters", {
 			foreignColumns: [forgeSites.id],
 			name: "newsletters_site_id_fkey"
 		}).onDelete("cascade"),
+]);
+
+export const contacts = pgTable("contacts", {
+	id: serial().primaryKey().notNull(),
+	siteId: integer("site_id"),
+	role: text().default('owner').notNull(),
+	lifecycle: text().default('prospect').notNull(),
+	businessName: text("business_name"),
+	name: text(),
+	email: text(),
+	phone: text(),
+	address: text(),
+	city: text(),
+	serviceArea: text("service_area"),
+	websiteUrl: text("website_url"),
+	instagramUrl: text("instagram_url"),
+	facebookUrl: text("facebook_url"),
+	linkedinUrl: text("linkedin_url"),
+	notes: text(),
+	source: text(),
+	doNotContact: boolean("do_not_contact").default(false).notNull(),
+	emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true, mode: 'string' }),
+	enrichedAt: timestamp("enriched_at", { withTimezone: true, mode: 'string' }),
+	userId: text("user_id"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("contacts_email_idx").using("btree", sql`lower(email)`),
+	index("contacts_site_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops")),
+	uniqueIndex("contacts_site_owner_key").using("btree", table.siteId.asc().nullsLast().op("int4_ops")).where(sql`(role = 'owner'::text)`),
+	index("contacts_user_idx").using("btree", table.userId.asc().nullsLast().op("text_ops")),
+	foreignKey({
+			columns: [table.siteId],
+			foreignColumns: [forgeSites.id],
+			name: "contacts_site_id_fkey"
+		}).onDelete("set null"),
 ]);
 
 export const googleConnections = pgTable("google_connections", {

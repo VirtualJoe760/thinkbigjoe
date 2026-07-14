@@ -9,7 +9,9 @@ import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
 import { PortalHeader } from "@/components/portal/portal-header";
 import { getConnection } from "@/lib/google-oauth";
+import { ensureOwnerContact } from "@/lib/contacts";
 import { disconnectGoogleAction } from "./actions";
+import { ContactForm } from "./contact-form";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Settings", robots: { index: false, follow: false } };
@@ -42,6 +44,19 @@ export default async function PortalSettingsPage({
 
   const conn = await getConnection(user.id);
   const siteParam = site ? `&siteId=${site.id}` : "";
+
+  // Prepopulate contact details from the site's scraped data the first time they land here after
+  // claiming, then let them review/correct it.
+  const contact = site ? await ensureOwnerContact(site.id, user.id) : null;
+  const contactValues = {
+    businessName: contact?.businessName ?? "",
+    name: contact?.name ?? "",
+    email: contact?.email ?? "",
+    phone: contact?.phone ?? "",
+    address: contact?.address ?? "",
+  };
+  // "From scrape" = we haven't been told otherwise (no manual edit / enrichment yet).
+  const prefilledFromScrape = contact?.source === "scrape" || contact?.source === "enrichment";
 
   const cards = [
     {
@@ -85,6 +100,12 @@ export default async function PortalSettingsPage({
           <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
             Google isn&apos;t configured yet — we&apos;re on it.
           </p>
+        )}
+
+        {site && (
+          <div className="mt-8">
+            <ContactForm values={contactValues} prefilledFromScrape={prefilledFromScrape} />
+          </div>
         )}
 
         <h2 className="mt-10 text-sm font-semibold uppercase tracking-wide text-ink-soft">Google</h2>
