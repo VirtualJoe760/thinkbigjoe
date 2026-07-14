@@ -6,7 +6,11 @@ import { ASSET_SPECS, normalizeAsset, type AssetSpec, type NormalizeMode } from 
 
 const PRESETS = [
   { label: "✨ Enhance", prompt: "Enhance this image: improve lighting, sharpness, color and detail, keep the exact composition and subject." },
-  { label: "Remove bg", prompt: "Remove the background completely; keep only the main subject on a transparent background." },
+  // NOT "on a transparent background" — the image model cannot output alpha (it returns an opaque
+  // PNG), so that instruction just made it PAINT a background, often a vignetted off-white that no
+  // key can lift. Ask for the flat colour we CAN key out; normalizeAsset() below does the actual
+  // background removal for the logo types. See docs/LOGOS.md.
+  { label: "Remove bg", prompt: "Isolate the main subject and place it on a COMPLETELY FLAT, UNIFORM, SOLID PURE WHITE (#FFFFFF) background — one single exact colour edge to edge, with no gradient, vignette, shading, texture or drop shadow." },
   { label: "Brighten", prompt: "Brighten and add natural warmth." },
   { label: "Sharpen", prompt: "Increase clarity and sharpness, reduce blur and noise; keep the composition." },
 ];
@@ -85,9 +89,11 @@ export function ImageStudio({ siteId }: { siteId: number }) {
         body: JSON.stringify({ prompt, refDataUrl: ref || undefined, aspect }),
       }).then((r) => r.json());
       if (res.ok && res.dataUrl) {
-        // Logos come back centered in a big transparent canvas. Trim it back to the true mark and
-        // re-pad per type — the same geometry the forge bakes at build time (see src/lib/logo-spec.ts),
-        // so a Studio logo drops into a navbar at full size instead of a sliver.
+        // The model CANNOT return transparency — it hands back an opaque PNG with the mark sitting on
+        // a painted background plate. normalizeAsset() keys that plate out, drops corner specks, trims
+        // to the true mark and re-pads per type — the same geometry the forge bakes at build time
+        // (src/lib/logo-spec.ts, twin of factory/logo-fix.mjs). Without it a Studio logo ships as a
+        // white box with a sliver of a mark inside. See docs/LOGOS.md.
         const fixed = normalize ? await normalizeAsset(res.dataUrl, normalize) : null;
         setSrc(fixed?.dataUrl ?? res.dataUrl);
         setWarn(fixed?.warn ?? null);
@@ -96,10 +102,11 @@ export function ImageStudio({ siteId }: { siteId: number }) {
     } catch { setStatus("Request failed."); }
     setBusy(false);
   }
-  // New generations honor the asset's aspect (wide lockup / circle / 16:9). AI edits omit the aspect
-  // so they preserve the current image's shape — but they still get the per-type trim, because the
-  // edits that matter most for a logo ("Remove bg") are exactly the ones that re-introduce a big
-  // transparent margin. Trim+pad is idempotent, so it's a no-op on edits that don't.
+  // New generations honor the asset's aspect (wide lockup / circle / 16:9) AND carry the asset's
+  // `hint` — which is where the background rule lives (flat uniform white to key out; no white
+  // artwork touching it). AI edits omit the aspect so they preserve the current image's shape, but
+  // they still get the per-type normalize, because every edit comes back with a repainted opaque
+  // background. Normalizing is idempotent, so it's a no-op on an already-clean asset.
   const generate = () => genPrompt.trim().length >= 3 && post(`${genPrompt.trim()} — ${assetType.hint}`, useRef_ && src ? currentDataUrl() : undefined, assetType.aspect, assetType.normalize);
   const aiEdit = (instruction: string) => {
     const ref = currentDataUrl();

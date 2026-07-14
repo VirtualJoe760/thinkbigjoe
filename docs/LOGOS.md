@@ -77,10 +77,13 @@ the browser trim gives instant WYSIWYG, the forge trim is the authority that als
 
 ## Per-type spec
 
+Every logo row also carries **the background rule above** — flat uniform white, no white artwork
+touching it. Never ask for a transparent background; the model cannot produce one.
+
 | Type | File | Aspect | What the model must produce | Post-trim pad | Quality gate |
 |---|---|---|---|---|---|
-| **Horizontal lockup** | `public/logo/logo.png` | `21:9` | Icon **left** + wordmark **right**, cap-heights matched, flat vector, transparent bg, **filling the frame edge-to-edge** | `2%` of mark height top/bottom · `6%` of mark height left/right | mark aspect **≥ 1.8** (target ~2.3) |
-| **Circular emblem** | `public/logo/logo-circle.png` | `1:1` | A **solid filled circle that touches all four edges** of the square frame, icon/monogram centred inside; transparent **only outside** the circle | pad to an exact square at `1.04 ×` the longest side | mark aspect **0.92 – 1.09** (target 1.00) |
+| **Horizontal lockup** | `public/logo/logo.png` | `21:9` | Icon **left** + wordmark **right**, cap-heights matched, flat vector, **the lockup itself filling the frame edge-to-edge**, name rendered **exactly once**, on the flat white bg | `2%` of mark height top/bottom · `6%` of mark height left/right | mark aspect **≥ 1.8** · not >97% opaque |
+| **Circular emblem** | `public/logo/logo-circle.png` | `1:1` | A **solid filled circle that touches all four edges** of the square frame, icon/monogram centred inside (**white icon is good — enclosed, so it survives the key**), on the flat white bg | pad to an exact square at `1.04 ×` the longest side | mark aspect **0.92 – 1.09** (target 1.00) |
 | OG image | — | `16:9` | Social-share banner, room for text | none (photo) | — |
 | Hero | `public/images/…` | `16:9` | Hero photo, clear space at left for the headline | none (photo) | — |
 | Carousel | — | `4:3` | Gallery image | none (photo) | — |
@@ -193,28 +196,33 @@ to lift (a gradient background), and the fix is to **regenerate**, not to tune t
 
 ## Verifying a change (parity check)
 
-Both implementations must produce the same geometry from the same input. The real assets make good
-fixtures — a correct lockup, a known-bad circle, and opaque-background copies of each (`sharp
-.flatten({background:"#ffffff"})`) to exercise the colour-trim path:
+> ⚠️ The old numbers in this section were **the bug**, written down as the expected answer: it claimed
+> `logo.png → 1616x698, mark 1536x672, aspect 2.29, no warning`. That "mark" was the **white plate**.
+> If a change makes the output look like that again, the change is wrong.
+
+Both implementations must produce the same geometry from the same input. Generate a fresh asset and run
+it through, then run it through **again** — the second pass must be a no-op.
 
 ```bash
-# forge side (Node + sharp)
 cd ~/code/webdev-templates
-node factory/logo-fix.mjs /path/to/logo.png            # → 1616x698, mark 1536x672, aspect 2.29, no warning
-node factory/logo-fix.mjs /path/to/logo-circle.png --circle
-#   → 739x739, mark 628x711, aspect 0.88 → ⚠️ NOT circular
+node factory/logo-fix.mjs /tmp/logo.png
+#   → 1536x672 → 1051x178 (aspect 5.90, mark fills 98%w × 97%h, removed 95% background)
+node factory/logo-fix.mjs /tmp/logo.png          # idempotent: 1051x178 → 1051x178, nothing removed
+node factory/logo-fix.mjs /tmp/logo-circle.png --circle
+#   → 1024x1024 → 745x745 (aspect 1.00, mark fills 96%, removed 62% background)
 ```
 
-Both are **idempotent** — running them on their own output is a no-op, so a rebuild never compounds
-padding. `normalizeAsset()` must agree on mark size, canvas size, aspect, and warning. Verified on all
-four fixtures:
+What a correct result looks like — check all four, not just the canvas size:
 
-| Fixture | sharp | `normalizeAsset()` | Gate |
-|---|---|---|---|
-| `logo.png` (transparent) | mark 1536×672 → 1616×698 | identical | quiet |
-| `logo-circle.png` (transparent) | mark 628×711 → 739×739 | identical | ⚠️ not circular |
-| `logo-opaque.png` (white bg) | mark 1290×453 → 1344×471 | mark 1291×453 → 1345×471 | quiet |
-| `logo-circle-opaque.png` (white bg) | mark 628×711 → 739×739 | identical | ⚠️ not circular |
+1. **`hasAlpha=true`, corners `0,0,0,0`.** The input has **no alpha channel at all**; if the output has
+   none either, removal didn't run (is `sharp` resolving? it exits 0 and ships raw output if not).
+2. **The mark is mostly transparent inside its own box.** A >97% opaque "mark" is a plate — gate fires.
+3. **Enclosed white survives.** The circle emblem's white icon must still be there (~5% opaque-white
+   pixels). If it's gone, someone replaced the flood fill with a global colour key. Don't.
+4. **Idempotent.** Second pass changes nothing and removes 0% background.
+
+`normalizeAsset()` (browser canvas) must agree with `logo-fix.mjs` (Node + sharp) on mark size, canvas
+size, aspect, and gate verdict. They are twins across a repo boundary — **change one, change the other.**
 
 **The 1px on the opaque lockup is expected, not a bug.** libvips thresholds the *mean* channel
 difference from the background; the canvas twin thresholds the *max*. Since `max ≥ mean`, our box is
