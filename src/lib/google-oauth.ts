@@ -177,6 +177,112 @@ export async function listCalendarEvents(accessToken: string, timeMinISO: string
   }
 }
 
+// ── Google Contacts (People API) ────────────────────────────────────────────
+
+export type GoogleContact = { name: string | null; email: string | null; phone: string | null };
+
+/** Read a user's Google Contacts (names + emails + phones). Paginates. Returns [] on error. */
+export async function listGoogleContacts(accessToken: string): Promise<GoogleContact[]> {
+  const out: GoogleContact[] = [];
+  let pageToken: string | undefined;
+  try {
+    do {
+      const p = new URLSearchParams({ personFields: "names,emailAddresses,phoneNumbers", pageSize: "500" });
+      if (pageToken) p.set("pageToken", pageToken);
+      const res = await fetch(`https://people.googleapis.com/v1/people/me/connections?${p.toString()}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!res.ok) break;
+      const data = await res.json();
+      for (const person of (data.connections || []) as any[]) {
+        out.push({
+          name: person.names?.[0]?.displayName ?? null,
+          email: person.emailAddresses?.[0]?.value ?? null,
+          phone: person.phoneNumbers?.[0]?.value ?? null,
+        });
+      }
+      pageToken = data.nextPageToken;
+    } while (pageToken && out.length < 5000);
+  } catch (err) {
+    console.error("[google-oauth] listGoogleContacts:", err);
+  }
+  return out;
+}
+
+/** Find (or create) a named contact group, returning its resourceName (e.g. "contactGroups/xxxx"). */
+export async function ensureContactGroup(accessToken: string, name: string): Promise<string | null> {
+  try {
+    const list = await fetch("https://people.googleapis.com/v1/contactGroups?pageSize=200", { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (list.ok) {
+      const data = await list.json();
+      const found = (data.contactGroups || []).find((g: any) => g.name === name || g.formattedName === name);
+      if (found?.resourceName) return found.resourceName;
+    }
+    const create = await fetch("https://people.googleapis.com/v1/contactGroups", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ contactGroup: { name } }),
+    });
+    if (!create.ok) return null;
+    return (await create.json()).resourceName || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Create a contact (optionally in a group). Returns true on success. */
+export async function createGoogleContact(
+  accessToken: string,
+  c: { name?: string | null; email?: string | null; phone?: string | null; notes?: string | null },
+  groupResourceName?: string | null,
+): Promise<boolean> {
+  const body: Record<string, unknown> = {};
+  if (c.name) body.names = [{ givenName: c.name }];
+  if (c.email) body.emailAddresses = [{ value: c.email }];
+  if (c.phone) body.phoneNumbers = [{ value: c.phone }];
+  if (c.notes) body.biographies = [{ value: c.notes, contentType: "TEXT_PLAIN" }];
+  if (groupResourceName) body.memberships = [{ contactGroupMembership: { contactGroupResourceName: groupResourceName } }];
+  try {
+    const res = await fetch("https://people.googleapis.com/v1/people:createContact", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** True if a contact with this phone (last 10 digits) or email already exists — dedupe before create. */
+export async function googleContactExists(accessToken: string, phone?: string | null, email?: string | null): Promise<boolean> {
+  const q = (email || phone || "").trim();
+  if (!q) return false;
+  try {
+    const p = new URLSearchParams({ query: q, readMask: "emailAddresses,phoneNumbers", pageSize: "5" });
+    const res = await fetch(`https://people.googleapis.com/v1/people:searchContacts?${p.toString()}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return (data.results || []).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Create an event in a user's OWN primary calendar (their receptionist books here). */
+export async function createEventForClient(accessToken: string, event: Record<string, unknown>): Promise<{ ok: boolean; htmlLink?: string; hangoutLink?: string }> {
+  try {
+    const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all&conferenceDataVersion=1", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify(event),
+    });
+    if (!res.ok) return { ok: false };
+    const data = await res.json();
+    return { ok: true, htmlLink: data.htmlLink, hangoutLink: data.hangoutLink };
+  } catch {
+    return { ok: false };
+  }
+}
+
 /** Forget a connection (client disconnects). Best-effort revoke, then delete the row. */
 export async function disconnectGoogle(userId: string): Promise<void> {
   const conn = await getConnection(userId);

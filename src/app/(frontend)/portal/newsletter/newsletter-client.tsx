@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 
-import { uploadContacts, removeContact, generateDraft, saveDraft, approveAndSend, setNewsletterPaused } from "./actions";
+import { uploadContacts, removeContact, generateDraft, saveDraft, approveAndSend, setNewsletterPaused, syncGoogleContacts } from "./actions";
 
 export type NewsletterView = {
   siteId: number;
@@ -101,6 +101,13 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
           <input ref={fileRef} type="file" accept=".csv,text/csv,text/plain" className="hidden" onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
           <button onClick={() => fileRef.current?.click()} disabled={pending} className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50">
             ⬆︎ Upload CSV
+          </button>
+          <button
+            onClick={() => start(async () => { setListMsg(null); const r = await syncGoogleContacts(view.siteId); setListMsg(r.message || null); })}
+            disabled={pending}
+            className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-surface disabled:opacity-50"
+          >
+            ⟳ Sync Google Contacts
           </button>
           <span className="text-xs text-ink-soft">or paste below</span>
         </div>

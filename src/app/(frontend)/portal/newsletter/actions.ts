@@ -7,6 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db, forgeSites, newsletters, newsletterContacts } from "@/db";
 import { draftNewsletter, sendNewsletter, monthKey, monthLabel, newsletterToken, type NewsletterBiz } from "@/lib/newsletter";
+import { getConnection, getValidAccessToken, listGoogleContacts } from "@/lib/google-oauth";
 
 /** Resolve the caller's claimed business (site). Every action is scoped to it. */
 async function requireOwnedSite(siteId: number): Promise<NewsletterBiz> {
@@ -48,6 +49,32 @@ export async function uploadContacts(siteId: number, raw: string): Promise<{ ok:
   }
   revalidatePath("/portal/newsletter");
   return { ok: true, added, skipped, message: `Added ${added} contact${added === 1 ? "" : "s"}${skipped ? `, skipped ${skipped}` : ""}.` };
+}
+
+/** Pull the client's Google Contacts (People API) into their newsletter list — needs Google connected. */
+export async function syncGoogleContacts(siteId: number): Promise<{ ok: boolean; added: number; message?: string }> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return { ok: false, added: 0, message: "Please sign in." };
+  await requireOwnedSite(siteId);
+  const conn = await getConnection(session.user.id);
+  if (!conn?.contactsConnected) return { ok: false, added: 0, message: "Connect your Google account on the Calendar page first." };
+  const token = await getValidAccessToken(conn);
+  if (!token) return { ok: false, added: 0, message: "Google connection expired — reconnect on the Calendar page." };
+
+  const contacts = (await listGoogleContacts(token)).filter((c) => c.email && EMAIL_RE.test(c.email));
+  let added = 0;
+  for (const c of contacts) {
+    try {
+      const res = await db
+        .insert(newsletterContacts)
+        .values({ siteId, email: c.email!.toLowerCase(), name: c.name || null, unsubscribeToken: newsletterToken() })
+        .onConflictDoNothing({ target: [newsletterContacts.siteId, newsletterContacts.email] })
+        .returning({ id: newsletterContacts.id });
+      if (res.length) added++;
+    } catch { /* skip bad row */ }
+  }
+  revalidatePath("/portal/newsletter");
+  return { ok: true, added, message: `Synced ${added} contact${added === 1 ? "" : "s"} from Google.` };
 }
 
 /** Remove a contact from the list. */
