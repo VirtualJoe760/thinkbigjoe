@@ -176,7 +176,9 @@ function mapsSearchUrl(item: ForgeSiteItem) {
 /** The one-glance contact card: owner + click-to-call + click-to-email + socials,
  *  so Joe can start dialing straight from the lead. */
 function ContactCard({ item }: { item: ForgeSiteItem }) {
-  const previewUrl = item.hasPreview && item.slug ? `/s/${item.slug}` : null;
+  // Prefer the built product over the pre-sale mock-up — same rule as prospectSiteUrl() and the
+  // leads card. (`/s/<slug>` now frames the live site anyway once one exists, so this is belt-and-braces.)
+  const previewUrl = item.liveUrl || (item.hasPreview && item.slug ? `/s/${item.slug}` : null);
   const socials: Array<{ label: string; href: string }> = [
     { label: "Maps", href: mapsSearchUrl(item) },
     item.instagramUrl && { label: "Instagram", href: item.instagramUrl },

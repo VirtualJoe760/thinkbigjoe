@@ -73,6 +73,72 @@ function Logo({ name, brand, size = 40 }: { name: string; brand: string; size?: 
   );
 }
 
+/**
+ * The real, deployed site — shown at `/s/<slug>` once the forge has built it, with the claim bar
+ * kept on top. See the note in SitePreview for why we frame rather than redirect.
+ */
+function BuiltSiteFrame({
+  site,
+  brand,
+}: {
+  site: { businessName: string; liveUrl: string | null; claimCode: string | null };
+  brand: string;
+}) {
+  return (
+    <div className="flex h-dvh flex-col bg-neutral-950">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-white sm:px-6" style={{ background: brand }}>
+        <div className="flex min-w-0 items-center gap-3">
+          <Logo name={site.businessName} brand="rgba(255,255,255,0.22)" size={34} />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold leading-tight">{site.businessName}</p>
+            <p className="truncate text-xs leading-tight text-white/80">
+              Your new website is built and live
+              <span className="hidden sm:inline"> — this is the real thing, not a mock-up</span>.
+            </p>
+          </div>
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          {/* Kept on phones too — scrolling a framed site on a phone is fussy, and this is the
+              channel most prospects arrive from (the voicemail follow-up text). */}
+          {site.liveUrl && (
+            <a
+              href={site.liveUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="whitespace-nowrap rounded-full border border-white/40 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-white/10"
+            >
+              Open full screen ↗
+            </a>
+          )}
+          <Link
+            href="/portal/claim"
+            className="rounded-full bg-white px-4 py-1.5 text-sm font-semibold shadow-sm"
+            style={{ color: brand }}
+          >
+            Claim this site
+          </Link>
+        </div>
+      </header>
+
+      {site.claimCode && (
+        <p className="shrink-0 bg-neutral-900 px-4 py-1.5 text-center text-xs text-neutral-300 sm:px-6">
+          Claim it with your code{" "}
+          <span className="font-mono font-semibold tracking-wide text-white">{site.claimCode}</span> — then it&apos;s
+          yours to edit anytime.
+        </p>
+      )}
+
+      {/* The deployed site itself. */}
+      <iframe
+        src={site.liveUrl ?? undefined}
+        title={`${site.businessName} — live website`}
+        className="min-h-0 w-full flex-1 border-0 bg-white"
+      />
+    </div>
+  );
+}
+
 export default async function SitePreview({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const [site] = await db.select().from(forgeSites).where(eq(forgeSites.slug, slug)).limit(1);
@@ -84,6 +150,21 @@ export default async function SitePreview({ params }: { params: Promise<{ slug: 
       ? site.brandColor
       : `#${site.brandColor}`
     : "#2563eb";
+
+  // ONCE THE REAL SITE IS BUILT, THIS LINK SHOWS THE REAL SITE.
+  //
+  // `/s/<slug>` is the link that went out in every email, text and voicemail follow-up — and those
+  // can't be recalled. Outreach composed *after* a build already points at `live_url`
+  // (forge-outreach.ts:prospectSiteUrl), but everyone we contacted BEFORE the build is holding a
+  // `/s/` link, and this page used to render the cheap pre-sale preview forever — so a prospect we
+  // then built a real site for would still be looking at the mock-up.
+  //
+  // We frame the built site rather than redirecting to it, because a redirect would drop the claim
+  // bar — and the claim code is the entire conversion mechanism. (The portal already iframes
+  // `live_url` the same way, so our sites are known to embed.)
+  if (site.status === "built" && site.liveUrl) {
+    return <BuiltSiteFrame site={site} brand={brand} />;
+  }
 
   const preview = (site.preview ?? null) as PreviewContent | null;
   const reviews = (Array.isArray(site.reviewQuotes) ? site.reviewQuotes : []) as Review[];
