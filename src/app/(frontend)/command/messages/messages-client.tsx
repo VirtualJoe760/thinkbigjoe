@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition, useEffect } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { sendConversationMessage, renameContact, setContactAiPaused } from "../actions";
 
@@ -59,7 +60,21 @@ function clockTime(iso: string): string {
 const VIA_LABEL: Record<string, string> = { agent: "🤖 AI", manual: "You", outreach: "First touch" };
 
 export function MessagesClient({ conversations }: { conversations: Conversation[] }) {
-  const [openId, setOpenId] = useState<number | null>(null);
+  // `?site=<id>` opens a thread directly — that's how the lead call room links in here, and
+  // how the thread's "Lead" button can round-trip back. replace() (not push) so Back closes
+  // the thread instead of walking through every conversation you tapped.
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const siteParam = Number(params.get("site")) || null;
+
+  const [openId, setOpenId] = useState<number | null>(siteParam);
+  useEffect(() => { setOpenId(siteParam); }, [siteParam]);
+
+  const openThread = (id: number | null) => {
+    setOpenId(id);
+    router.replace(id ? `${pathname}?site=${id}` : pathname, { scroll: false });
+  };
   const [q, setQ] = useState("");
 
   const filtered = useMemo(() => {
@@ -113,7 +128,7 @@ export function MessagesClient({ conversations }: { conversations: Conversation[
               filtered.map((c) => (
                 <button
                   key={c.siteId}
-                  onClick={() => setOpenId(c.siteId)}
+                  onClick={() => openThread(c.siteId)}
                   className={`flex w-full items-center gap-3 border-b border-line px-3 py-3.5 text-left transition-colors active:bg-surface hover:bg-surface ${
                     openId === c.siteId ? "bg-brand-tint/40" : ""
                   }`}
@@ -121,27 +136,36 @@ export function MessagesClient({ conversations }: { conversations: Conversation[
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand/10 text-sm font-bold text-brand">
                     {initials(c.businessName)}
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-semibold text-ink">{c.businessName}</span>
-                      <span className="shrink-0 text-[11px] text-ink-soft" suppressHydrationWarning>{relTime(c.lastAt)}</span>
+                  {/* min-w-0 on every level: a flex child won't shrink below its content unless
+                      its min-width is 0, which is what let the preview text push the timestamp
+                      and status dot off the row. */}
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="flex min-w-0 items-baseline gap-2">
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{c.businessName}</span>
+                      <span
+                        className="shrink-0 whitespace-nowrap text-[11px] tabular-nums text-ink-soft"
+                        suppressHydrationWarning
+                        title={c.lastAt ? new Date(c.lastAt).toLocaleString() : ""}
+                      >
+                        {relTime(c.lastAt)}
+                      </span>
                     </span>
-                    <span className="mt-0.5 flex items-center gap-1.5">
-                      <span className="truncate text-xs text-ink-soft">
+                    <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                      <span className="min-w-0 flex-1 truncate text-xs text-ink-soft">
                         {c.lastDir === "out" ? "You: " : ""}
                         {c.lastText}
                       </span>
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        {c.aiPaused && c.status !== "opted_out" && (
+                          <span className="text-[11px] leading-none" title="AI paused on this contact">⏸️</span>
+                        )}
+                        {c.needsReply ? (
+                          <span className="h-2.5 w-2.5 rounded-full bg-amber-500" title="Awaiting your reply" />
+                        ) : c.status === "opted_out" ? (
+                          <span className="text-[11px] font-semibold text-rose-600">STOP</span>
+                        ) : null}
+                      </span>
                     </span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-1.5">
-                    {c.aiPaused && c.status !== "opted_out" && (
-                      <span className="text-[11px] leading-none" title="AI paused on this contact">⏸️</span>
-                    )}
-                    {c.needsReply ? (
-                      <span className="h-2.5 w-2.5 rounded-full bg-amber-500" title="Awaiting your reply" />
-                    ) : c.status === "opted_out" ? (
-                      <span className="text-[11px] font-semibold text-rose-600">STOP</span>
-                    ) : null}
                   </span>
                 </button>
               ))
@@ -156,7 +180,7 @@ export function MessagesClient({ conversations }: { conversations: Conversation[
             clipped by the overflow-hidden above. */}
         <div className={`min-h-0 min-w-0 flex-col ${open ? "flex" : "hidden md:flex"}`}>
           {open ? (
-            <Thread key={open.siteId} c={open} onBack={() => setOpenId(null)} />
+            <Thread key={open.siteId} c={open} onBack={() => openThread(null)} />
           ) : (
             <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-ink-soft">
               Select a conversation to view the thread.
@@ -284,7 +308,13 @@ function Thread({ c, onBack }: { c: Conversation; onBack: () => void }) {
             {paused ? "AI paused" : "AI on"}
           </button>
         )}
-        <Link href="/command/leads" className="shrink-0 rounded-full border border-line px-2.5 py-1 text-xs font-semibold text-brand hover:bg-brand-tint/40">
+        {/* Deep-links to THIS contact's call room (?site=), not the leads list — so you can go
+            thread → lead → thread without hunting for the row again. */}
+        <Link
+          href={`/command/leads?site=${c.siteId}`}
+          className="shrink-0 rounded-full border border-line px-2.5 py-1 text-xs font-semibold text-brand hover:bg-brand-tint/40"
+          title={`Open ${c.businessName} in the call room`}
+        >
           Lead ↗
         </Link>
       </div>

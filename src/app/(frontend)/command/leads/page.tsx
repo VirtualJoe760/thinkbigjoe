@@ -114,6 +114,22 @@ export default async function LeadsPage() {
     attempts[site] = cur;
   }
 
+  // Which contacts have an SMS thread, so the call room can jump straight into it. Same filter
+  // the Messages page uses to build its conversations (non-empty note), so the count matches
+  // what the thread actually shows.
+  const msgRes = await db.execute(sql`
+    SELECT (metadata->'detail'->>'siteId') AS site, count(*)::int AS n
+    FROM activity_log
+    WHERE event_type IN ('sms_outreach_sent','sms_inbound','sms_outbound')
+      AND (metadata->'detail'->>'siteId') ~ '^[0-9]+$'
+      AND metadata->'detail'->>'note' IS NOT NULL
+      AND metadata->'detail'->>'note' <> ''
+    GROUP BY site`);
+  const msgCounts: Record<string, number> = {};
+  for (const r of (Array.isArray(msgRes) ? msgRes : (msgRes as { rows?: unknown }).rows ?? []) as Record<string, unknown>[]) {
+    msgCounts[String(r.site)] = Number(r.n) || 0;
+  }
+
   // Contact/message history per lead (the follow-up timeline).
   const histories: Record<string, LeadHistoryEvent[]> = await getLeadHistories(webDevLeads);
 
@@ -212,7 +228,7 @@ export default async function LeadsPage() {
               <Link href="/command/prospects" className="font-semibold text-brand hover:underline">Approve some in prospecting →</Link>
             </p>
           ) : (
-            <LeadsCRM leads={webDevLeads} attempts={attempts} histories={histories} meta={leadMeta} />
+            <LeadsCRM leads={webDevLeads} attempts={attempts} histories={histories} meta={leadMeta} msgCounts={msgCounts} />
           )}
         </section>
 

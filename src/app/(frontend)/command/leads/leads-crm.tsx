@@ -1,6 +1,8 @@
 "use client";
 
 import { useActionState, useMemo, useRef, useState, useEffect, useTransition } from "react";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, denyForgeSite, dropLeadVoicemail, setLeadStage, queueLeadBuild, scheduleCallback, clearCallback, type ContactSlot, type BookForContactState } from "../actions";
 import type { ForgeSiteItem } from "../sites/sites-queue";
@@ -542,9 +544,10 @@ function BuildControl({ item }: { item: ForgeSiteItem }) {
 }
 
 function ContactDetail({
-  item, meta, attempt, history, onClose, onContact,
+  item, meta, attempt, history, msgCount = 0, onClose, onContact,
 }: {
   item: ForgeSiteItem; meta: LeadMeta; attempt: AttemptStat; history: LeadHistoryEvent[];
+  msgCount?: number;
   onClose: () => void; onContact: (id: string, ch: "call" | "text" | "email") => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -814,6 +817,19 @@ function ContactDetail({
             </div>
           )}
 
+          {/* Jump straight into the SMS thread with this contact. Only shown when one exists —
+              the Messages page keys off the same activity_log rows, so a 0-count lead would
+              land on an empty inbox. The thread links back here via ?site=. */}
+          {msgCount > 0 && (
+            <Link
+              href={`/command/messages?site=${item.id}`}
+              className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-brand bg-brand-tint/40 px-3 py-3 text-sm font-semibold text-brand transition-colors hover:bg-brand-tint active:scale-[0.98]"
+            >
+              💬 Read the thread
+              <span className="rounded-full bg-brand px-1.5 py-0.5 text-[11px] font-bold text-white tabular-nums">{msgCount}</span>
+            </Link>
+          )}
+
           {/* quick actions — big tap targets */}
           <div className="mt-4 grid grid-cols-2 gap-2">
             {item.phone && (
@@ -1040,12 +1056,26 @@ function ContactDetail({
 }
 
 export function LeadsCRM({
-  leads, attempts, histories, meta,
+  leads, attempts, histories, meta, msgCounts = {},
 }: {
   leads: ForgeSiteItem[]; attempts: Record<string, AttemptStat>;
   histories: Record<string, LeadHistoryEvent[]>; meta: Record<string, LeadMeta>;
+  msgCounts?: Record<string, number>;
 }) {
-  const [openId, setOpenId] = useState<string | null>(null);
+  // `?site=<id>` opens a contact directly — that's how the Messages thread links back here.
+  // Keeping it in the URL (replace, not push) also means the browser Back button closes the card.
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const siteParam = params.get("site");
+
+  const [openId, setOpenId] = useState<string | null>(siteParam);
+  useEffect(() => { setOpenId(siteParam); }, [siteParam]);
+
+  const openContact = (id: string | null) => {
+    setOpenId(id);
+    router.replace(id ? `${pathname}?site=${id}` : pathname, { scroll: false });
+  };
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<LeadStage | "all">("all");
   const [sortBy, setSortBy] = useState<"activity" | "newest" | "oldest" | "reviews_high" | "reviews_low">("activity");
@@ -1140,7 +1170,7 @@ export function LeadsCRM({
               return (
                 <button
                   key={l.id}
-                  onClick={() => setOpenId(l.id)}
+                  onClick={() => openContact(l.id)}
                   className="flex items-center gap-3 rounded-xl border border-sky-100 bg-background px-3 py-2 text-left transition-colors hover:bg-surface"
                 >
                   <Thumb item={l} size={32} rounded="rounded-md" />
@@ -1172,7 +1202,7 @@ export function LeadsCRM({
               return (
                 <button
                   key={l.id}
-                  onClick={() => setOpenId(l.id)}
+                  onClick={() => openContact(l.id)}
                   className="flex items-center gap-3 rounded-xl border border-violet-100 bg-background px-3 py-2 text-left transition-colors hover:bg-surface"
                 >
                   <Thumb item={l} size={32} rounded="rounded-md" />
@@ -1259,7 +1289,7 @@ export function LeadsCRM({
                 return (
                   <tr
                     key={item.id}
-                    onClick={() => setOpenId(item.id)}
+                    onClick={() => openContact(item.id)}
                     className="cursor-pointer border-b border-line align-middle transition-colors hover:bg-surface"
                   >
                     <td className="py-2.5 pr-3">
@@ -1304,8 +1334,8 @@ export function LeadsCRM({
 
       {open && (
         <ContactDetail
-          item={open} meta={metaOf(open.id)} attempt={stat(open.id)}
-          history={histories[open.id] || []} onClose={() => setOpenId(null)} onContact={record}
+          item={open} meta={metaOf(open.id)} attempt={stat(open.id)} msgCount={msgCounts[open.id] || 0}
+          history={histories[open.id] || []} onClose={() => openContact(null)} onContact={record}
         />
       )}
     </div>
