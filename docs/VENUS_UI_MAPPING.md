@@ -137,11 +137,22 @@ These feed `forge_sites` and run on launchd, independent of OpenClaw. Cheap and 
 but see [FORGE.md](FORGE.md)'s cost-safety section before changing their schedule or triggering
 bulk runs — they all write into the same table the (much more expensive) forge build queue reads.
 
+> ### 🌙 The night window (2:30am–6am)
+> **Anything that prospects or spends Apify credit runs ONLY between 2:30am and 6am** — never
+> during Joe's working day. As of 2026-07-14 that means the `lead-engine` (3/4/5am) and the
+> `TBJ Forge Prospect Scout` agent cron (2:30 + 4:30am). Both were widened per run to keep daily
+> throughput despite fewer runs (`MAX_SEARCHES=24`; scout targets 45–60 businesses/run).
+> **If you schedule anything new that calls Apify — including re-loading `enrichengine` or
+> `callprepengine` — put it in this window.** The exception is *manual* triggers: the "Find leads
+> now" button (`trigger-poll`) runs on demand at any hour, deliberately (it's Joe pulling the
+> lever, capped at 12 searches to fit its 9-min timeout). Free browser-based research (the
+> `prospector` enrichment cron, `brand-lead`) is NOT in scope and keeps its all-day schedule.
+
 | Script | launchd plist | What it does |
 |---|---|---|
-| `scripts/lead-engine.mjs` | `com.thinkbigjoe.leadengine` | Apify Google Maps search toward the monthly lead goal, within budget (`lead_engine` table). Rotates a large trade×metro combo pool so it never re-scrapes. |
-| `scripts/enrich-engine.mjs` | `com.thinkbigjoe.enrichengine` | Apify-based contact enrichment (Google Search → Facebook page → email/Messenger) for leads missing email/socials. *(Currently the free `prospector` agent cron does this instead — see the cron table below — to save Apify budget; this script is kept for a manual "turbo" fill.)* |
-| `scripts/callprep-engine.mjs` | `com.thinkbigjoe.callprepengine` | Apify-based review-quote + follower-count + talking-points generation. Same note as above — the free agent cron is primary now. |
+| `scripts/lead-engine.mjs` | `com.thinkbigjoe.leadengine` | **🌙 3:00 / 4:00 / 5:00am** (`StartCalendarInterval` — was every 3h round the clock; moved into the night window because it's the biggest Apify spender). Apify Google Maps search toward the monthly lead goal, within budget (`lead_engine` table). Rotates a large trade×metro combo pool so it never re-scrapes. Only 3 runs a night, so `MAX_SEARCHES` (argv[2], default **24**) lets ONE run cover the whole daily target; it no-ops once the target is met, making 4/5am catch-up runs. Budget is re-checked before every search, so the higher ceiling can't overspend. |
+| `scripts/enrich-engine.mjs` | `com.thinkbigjoe.enrichengine` | **UNLOADED** (see below). Apify-based contact enrichment (Google Search → Facebook page → email/Messenger) for leads missing email/socials. *The free `prospector` agent cron does this instead — see the cron table below — to save Apify budget; this script is kept for a manual "turbo" fill.* **It spends Apify credit — if you ever re-load it, schedule it inside the 🌙 night window.** |
+| `scripts/callprep-engine.mjs` | `com.thinkbigjoe.callprepengine` | **UNLOADED** (see below). Apify-based review-quote + follower-count + talking-points generation. Same notes as above — free agent cron is primary, and it belongs in the 🌙 night window if re-loaded. |
 | `scripts/trigger-poll.mjs` | `com.thinkbigjoe.triggerpoll` | Drains `job_requests` (the "Find leads now"/"Enrich now" buttons) — runs `lead-engine.mjs` or triggers the enrichment cron on demand. |
 | `scripts/inbox-poll.mjs` | `com.thinkbigjoe.inboxpoll` | Watches the Zoho inbox (IMAP, every ~10 min) for outreach **bounces** (→ mark lead `bounced`, exclude from resend) and **replies** (→ insert `forge_replies` + Gemini-draft a response → the "Replies to respond to" panel on `/command/leads`; also **forwards the reply to Joe's Gmail**). **IMAP is enabled (Mail Lite) + this job is LOADED** as of 2026-07-09. Details: [AUTH.md](AUTH.md) → "Inbound email". |
 | `scripts/forge-outreach-send.sh` → `POST /api/forge/send-outreach` | `com.thinkbigjoe.outreach` | The owner-outreach **email** sender. Fires **every ~20 min** (StartInterval) but the route **drips**: only sends during **weekday 9am–6pm PT**, a **jittered 0–2 emails per run** with an 8-min min gap, capped by `outreach_engine.daily_goal`. So the day's sends trickle out like real use instead of blasting at a cron time. `?dry=1` previews without pacing. |
@@ -151,9 +162,14 @@ bulk runs — they all write into the same table the (much more expensive) forge
 | `scripts/vm-text-send.sh` → `POST /api/leads/vm-text-send` | `com.thinkbigjoe.vmtextsend` | Fires **every ~60s**; sends the **voicemail follow-up text ~60s after each drop** (so the voicemail lands first). Reads `vm_text_pending`/`vm_dropped_at`; picks the non-VM wording if the delivery webhook logged a failure, else the VM-referencing text. See [VOICEMAIL.md](VOICEMAIL.md). |
 
 **Check what's actually running:** `launchctl list | grep thinkbigjoe` — a `-` in the PID column
-means loaded-but-idle (fires on its next schedule tick), no line at all means unloaded. After the
-2026-07-06 credit incident, `forgepoll`, `enrichengine`, and `callprepengine` were deliberately
-unloaded pending review — **verify current state before assuming any engine is live.**
+means loaded-but-idle (fires on its next schedule tick), no line at all means unloaded.
+**Verify current state before assuming any engine is live** — this list drifts.
+
+Verified 2026-07-14: `enrichengine` and `callprepengine` are still **UNLOADED** (since the
+2026-07-06 credit incident); `forgepoll` and `leadengine` **are loaded**. (`forgepoll` was also
+unloaded after that incident but has since been restored — an earlier version of this note said
+otherwise, which is exactly the drift this paragraph warns about.) If you re-load either Apify
+engine, schedule it inside the 🌙 night window above.
 
 ---
 
@@ -181,7 +197,7 @@ tool, and cron are all thin callers. Previews cost ~$0 and expire after 14 days 
 
 | Cron | Agent | Schedule | Key tools | UI surface |
 |---|---|---|---|---|
-| TBJ Forge Prospect Scout | prospector | 3×/day | `apify_find_businesses`, `apify_find_instagram`, `add_forge_prospect`, `list_forge_blacklist` | Prospecting → Needs review |
+| TBJ Forge Prospect Scout | prospector | **🌙 2:30 + 4:30am** (2×/night — spends Apify, so it lives in the night window; was 3×/day. Prompt now targets 45–60 businesses and 6–8 metros per run to hold volume) | `apify_find_businesses`, `apify_find_instagram`, `add_forge_prospect`, `list_forge_blacklist` | Prospecting → Needs review |
 | TBJ Forge Contact Enrichment | prospector | 3×/day | `list_forge_needs_contact`, `enrich_forge_contact`, `list_forge_needs_callprep`, `save_forge_callprep` | Contact cards + Call-prep card (Leads) — **free browser research, explicitly told NOT to use paid Apify tools**, to keep ongoing spend to the cheap "finding" step only |
 | TBJ Forge Outreach | outreach | daily | `list_forge_preview_outreach` (prospects with a **preview** ready), `save_forge_outreach_draft`, `mark_forge_outreach_sent` | Prospecting → first-touch (draft → Approve & send). Pitch = "claim your preview" → claiming builds the site. |
 | TBJ Forge Follow-up | outreach | daily | `list_forge_followup_due` (now preview-aware), `save_forge_outreach_draft` | Same — touches 2–3, re-shares the preview link |

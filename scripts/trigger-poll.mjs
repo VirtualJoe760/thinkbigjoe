@@ -33,7 +33,9 @@ const ENRICH_CRON_ID = "eb7d66fe-8347-452e-bde7-53df7455f886"; // TBJ Forge Cont
 
 async function run(kind, target) {
   if (kind === "find") {
-    const { stdout } = await pexec(`node scripts/lead-engine.mjs`, { cwd: ROOT, timeout: 9 * 60 * 1000, maxBuffer: 4 << 20 });
+    // Cap searches at 12 — the nightly launchd run uses a bigger ceiling (24), but this is
+    // the on-demand "Find leads now" path and it has to finish inside the 9-min timeout.
+    const { stdout } = await pexec(`node scripts/lead-engine.mjs 12`, { cwd: ROOT, timeout: 9 * 60 * 1000, maxBuffer: 4 << 20 });
     return (stdout.trim().split("\n").pop() || "lead-engine ran").slice(0, 300);
   }
   if (kind === "enrich") {

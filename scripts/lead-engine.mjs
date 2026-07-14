@@ -6,8 +6,12 @@
 // no-ops gracefully — the agent's browser-scraping crons cover the rest of the goal.
 // Config + progress live in the `lead_engine` table; the UI reads them.
 //
-// Run on a schedule, e.g. every 3h:
-//   0 */3 * * *  cd ~/code/thinkbigjoe && node scripts/lead-engine.mjs >> /tmp/lead-engine.log 2>&1
+// Scheduled by com.thinkbigjoe.leadengine at 3:00 / 4:00 / 5:00am — inside the 2:30–6am
+// NIGHT WINDOW, because this is the biggest Apify spender and no paid scraping should run
+// during Joe's working day. Only 3 runs a night (it used to run every 3h, 8×/day), so
+// MAX_SEARCHES is sized for one run to reach the whole daily target on its own; the later
+// runs are catch-up if the first came up short. Budget checks still gate every search, so
+// a bigger cap cannot overspend.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -29,6 +33,12 @@ const slug = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 const env = loadEnv(join(homedir(), "code/thinkbigjoe/.env.local"));
 const TOKEN = env.APIFY_API_KEY;
 const DB = env.DATABASE_URL_UNPOOLED || env.DATABASE_URL;
+
+// Per-run search ceiling. Sized so ONE run can cover the whole daily target (only 3 runs a
+// night now, vs 8 spread over the day). The loop still exits the moment the target is met,
+// and re-checks Apify spend against the budget before every search — this is a ceiling, not
+// a quota, so raising it costs nothing on a normal night.
+const MAX_SEARCHES = Math.max(1, parseInt(process.argv[2] || "24", 10) || 24);
 
 // A big rotating pool of trade × metro combos (~35×35 = 1225) — cycled via combo_offset
 // so runs don't re-scrape the same searches (which would cost credit for 0 new leads).
@@ -93,7 +103,7 @@ async function maps(q, loc, max = 40) {
   const black = new Set((await c.query("SELECT norm_key FROM forge_blacklist")).rows.map((r) => r.norm_key));
   let offset = cfg.combo_offset || 0, queued = 0, searches = 0, note = "";
 
-  while (leadsToday + queued < dailyTarget && searches < 12) {
+  while (leadsToday + queued < dailyTarget && searches < MAX_SEARCHES) {
     const s = await apifyUsage();
     if (s != null && s >= budget) { note = "budget reached mid-run"; break; }
     const [q, loc] = COMBOS[offset % COMBOS.length];

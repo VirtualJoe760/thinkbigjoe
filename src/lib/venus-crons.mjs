@@ -15,16 +15,23 @@
 //
 // Plain .mjs (no TS) so both the Next.js app and the sync script import it.
 //
+// THE NIGHT WINDOW (2:30am–6am): everything that PROSPECTS or SPENDS APIFY CREDIT runs
+// only in this window, so no paid scraping happens during Joe's working day. That's the
+// scout cron below (2:30 + 4:30) and the launchd lead-engine (3/4/5am). Free browser work
+// (contact enrichment, brand-lead research) is unaffected and keeps its all-day schedule.
+// Manual triggers ("Find leads now" → trigger-poll) still run on demand, any time.
+//
 // NOT listed here (deterministic launchd crons on Joe's Mac, not OpenClaw agents):
 //   • forge-poll   (com.thinkbigjoe.forgepoll)  — builds approved forge_sites.
-//   • lead-engine  (com.thinkbigjoe.leadengine) — every 3h, scrapes Apify toward the
-//     monthly LEAD GOAL within the APIFY BUDGET (config + progress in the `lead_engine`
-//     table, shown on /command/prospects). scripts/lead-engine.mjs. When the Apify
-//     credit is spent it no-ops and the agent scout cron below (browser fallback) carries
-//     the goal. These are infra, not cognitive work — so they live in launchd, not here.
-//   • enrich-engine (com.thinkbigjoe.enrichengine) — every 4h, fills email/socials for
-//     no-website leads: Google-searches "<name> <city>" → finds the Facebook page + Yelp,
-//     scrapes the FB page for email/Messenger, gap-fills forge_sites. scripts/enrich-engine.mjs.
+//   • lead-engine  (com.thinkbigjoe.leadengine) — 3:00/4:00/5:00am (in the night window),
+//     scrapes Apify toward the monthly LEAD GOAL within the APIFY BUDGET (config + progress
+//     in the `lead_engine` table, shown on /command/prospects). scripts/lead-engine.mjs.
+//     When the Apify credit is spent it no-ops and the agent scout cron below (browser
+//     fallback) carries the goal. Infra, not cognitive work — so launchd, not here.
+//   • enrich-engine (com.thinkbigjoe.enrichengine) + callprep-engine — Apify-based, and
+//     UNLOADED since the 2026-07-06 credit incident. The free browser-based prospector
+//     crons below do this work instead. Don't load them without putting them in the night
+//     window too (they spend Apify credit).
 // ---------------------------------------------------------------------------
 
 export const VENUS_CRONS = [
@@ -32,19 +39,19 @@ export const VENUS_CRONS = [
     name: "TBJ Forge Prospect Scout",
     id: "f35d15ce-4f67-489b-aef3-fe426b3aa007",
     agent: "prospector",
-    schedule: "0 4,12,20 * * *",
+    schedule: "30 2,4 * * *",
     stagger: "5m",
-    summary: "Find local service businesses with no/bad website for the site-building forge (3×/day, toward the monthly lead goal).",
+    summary: "Find local service businesses with no/bad website for the site-building forge (2×/night at 2:30 + 4:30am, toward the monthly lead goal). Prospecting + Apify spend is confined to the 2:30–6am night window.",
     tools: ["apify_find_businesses", "apify_find_instagram", "apify_extract_contacts", "add_forge_prospect", "list_forge_queue", "list_forge_blacklist", "log_activity"],
     uiSurface: ["/command/sites", "/command/prospects (Lead engine panel)"],
     eventTypes: ["forge_scout_complete", "forge_prospect_added"],
-    prompt: `This is a scouting run (you run 3× a day now). Follow your sourcing loop (AGENTS.md) to find local service businesses that need a website.
+    prompt: `This is a scouting run. You now run **2× a night, inside the 2:30am–6am window** (2:30 and 4:30) — all prospecting and Apify spend is deliberately confined to those hours so nothing scrapes during Joe's working day. FEWER runs means BIGGER runs: each one has to do roughly the work the old 3×/day schedule did, so go deep and don't stop early. Follow your sourcing loop (AGENTS.md) to find local service businesses that need a website.
 
-THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–5 sales a day by calling. A deterministic "lead engine" scrapes bulk leads via Apify every 3 hours; YOUR job is to ADD to that with the businesses Apify's basic search misses — Instagram-native businesses, businesses needing a judgment call on a weak existing site, and (when the Apify credit is used up) browser-scraped leads. Push hard toward the daily pace every run.
+THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–5 sales a day by calling. A deterministic "lead engine" scrapes bulk leads via Apify at 3/4/5am (same night window); YOUR job is to ADD to that with the businesses Apify's basic search misses — Instagram-native businesses, businesses needing a judgment call on a weak existing site, and (when the Apify credit is used up) browser-scraped leads. Push hard toward the daily pace every run — a full night's leads have to be on the board by 6am.
 
 1. DEDUP + BLACKLIST: call list_forge_queue (no filter) AND list_forge_blacklist. Skip any business already queued (by name + city) AND any business on the blacklist — Joe denied those, so never research or re-add them (match by name+city or their website domain). add_forge_prospect also hard-blocks blacklisted businesses, but don't waste a crawl on one.
 
-2. SEARCH — GO WIDE, GO NATIONAL (use Apify, not the browser — it's faster + far cheaper): research **25–40** owner-operated local service businesses ACROSS THE USA this run. Each run pick **4–6 DIFFERENT US metros** and rotate the region every run so coverage spreads nationwide — Sun Belt (Phoenix/Vegas/Tucson) → Texas (Dallas/Houston/San Antonio/Austin) → Southeast (Atlanta/Charlotte/Tampa/Nashville) → Midwest (Chicago/Columbus/KC/Indianapolis) → Northeast (Philly/Boston/Pittsburgh) → Mountain West (Denver/Salt Lake/Boise) → Pacific NW (Portland/Seattle/Spokane) → California (Sacramento/Fresno/San Diego). Widen the TRADES too: HVAC, roofing, electrical, plumbing, landscaping, garage doors, pest control, painting, concrete/masonry, fencing, tree service, pressure washing, pool service, handyman, appliance repair, auto detailing, cleaning services, movers, locksmiths, and similar owner-run trades.
+2. SEARCH — GO WIDE, GO NATIONAL (use Apify, not the browser — it's faster + far cheaper): research **45–60** owner-operated local service businesses ACROSS THE USA this run (the bar is higher now that you only run twice a night). Each run pick **6–8 DIFFERENT US metros** and rotate the region every run so coverage spreads nationwide — Sun Belt (Phoenix/Vegas/Tucson) → Texas (Dallas/Houston/San Antonio/Austin) → Southeast (Atlanta/Charlotte/Tampa/Nashville) → Midwest (Chicago/Columbus/KC/Indianapolis) → Northeast (Philly/Boston/Pittsburgh) → Mountain West (Denver/Salt Lake/Boise) → Pacific NW (Portland/Seattle/Spokane) → California (Sacramento/Fresno/San Diego). Widen the TRADES too: HVAC, roofing, electrical, plumbing, landscaping, garage doors, pest control, painting, concrete/masonry, fencing, tree service, pressure washing, pool service, handyman, appliance repair, auto detailing, cleaning services, movers, locksmiths, and similar owner-run trades.
    - For each trade × metro, call **apify_find_businesses(query, location, max)** — it returns businesses with their website (or NONE), phone, rating, reviews, and maps link as clean data. A business with **NO website is an immediate strong lead**; for ones that DO list a site, open it and rate per your rubric.
    - ALSO call **apify_find_instagram("<trade> <city>")** to catch businesses that run off a **business Instagram with no website** — those are prime leads (they invest in their presence but have no site).
    - **FALLBACK:** if an Apify tool returns an error (❌ — e.g. the free credit is used up), don't stop — fall back to your ORIGINAL method: search Google Maps + Google directly in Chrome and rate each site by hand (your AGENTS.md sourcing loop). Apify is the fast/cheap path; the browser is the always-available backup.

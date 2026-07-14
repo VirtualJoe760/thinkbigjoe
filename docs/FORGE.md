@@ -305,4 +305,4 @@ foundation, not the ceiling.
 | `templates/registry.json` | The template library forge-build picks from (`enabled: true/false`). |
 | `factory/design-languages.json` | The aesthetic specs the designer mode builds templates from. |
 | `~/Library/LaunchAgents/com.thinkbigjoe.forgepoll.plist` | The launchd timer for forge-poll.mjs. **Check load state before assuming builds are/aren't running.** |
-| `scripts/lead-engine.mjs`, `enrich-engine.mjs`, `callprep-engine.mjs`, `trigger-poll.mjs` (this repo) | Separate Apify/free-agent engines for finding + enriching leads — not the forge itself, but feed `forge_sites`. Budget-aware, independently scheduled. |
+| `scripts/lead-engine.mjs`, `enrich-engine.mjs`, `callprep-engine.mjs`, `trigger-poll.mjs` (this repo) | Separate Apify/free-agent engines for finding + enriching leads — not the forge itself, but feed `forge_sites`. Budget-aware, independently scheduled. **Apify spend is confined to the 🌙 2:30–6am night window** — see [VENUS_UI_MAPPING.md](VENUS_UI_MAPPING.md) → "Data-gathering engines" before scheduling anything that scrapes. |
