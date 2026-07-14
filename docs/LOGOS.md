@@ -5,17 +5,40 @@ the portal's **Image Studio**, `src/lib/logo-spec.ts`, or a template's `CLAUDE.m
 
 Logos are the one asset where **dimensions are load-bearing**. A hero photo that's 5% off looks fine.
 A logo that's 5% off looks *broken* — because a navbar sizes a logo by its **height**, so every pixel
-of transparent air above and below the mark shrinks the visible brand mark by that much.
+of dead air above and below the mark shrinks the visible brand mark by that much.
 
-We generate logos with an image model. The model does **not** reliably honor "tightly framed" — it
-centers a mark in a big transparent canvas by default. So the pipeline has two halves, and they must
-agree:
+## ⚠️ The one fact everything here follows from
 
-1. **Ask correctly** — a per-type prompt fragment that describes the *frame*, not just the art.
-2. **Fix deterministically** — trim the transparent canvas back to the true mark, then re-pad per type.
+**The image model cannot output transparency.** `gemini-2.5-flash-image` returns a **3-channel PNG**
+(`hasAlpha=false`) — verified directly, not inferred. Asking it for a "transparent background" is a
+**no-op that it satisfies by *painting* a background**, and left to its own devices it paints a subtly
+*vignetted* off-white (corners measured at `241,237,233` vs `253,253,252`) that no colour key can
+cleanly lift.
 
-Neither half is sufficient alone. Prompting alone drifts run-to-run; trimming alone can't turn a bare
+So a transparent logo is **impossible to generate** and **must be manufactured** afterwards. Background
+removal is not a nice-to-have cleanup pass; it is the only thing standing between us and a white box.
+The pipeline therefore has two halves, and they must agree:
+
+1. **Ask for something achievable** — not "transparent" (impossible), but a **flat, uniform background
+   we can key out**, plus a rule that keeps the artwork distinguishable from it.
+2. **Key it out deterministically** — flood-fill the background away, drop artefacts, trim to the true
+   ink, re-pad per type.
+
+Neither half is sufficient alone. Prompting alone cannot produce alpha; keying alone can't turn a bare
 icon into a circle.
+
+### The two rules the prompt must carry
+
+- **Flat background, stated explicitly.** *"a COMPLETELY FLAT, UNIFORM, SOLID PURE WHITE (#FFFFFF) — one
+  single exact colour edge to edge, with NO gradient, NO vignette, NO shading, NO texture and NO drop
+  shadow."* The vignette is what defeats a clean key; you must forbid it by name.
+- **No white artwork touching the background.** We key by **connectivity from the border**, so white
+  *enclosed* in a coloured shape (a white monogram on a brand-colour disc) survives — but white that
+  *touches* the background is indistinguishable from it and gets erased. So: *"white is allowed only when
+  fully enclosed inside a solid coloured shape."*
+- **Say "the LOCKUP ITSELF must fill the frame"** — not just "fill the frame". See the failure below.
+- **"Render the business name exactly once"** — the model otherwise echoes a word (a stray second
+  "CLEANING" under the wordmark) and litters specks in the corners.
 
 ---
 
@@ -106,9 +129,24 @@ The load-bearing words, learned the hard way:
 
 ---
 
-## Failure mode this doc exists to prevent
+## Failure modes this doc exists to prevent
 
-A live site (`sunrise-plumbing-drain`) shipped with a visibly tiny navbar logo. Three compounding causes:
+### The white box (`thorough-global-cleaning-llc`, 2026-07)
+
+The site shipped with the logo sitting in a **solid white rectangle**, the mark a sliver inside it. The
+prompt said *"the lockup must FILL THE FRAME edge-to-edge"* **and** *"transparent background"* — and since
+the model **cannot** do transparency, it satisfied "fill the frame" the only way it could: it **painted an
+opaque white plate over the whole frame** and drew a small logo in the middle. The trim then treated the
+plate as the mark (above) and padded it.
+
+Measured on the shipped file: canvas **1616×698**, real ink **1055×166** — the mark owned **24% of the
+navbar height**; the other 76% was white. Every gate passed. After the fix: **1051×178**, ink **97% of the
+height**, rendering **210×64** in a 64px navbar slot.
+
+The lesson isn't "write a better prompt." It's that **we were asking for something the model physically
+cannot do**, and the post-processing was papering over the result badly enough to pass its own gates.
+
+### The tiny navbar logo (`sunrise-plumbing-drain`)
 
 1. The circle prompt asked for an icon, so the "circular emblem" was never a circle.
 2. `logo-fix.mjs` padded with `max(width, height) * 0.05`. On a 2.29-aspect lockup that took 5% of the
@@ -117,18 +155,41 @@ A live site (`sunrise-plumbing-drain`) shipped with a visibly tiny navbar logo. 
 3. The Studio had **no post-processing at all**, so a customer regenerating their logo got the raw
    1024²-canvas output — strictly worse than the forge's.
 
-All three are fixed. The gates now make #1 and #2 loud instead of silent.
+All fixed. The gates now make these loud instead of silent.
 
 ---
 
-## How the trim decides what's background
+## How the background is removed (and why a trim isn't enough)
 
-Both implementations take the **top-left pixel** as the background and trim every edge similar to it.
-This matters more than it sounds: the model frequently ignores "transparent background" and returns the
-mark on flat white. A naive *alpha-only* trim finds nothing to remove there and ships the raw 1024²
-canvas — which is the original bug, reintroduced. Test against the background **colour**, not just alpha.
+> **Superseded:** both twins used to lean on sharp's `trim()`, which keys off the **top-left pixel**.
+> That is exactly what shipped a white box. Don't reintroduce it.
 
-`logo-fix.mjs` gets this free from sharp. `normalizeAsset()` re-implements it on `ImageData`.
+The generated file has **two background layers**: an opaque plate, and (after any prior pass) a
+transparent margin around it. A single trim seeded from the top-left pixel sees only the *outer* layer:
+on these files that pixel is transparent, so it strips the transparent ring, runs into the opaque plate,
+and **stops — treating the plate as the mark**. It then pads a white rectangle, and every quality gate
+passes, because the gates measure the plate (wide, fills its box), not the ink.
+
+Three stages, in this order:
+
+1. **`removeBackground()` — peel each layer by flood fill.** Seed from the current bounding box's ring,
+   erase everything 4-connected to it that matches a background surface, re-measure, repeat (≤3 passes).
+   A colour counts as background only if it owns **≥90% of that ring** (a *plate*); on the ring of a real
+   mark's bbox the opaque pixels *are* the artwork and are never that uniform, so ink is never seeded.
+   - **Connectivity is the whole point.** A global "make white transparent" would erase the white chevron
+     inside the green disc. Flood fill cannot reach it — the disc encloses it.
+2. **`pruneOutliers()` — drop artefacts that are BOTH small AND detached.** The model litters glyph-like
+   specks in the corners. They survive the fill, and *one speck anchors the bounding box*: a real mark of
+   **1055×166 (aspect 6.36)** came out as **1305×419 (aspect 3.11)**, reintroducing the exact dead air we
+   were removing. **Size alone is not a safe test** — a real build produced a **49px** speck, while the tiny
+   "LLC" subscript glyphs are the same order. The reliable signal is **isolation**: keep every component
+   ≥2% of total ink, keep anything within half the mark's height of them (dots, subscripts, counters), drop
+   the rest.
+3. **Trim to the ink and re-pad** per the table above.
+
+Both twins run all three and must agree. Guard rails: if removal would eat the artwork (<0.5% ink left)
+it is **reverted**; if the mark is still >97% opaque afterwards the gate fires — that's a plate we failed
+to lift (a gradient background), and the fix is to **regenerate**, not to tune the threshold.
 
 ## Verifying a change (parity check)
 
