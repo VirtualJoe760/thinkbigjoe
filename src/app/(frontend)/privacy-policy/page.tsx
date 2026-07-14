@@ -12,8 +12,8 @@ export const metadata: Metadata = {
 function H({ children }: { children: React.ReactNode }) {
   return <h2 className="mt-10 text-xl font-bold tracking-tight text-ink">{children}</h2>;
 }
-function P({ children }: { children: React.ReactNode }) {
-  return <p className="mt-3 leading-relaxed text-ink-soft">{children}</p>;
+function P({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <p className={`mt-3 leading-relaxed text-ink-soft ${className}`}>{children}</p>;
 }
 
 export default function PrivacyPage() {
@@ -71,26 +71,83 @@ export default function PrivacyPage() {
           stated above, we never sell your personal information or share your SMS opt-in data for third-party marketing.
         </P>
 
-        <H>5. Data retention &amp; security</H>
+        {/*
+          Required for Google OAuth verification. We request two SENSITIVE scopes
+          (calendar.events, contacts), and Google's #1 rejection reason is a privacy policy that
+          doesn't name the scopes, say what each is used for, and carry the Limited Use affirmation
+          VERBATIM. Keep this section in sync with GOOGLE_SCOPES in src/lib/google-oauth.ts — if a
+          scope is added there and not disclosed here, verification is revoked.
+        */}
+        <H>5. Google user data</H>
+        <P>
+          If you choose to connect your Google account, {BUSINESS.brand} requests only the access needed to run the
+          features you asked for. We request:
+        </P>
+        <ul className="mt-3 list-disc space-y-2 pl-6 leading-relaxed text-ink-soft">
+          <li>
+            <span className="font-mono text-sm font-semibold text-ink">userinfo.email</span> — to identify which Google
+            account you connected and link it to your {BUSINESS.brand} account.
+          </li>
+          <li>
+            <span className="font-mono text-sm font-semibold text-ink">calendar.events</span> — to read your availability
+            and create appointments on your calendar when a customer books through your website or our AI receptionist,
+            and to show those appointments in your portal calendar. We do not read or store the contents of unrelated
+            personal events.
+          </li>
+          <li>
+            <span className="font-mono text-sm font-semibold text-ink">contacts</span> — to import the contacts you choose
+            into your newsletter list, and to save new leads from your website back into your Google Contacts so your
+            customer list stays in one place.
+          </li>
+        </ul>
+        <P>
+          You can disconnect your Google account at any time — the <span className="font-semibold text-ink">Disconnect</span>{" "}
+          button on your portal Calendar page — or revoke our access directly at{" "}
+          <a href="https://myaccount.google.com/permissions" className="font-semibold text-brand hover:underline" target="_blank" rel="noreferrer">
+            myaccount.google.com/permissions
+          </a>
+          . When you disconnect, we delete the stored access and refresh tokens for that account.
+        </P>
+        <P className="font-semibold text-ink">
+          {BUSINESS.brand}&apos;s use and transfer of information received from Google APIs to any other app will adhere to
+          the{" "}
+          <a
+            href="https://developers.google.com/terms/api-services-user-data-policy"
+            className="font-semibold text-brand hover:underline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Google API Services User Data Policy
+          </a>
+          , including the Limited Use requirements.
+        </P>
+        <P>
+          Specifically: we do not use Google user data to serve advertising, we do not sell it, we do not transfer it to
+          others except as necessary to provide or improve the features you requested, to comply with applicable law, or as
+          part of a merger or acquisition, and we do not allow humans to read it unless we have your explicit consent, it is
+          necessary for security or to comply with applicable law, or the data is aggregated and anonymized.
+        </P>
+
+        <H>6. Data retention &amp; security</H>
         <P>
           We keep information for as long as needed to provide our services and meet legal requirements, and we use reasonable
           administrative and technical safeguards to protect it. No method of transmission is 100% secure.
         </P>
 
-        <H>6. Your choices &amp; rights</H>
+        <H>7. Your choices &amp; rights</H>
         <P>
           You may opt out of marketing messages at any time (reply STOP to texts, or unsubscribe from emails). You may request
           access to, correction of, or deletion of your personal information by contacting us at {BUSINESS.email}. Depending on
           your location, you may have additional rights under applicable privacy laws.
         </P>
 
-        <H>7. Children&apos;s privacy</H>
+        <H>8. Children&apos;s privacy</H>
         <P>Our services are not directed to children under 13, and we do not knowingly collect their information.</P>
 
-        <H>8. Changes to this policy</H>
+        <H>9. Changes to this policy</H>
         <P>We may update this policy; material changes will be posted here with a new effective date.</P>
 
-        <H>9. Contact us</H>
+        <H>10. Contact us</H>
         <P>
           {BUSINESS.dba}
           <br />

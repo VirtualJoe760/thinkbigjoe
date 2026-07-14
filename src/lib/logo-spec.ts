@@ -68,8 +68,10 @@ const FLAT_BG =
   "The background must be a COMPLETELY FLAT, UNIFORM, SOLID PURE WHITE (#FFFFFF) — one single exact colour " +
   "edge to edge, with NO gradient, NO vignette, NO shading, NO texture and NO drop shadow (this white is " +
   "keyed out to transparency afterwards). Flat vector artwork only. " +
-  "No part of the artwork may be white or near-white WHERE IT TOUCHES THE BACKGROUND — white is allowed only " +
-  "when fully enclosed inside a solid coloured shape";
+  "CRITICAL — the ARTWORK ITSELF must never use pure white or near-white anywhere, because pure white is the " +
+  "background colour and gets erased. If an element needs to read as white (an icon or monogram inside a " +
+  "coloured badge), paint it in a soft OFF-WHITE tint — no lighter than #EEEEEE — clearly distinguishable " +
+  "from the pure-white background. Never #FFFFFF for ink";
 
 export const ASSET_SPECS: AssetSpec[] = [
   {
@@ -201,17 +203,66 @@ function floodErase(px: Uint8ClampedArray, w: number, h: number, rect: Rect, sur
  * "transparent" and stops dead at the plate. That is the exact bug that shipped a white box: peel a layer,
  * re-measure, peel the next.
  */
-function removeBackground(px: Uint8ClampedArray, w: number, h: number): number {
+function removeBackground(px: Uint8ClampedArray, w: number, h: number): { erased: number; plate: Surface | null } {
   let rect: Rect = { left: 0, top: 0, width: w, height: h };
   let erased = 0;
+  let plate: Surface | null = null;
   for (let pass = 0; pass < 3; pass++) {
-    erased += floodErase(px, w, h, rect, backgroundSurfaces(px, w, rect));
+    const surfaces = backgroundSurfaces(px, w, rect);
+    const opaque = surfaces.find((s) => s.a > TRIM_THRESHOLD);
+    if (opaque) plate = opaque; // the solid card the mark was painted on
+    erased += floodErase(px, w, h, rect, surfaces);
     const box = rawBBox(px, w, h);
     if (!box) break;
     if (box.width === rect.width && box.height === rect.height) break;
     rect = box;
   }
-  return erased;
+  return { erased, plate };
+}
+
+/**
+ * Clear the ENCLOSED background — the counters of letters.
+ *
+ * The flood fill works by connectivity, so it physically cannot reach the hole inside an "O" or the
+ * bowl of an "R": that region IS background, but the letter stroke walls it off from the border. On a
+ * real shipped logo this left 306 blobs / 3760px of opaque white inside the wordmark, which render as
+ * soft white bubbles on a dark navbar.
+ *
+ * Colour alone can't fix it — an enclosed white region might be ARTWORK (the white icon inside a
+ * brand-colour disc). So the prompt now forbids pure white as an INK colour, and here SIZE is the
+ * safety net: counters measured ≈0.56% of the mark, an enclosed icon 5–13%. An order of magnitude
+ * apart. Anything too big to be a counter is kept and reported — the model broke the no-white rule and
+ * the fix is to regenerate.
+ */
+const ENCLOSED_MAX_FRACTION = 0.02; // of the mark's area
+function clearEnclosedBackground(
+  px: Uint8ClampedArray, w: number, h: number, plate: Surface | null, box: Rect,
+): { cleared: number; keptArtwork: number } {
+  if (!plate) return { cleared: 0, keptArtwork: 0 };
+  const markArea = box.width * box.height;
+  const seen = new Uint8Array(w * h);
+  const isPlate = (p: number) => px[p * 4 + 3] > TRIM_THRESHOLD && sameSurface(px, p * 4, plate);
+
+  let cleared = 0, keptArtwork = 0;
+  for (let p = 0; p < w * h; p++) {
+    if (seen[p] || !isPlate(p)) continue;
+    const cells: number[] = [];
+    const stack = [p];
+    seen[p] = 1;
+    while (stack.length) {
+      const q = stack.pop()!;
+      cells.push(q);
+      const x = q % w, y = (q / w) | 0;
+      if (x > 0 && !seen[q - 1] && isPlate(q - 1)) { seen[q - 1] = 1; stack.push(q - 1); }
+      if (x < w - 1 && !seen[q + 1] && isPlate(q + 1)) { seen[q + 1] = 1; stack.push(q + 1); }
+      if (y > 0 && !seen[q - w] && isPlate(q - w)) { seen[q - w] = 1; stack.push(q - w); }
+      if (y < h - 1 && !seen[q + w] && isPlate(q + w)) { seen[q + w] = 1; stack.push(q + w); }
+    }
+    if (cells.length > markArea * ENCLOSED_MAX_FRACTION) { keptArtwork += cells.length; continue; }
+    for (const q of cells) px[q * 4 + 3] = 0;
+    cleared += cells.length;
+  }
+  return { cleared, keptArtwork };
 }
 
 /**
@@ -320,7 +371,7 @@ export async function normalizeAsset(dataUrl: string, mode: NormalizeMode): Prom
 
     // The model paints an opaque background (it cannot emit alpha), so KEY IT OUT before measuring.
     // Skipping this is what made a white plate look like the mark and shipped a white box.
-    removeBackground(px, w, h);
+    const { plate } = removeBackground(px, w, h);
     pruneOutliers(px, w, h); // before the bbox — one corner speck otherwise anchors it
     let box = rawBBox(px, w, h);
 
@@ -330,6 +381,11 @@ export async function normalizeAsset(dataUrl: string, mode: NormalizeMode): Prom
       box = rawBBox(px, w, h);
     }
     if (!box) return asIs;
+
+    // Now that the mark's size is known, clear the ENCLOSED background (letter counters) — the
+    // counter-vs-artwork test is relative to the mark's area, so it has to run after the bbox.
+    const enclosed = clearEnclosedBackground(px, w, h, plate, box);
+    if (enclosed.cleared) box = rawBBox(px, w, h) || box;
 
     const markW = box.width, markH = box.height;
     const markAspect = markW / markH;
@@ -362,6 +418,10 @@ export async function normalizeAsset(dataUrl: string, mode: NormalizeMode): Prom
     let warn: string | null = null;
     if (opacity > PLATE_OPACITY) {
       warn = "That came back as artwork sitting on a solid background block, and the background couldn’t be lifted off. Try again and ask for “flat artwork on a plain, solid white background — no gradient or shadow.”";
+    } else if (enclosed.keptArtwork) {
+      // Painted in the background colour, and too big to be a letter counter — we kept it rather than
+      // erase real artwork, but it can't be made transparent.
+      warn = "Part of this design is painted in pure white, which is the background colour — so it can’t be made see-through and will show as a white patch. Try again and ask for “a soft off-white instead of pure white.”";
     } else if (mode === "circle") {
       if (markAspect < CIRCLE_MIN_ASPECT || markAspect > CIRCLE_MAX_ASPECT) {
         warn = "That came back as a bare icon, not a filled circle. Try again and ask for “a solid filled circle that fills the whole frame, with the icon centred inside.”";
