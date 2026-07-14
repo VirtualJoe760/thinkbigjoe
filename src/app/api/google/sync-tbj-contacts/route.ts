@@ -25,10 +25,17 @@ const GROUP_NAME = process.env.TBJ_CONTACTS_GROUP || "TBJ Leads";
 export async function POST(req: Request) {
   if (!authed(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [owner] = (await db.execute(sql`SELECT id FROM better_auth."user" WHERE lower(email) = ${OWNER_EMAIL.toLowerCase()} LIMIT 1`)).rows as Array<{ id: string }>;
-  if (!owner) return NextResponse.json({ ok: false, message: `No account for ${OWNER_EMAIL}.` });
+  // Find the owner's Google connection: prefer the configured owner email, else whichever account
+  // connected Google with the Contacts scope (there's realistically just the one — Joe's).
+  const [owner] = (await db.execute(sql`
+    SELECT gc.user_id FROM google_connections gc
+    JOIN better_auth."user" u ON u.id = gc.user_id
+    WHERE gc.contacts_connected = true
+    ORDER BY (lower(u.email) = ${OWNER_EMAIL.toLowerCase()}) DESC, gc.created_at ASC
+    LIMIT 1`)).rows as Array<{ user_id: string }>;
+  if (!owner) return NextResponse.json({ ok: false, message: "Connect your Google (with Contacts) on /portal/calendar first." });
 
-  const conn = await getConnection(owner.id);
+  const conn = await getConnection(owner.user_id);
   if (!conn?.contactsConnected) return NextResponse.json({ ok: false, message: "Connect your Google (with Contacts) on /portal/calendar first." });
   const token = await getValidAccessToken(conn);
   if (!token) return NextResponse.json({ ok: false, message: "Google connection expired — reconnect on /portal/calendar." });
