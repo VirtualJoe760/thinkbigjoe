@@ -109,7 +109,12 @@ Plus the **`preview_engine`** config table (`daily_budget`, `enabled`, `last_run
 - **Freshness:** previews expire in 14 days; re-scrape-on-open (past ~30 days) keeps reopened
   previews from looking dated.
 - **The real bottleneck is outreach + review capacity, not generation** — you pace by how many you
-  can responsibly send + close, not by token cost.
+  can responsibly send + close, not by token cost. In practice it's the **marketing-approval gate**
+  (`approveForMarketing`): previews pile up un-approved and nothing can be sent.
+- **Snapshot the whole funnel:** `node scripts/funnel.mjs` (read-only) — discovered / awaiting
+  approval / leads / per-channel reachability / engine caps / last-24h sends. Run it before
+  concluding that discovery or the preview engine is the problem. Operating the funnel end to end
+  (approve → voicemail drop → follow-up text → email) is the `lead-pipeline` Claude skill.
 
 ---
 

@@ -5,6 +5,13 @@ import Link from "next/link";
 
 import { sendConversationMessage, renameContact, setContactAiPaused } from "../actions";
 
+// Curved-edge phones (Galaxy Note 10 et al) bend the last few px of the screen, so an
+// outbound bubble flush to the right gutter is genuinely hard to read. The conversation
+// pane is full-bleed on mobile, so give it a wider right gutter there; at `md` it sits
+// inside an inset rounded card (md:mx-6) and can go back to the normal 12px.
+// Android reports safe-area-inset-right: 0 on these screens, so the floor does the work.
+const EDGE_RIGHT = "pr-[max(1.25rem,env(safe-area-inset-right))] md:pr-3";
+
 export type Msg = { dir: "in" | "out"; text: string; at: string; via?: string };
 export type Conversation = {
   siteId: number;
@@ -90,7 +97,7 @@ export function MessagesClient({ conversations }: { conversations: Conversation[
 
       <div className="grid min-h-0 flex-1 overflow-hidden border-t border-line md:mx-6 md:mb-6 md:rounded-2xl md:border md:grid-cols-[340px_1fr]">
         {/* Conversation list */}
-        <div className={`flex min-h-0 flex-col border-line md:border-r ${open ? "hidden md:flex" : "flex"}`}>
+        <div className={`flex min-h-0 min-w-0 flex-col border-line md:border-r ${open ? "hidden md:flex" : "flex"}`}>
           <div className="shrink-0 border-b border-line p-3">
             <input
               value={q}
@@ -143,7 +150,11 @@ export function MessagesClient({ conversations }: { conversations: Conversation[
         </div>
 
         {/* Thread */}
-        <div className={`min-h-0 flex-col ${open ? "flex" : "hidden md:flex"}`}>
+        {/* min-w-0: grid items default to min-width:auto, so without this the column can't
+            shrink below the header row's min-content width (avatar + name + pills) and the
+            whole thread — bubbles included — lays out wider than a phone viewport and gets
+            clipped by the overflow-hidden above. */}
+        <div className={`min-h-0 min-w-0 flex-col ${open ? "flex" : "hidden md:flex"}`}>
           {open ? (
             <Thread key={open.siteId} c={open} onBack={() => setOpenId(null)} />
           ) : (
@@ -210,7 +221,7 @@ function Thread({ c, onBack }: { c: Conversation; onBack: () => void }) {
   return (
     <>
       {/* header */}
-      <div className="flex shrink-0 items-center gap-2.5 border-b border-line bg-background px-3 py-2.5">
+      <div className={`flex shrink-0 items-center gap-2.5 border-b border-line bg-background pl-3 py-2.5 ${EDGE_RIGHT}`}>
         <button onClick={onBack} className="-ml-1 rounded-full p-2 text-ink-soft active:bg-surface hover:bg-surface md:hidden" aria-label="Back">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6" /></svg>
         </button>
@@ -279,14 +290,16 @@ function Thread({ c, onBack }: { c: Conversation; onBack: () => void }) {
       </div>
 
       {/* messages */}
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain bg-surface/40 p-3">
+      <div ref={scrollRef} className={`min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain bg-surface/40 py-3 pl-3 ${EDGE_RIGHT}`}>
         {c.messages.map((m, i) => {
           const out = m.dir === "out";
           const viaLabel = out && m.via ? VIA_LABEL[m.via] : null;
           return (
             <div key={i} className={`flex flex-col ${out ? "items-end" : "items-start"}`}>
               <div
-                className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-snug ${
+                // break-words: whitespace-pre-wrap alone only breaks at spaces/hyphens, so a long
+                // URL with no break opportunity paints outside the bubble instead of wrapping.
+                className={`max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm leading-snug ${
                   out ? "rounded-br-md bg-brand text-white" : "rounded-bl-md bg-ink text-white"
                 }`}
               >
@@ -307,7 +320,7 @@ function Thread({ c, onBack }: { c: Conversation; onBack: () => void }) {
           🛑 This contact opted out — texting is disabled.
         </div>
       ) : (
-        <div className="shrink-0 border-t border-line bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className={`shrink-0 border-t border-line bg-background pt-3 pl-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${EDGE_RIGHT}`}>
           {error && <p className="mb-1.5 text-[11px] text-rose-600">{error}</p>}
           <div className="flex items-end gap-2">
             <textarea
