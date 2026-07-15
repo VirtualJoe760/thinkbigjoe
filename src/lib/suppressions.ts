@@ -5,7 +5,7 @@
  * load-bearing, not optional: every bulk send checks it first, and the SNS webhook writes to it.
  * See docs/DELIVERABILITY.md + docs/EMAIL_SCALE.md.
  */
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 
 import { db, emailSuppressions } from "@/db";
 
@@ -39,8 +39,12 @@ export async function isSuppressed(email: string): Promise<boolean> {
 export async function suppressedSet(emails: string[]): Promise<Set<string>> {
   const lowered = [...new Set(emails.map(norm).filter(Boolean))];
   if (!lowered.length) return new Set();
-  const rows = (
-    await db.execute(sql`SELECT lower(email) AS email FROM email_suppressions WHERE lower(email) = ANY(${lowered})`)
-  ).rows as Array<{ email: string }>;
+  // Stored addresses are always normalized (every write goes through `suppress()` → `norm()`), so an
+  // equality match against the column is correct. `inArray` compiles to `email IN ($1, …)`; a hand-
+  // written `= ANY(${array})` does NOT work — Drizzle expands a JS array into a tuple, not a PG array.
+  const rows = await db
+    .select({ email: emailSuppressions.email })
+    .from(emailSuppressions)
+    .where(inArray(emailSuppressions.email, lowered));
   return new Set(rows.map((r) => r.email));
 }
