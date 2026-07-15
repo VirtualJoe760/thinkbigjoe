@@ -47,6 +47,12 @@ const sesTransporter = isSesConfigured
       port: SES_PORT,
       secure: SES_PORT === 465,
       auth: { user: SES_USER, pass: SES_PASS },
+      // Fail FAST on a stalled connection — otherwise one hung SMTP connection stalls the whole
+      // batch and the serverless function is killed at its maxDuration with rows stuck 'queued'
+      // and no error logged. A real error is far more useful than an indefinite hang.
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000,
     })
   : null;
 
