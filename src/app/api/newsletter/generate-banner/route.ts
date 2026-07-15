@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { and, eq } from "drizzle-orm";
-import sharp from "sharp";
 
 import { auth } from "@/lib/auth";
 import { db, forgeSites, newsletters } from "@/db";
@@ -59,6 +58,9 @@ export async function POST(req: Request) {
     const m = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
     if (!m) return NextResponse.json({ ok: false, message: "Image generation failed — try again." }, { status: 502 });
 
+    // Dynamic import: sharp ships a native binary; a top-level import crashes the whole route module
+    // at load on Vercel. Loading it here keeps it inside this try and off the module-load path.
+    const sharp = (await import("sharp")).default;
     const webp = await sharp(Buffer.from(m[1], "base64"))
       .resize(BANNER_W, BANNER_H, { fit: "cover" })
       .webp({ quality: 82 })

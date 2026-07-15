@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { and, eq } from "drizzle-orm";
-import sharp from "sharp";
 
 import { auth } from "@/lib/auth";
 import { db, forgeSites } from "@/db";
@@ -50,6 +49,9 @@ export async function POST(req: Request) {
   }
 
   try {
+    // Dynamic import: sharp's native binary crashes the route module at load on Vercel if imported
+    // at the top level. Loading it here keeps it off the module-load path.
+    const sharp = (await import("sharp")).default;
     const input = Buffer.from(await file.arrayBuffer());
     let out: Buffer;
     let ext: string;
