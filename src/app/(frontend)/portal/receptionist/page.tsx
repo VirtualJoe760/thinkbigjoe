@@ -6,8 +6,6 @@ import { eq } from "drizzle-orm";
 
 import { db, forgeSites } from "@/db";
 import { auth } from "@/lib/auth";
-import { isAdminEmail } from "@/lib/admin";
-import { PortalHeader } from "@/components/portal/portal-header";
 import { ReceptionistForm, type ReceptionistConfig } from "./[id]/receptionist-form";
 
 export const metadata: Metadata = { title: "Set up your AI receptionist" };
@@ -37,7 +35,6 @@ export default async function ReceptionistPage({
 
   return (
     <div className="flex flex-1 flex-col">
-      <PortalHeader email={user.email} isAdmin={isAdminEmail(user.email)} />
 
       <main className="mx-auto w-full max-w-xl flex-1 px-6 py-12">
         <Link href="/portal" className="text-sm font-semibold text-brand hover:underline">

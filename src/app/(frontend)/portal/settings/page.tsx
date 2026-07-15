@@ -7,7 +7,6 @@ import { and, desc, eq, ne } from "drizzle-orm";
 import { db, forgeSites } from "@/db";
 import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
-import { PortalHeader } from "@/components/portal/portal-header";
 import { getConnection } from "@/lib/google-oauth";
 import { ensureOwnerContact } from "@/lib/contacts";
 import { DEFAULT_GROUP } from "@/lib/contact-sync";
@@ -81,7 +80,6 @@ export default async function PortalSettingsPage({
 
   return (
     <div className="flex flex-1 flex-col">
-      <PortalHeader email={user.email} isAdmin={isAdminEmail(user.email)} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
         <h1 className="text-3xl font-extrabold tracking-tight">Settings</h1>
         <p className="mt-2 leading-relaxed text-ink-soft">

@@ -4,10 +4,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 
-import { PortalHeader } from "@/components/portal/portal-header";
 import { db, forgeSites } from "@/db";
 import { auth } from "@/lib/auth";
-import { isAdminEmail } from "@/lib/admin";
 import { PLANS, PLAN_KEYS, ONE_TIME_BUILD_AMOUNT, annualSavings, type PlanKey, type BillingInterval } from "@/lib/plans";
 import { SiteBilling } from "../site-billing";
 
@@ -46,7 +44,6 @@ export default async function BillingPage({
 
   return (
     <div className="flex flex-1 flex-col">
-      <PortalHeader email={user.email} isAdmin={isAdminEmail(user.email)} />
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-12">
         <p className="text-sm font-semibold tracking-wide text-brand uppercase">Plans &amp; billing</p>

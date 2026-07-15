@@ -4,8 +4,6 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
-import { isAdminEmail } from "@/lib/admin";
-import { PortalHeader } from "@/components/portal/portal-header";
 import { BuildForm } from "./build-form";
 
 export const metadata: Metadata = { title: "Get a site built" };
@@ -16,7 +14,6 @@ export default async function BuildPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <PortalHeader email={session.user.email} isAdmin={isAdminEmail(session.user.email)} />
 
       <main className="mx-auto w-full max-w-xl flex-1 px-6 py-12">
         <Link href="/portal" className="text-sm font-semibold text-brand hover:underline">← Back to portal</Link>

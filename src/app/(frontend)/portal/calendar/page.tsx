@@ -6,8 +6,6 @@ import { and, desc, eq, ne } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { db, forgeSites } from "@/db";
-import { isAdminEmail } from "@/lib/admin";
-import { PortalHeader } from "@/components/portal/portal-header";
 import { getConnection, getValidAccessToken, listCalendarEvents, isGoogleOAuthConfigured } from "@/lib/google-oauth";
 import { type CalEvent } from "../../command/appointments/appointments-calendar";
 import { ClientCalendar } from "./calendar-view";
@@ -56,7 +54,6 @@ export default async function PortalCalendarPage({ searchParams }: { searchParam
 
   return (
     <>
-      <PortalHeader email={user.email} isAdmin={isAdminEmail(user.email)} />
       <div className="mx-auto w-full max-w-5xl px-5 py-8">
         <Link href="/portal" className="text-sm font-semibold text-brand hover:underline">← Back to portal</Link>
         <h1 className="mt-2 text-2xl font-extrabold tracking-tight">Calendar</h1>

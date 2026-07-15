@@ -4,7 +4,6 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { AccountForm } from "@/components/portal/account-form";
-import { PortalHeader } from "@/components/portal/portal-header";
 import { auth } from "@/lib/auth";
 import { PLANS, PLAN_KEYS, ONE_TIME_BUILD_AMOUNT } from "@/lib/plans";
 
@@ -21,7 +20,6 @@ export default async function AccountPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <PortalHeader email={user.email} />
 
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
         <h1 className="text-4xl font-extrabold tracking-tight">Account</h1>

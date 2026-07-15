@@ -4,9 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
-import { isAdminEmail } from "@/lib/admin";
 import { isCalendarConfigured } from "@/lib/gcal";
-import { PortalHeader } from "@/components/portal/portal-header";
 import { BookForm } from "./book-form";
 
 export const metadata: Metadata = { title: "Book a call with Joe" };
@@ -19,7 +17,6 @@ export default async function BookPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <PortalHeader email={session.user.email} isAdmin={isAdminEmail(session.user.email)} />
 
       <main className="mx-auto w-full max-w-xl flex-1 px-6 py-12">
         <Link href="/portal" className="text-sm font-semibold text-brand hover:underline">← Back to portal</Link>

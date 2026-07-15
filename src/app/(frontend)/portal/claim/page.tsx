@@ -2,9 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { PortalHeader } from "@/components/portal/portal-header";
 import { auth } from "@/lib/auth";
-import { isAdminEmail } from "@/lib/admin";
 import { ClaimForm } from "./claim-form";
 
 export const metadata: Metadata = {
@@ -17,7 +15,6 @@ export default async function ClaimPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <PortalHeader email={session.user.email} isAdmin={isAdminEmail(session.user.email)} />
 
       <main className="mx-auto w-full max-w-xl flex-1 px-6 py-12">
         <p className="text-sm font-semibold tracking-wide text-brand uppercase">

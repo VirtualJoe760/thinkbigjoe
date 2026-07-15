@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 
 import { and, eq, gt, ne, sql } from "drizzle-orm";
 
-import { PortalHeader } from "@/components/portal/portal-header";
 import { db, forgeSites, leads } from "@/db";
 import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
@@ -129,7 +128,6 @@ export default async function PortalPage({
 
   return (
     <div className="flex flex-1 flex-col">
-      <PortalHeader email={user.email} isAdmin={isAdmin} />
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-12">
         <p className="text-sm font-semibold tracking-wide text-brand uppercase">
