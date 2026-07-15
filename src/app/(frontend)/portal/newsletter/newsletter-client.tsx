@@ -1,11 +1,12 @@
 "use client";
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, useTransition } from "react";
+import { useCallback, useRef, useState, useTransition } from "react";
 
 import {
   uploadContacts, removeContact, generateDraft, createBlankDraft, saveDraft, approveAndSend,
   setNewsletterPaused, syncGoogleContacts, reviseDraft, setBanner,
 } from "./actions";
+import { TiptapEditor } from "./tiptap-editor";
 
 export type NewsletterBizPreview = {
   businessName: string;
@@ -62,6 +63,36 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** Full HTML document for the preview iframe — mobile viewport so it renders like a phone inbox. */
+function previewDoc(biz: NewsletterBizPreview, bannerUrl: string | null, bodyHtml: string): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">` +
+    `<style>html,body{margin:0;padding:0;background:#f5f7fb;}img{max-width:100%;}</style></head>` +
+    `<body>${previewHtml(biz, bannerUrl, bodyHtml)}</body></html>`;
+}
+
+/**
+ * A phone mockup that renders the ACTUAL email inside an isolated iframe — so the client sees exactly
+ * how it looks on a phone (where most email is read), with the email's own CSS sandboxed away from
+ * the portal. The iframe re-renders whenever the body/banner change (React swaps srcDoc).
+ */
+function MobilePreview({ biz, bannerUrl, bodyHtml }: { biz: NewsletterBizPreview; bannerUrl: string | null; bodyHtml: string }) {
+  return (
+    <div className="mx-auto w-full max-w-[330px]">
+      <div className="rounded-[2.5rem] border-[11px] border-neutral-800 bg-neutral-800 shadow-xl">
+        <div className="relative overflow-hidden rounded-[1.7rem] bg-white">
+          <div className="pointer-events-none absolute left-1/2 top-0 z-10 h-5 w-24 -translate-x-1/2 rounded-b-2xl bg-neutral-800" />
+          <iframe
+            title="Mobile email preview"
+            srcDoc={previewDoc(biz, bannerUrl, bodyHtml)}
+            className="block h-[600px] w-full border-0"
+          />
+        </div>
+      </div>
+      <p className="mt-2 text-center text-[11px] text-ink-soft">Preview — what your customers see on their phone</p>
+    </div>
+  );
+}
+
 export function NewsletterClient({ view }: { view: NewsletterView }) {
   const [pending, start] = useTransition();
 
@@ -100,9 +131,8 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
   const alreadySent = status === "sent";
   const paused = status === "cancelled";
 
-  // Bump this to force the contentEditable to re-seed its innerHTML (after AI generate/revise).
+  // Bump this to make the TipTap editor re-seed its content (after AI generate/revise).
   const [editorKey, setEditorKey] = useState(0);
-  const editorRef = useRef<EditorHandle>(null);
   const reseedEditor = (html: string) => { setBody(html); setEditorKey((k) => k + 1); };
 
   const adoptDraft = (r: { id?: number; subject?: string; html?: string; bannerUrl?: string | null }) => {
@@ -168,8 +198,7 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
 
   // ── image uploads ──
   const bannerInputRef = useRef<HTMLInputElement>(null);
-  const inlineInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState<null | "banner" | "inline">(null);
+  const [bannerUploading, setBannerUploading] = useState(false);
 
   const uploadFile = useCallback(async (file: File, kind: "banner" | "inline"): Promise<string | null> => {
     const fd = new FormData();
@@ -182,13 +211,16 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
     return j.url as string;
   }, [view.siteId]);
 
+  // Inline images inside the editor: TipTap calls this, then inserts the returned URL itself.
+  const uploadInlineImage = useCallback((file: File) => uploadFile(file, "inline"), [uploadFile]);
+
   const onBannerFile = (f: File | null) => {
     if (!f || !nlId) return;
-    setUploading("banner"); setEditorMsg(null);
+    setBannerUploading(true); setEditorMsg(null);
     start(async () => {
       const url = await uploadFile(f, "banner");
       if (url) { setBannerUrl(url); await setBanner(view.siteId, nlId, url); }
-      setUploading(null);
+      setBannerUploading(false);
     });
   };
   const removeBanner = () => {
@@ -324,48 +356,32 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
                   <button onClick={removeBanner} disabled={alreadySent || pending} className="text-xs text-ink-soft hover:text-rose-600 disabled:opacity-50">Remove</button>
                 </div>
               ) : (
-                <button onClick={() => bannerInputRef.current?.click()} disabled={alreadySent || uploading === "banner"} className="mt-1 rounded-xl border border-dashed border-line px-4 py-3 text-sm text-ink-soft hover:border-brand hover:text-brand disabled:opacity-50">
-                  {uploading === "banner" ? "Uploading…" : "＋ Add a banner image"}
+                <button onClick={() => bannerInputRef.current?.click()} disabled={alreadySent || bannerUploading} className="mt-1 rounded-xl border border-dashed border-line px-4 py-3 text-sm text-ink-soft hover:border-brand hover:text-brand disabled:opacity-50">
+                  {bannerUploading ? "Uploading…" : "＋ Add a banner image"}
                 </button>
               )}
             </div>
 
-            {/* Editor + live preview */}
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div>
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-ink-soft">Message</label>
-                  {!alreadySent && (
-                    <input ref={inlineInputRef} type="file" accept="image/*" className="hidden"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0]; e.target.value = "";
-                        if (!f) return;
-                        setUploading("inline"); setEditorMsg(null);
-                        start(async () => {
-                          const url = await uploadFile(f, "inline");
-                          if (url) editorRef.current?.insertImage(url);
-                          setUploading(null);
-                        });
-                      }} />
-                  )}
-                </div>
+            {/* Editor + mobile preview */}
+            <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
+              <div className="min-w-0">
+                <label className="block text-xs font-semibold text-ink-soft">Message</label>
                 {alreadySent ? (
-                  <div className="mt-1 rounded-xl border border-line bg-surface p-3 text-sm" dangerouslySetInnerHTML={{ __html: body }} />
+                  <div className="prose prose-sm mt-1 max-w-none rounded-xl border border-line bg-surface p-3" dangerouslySetInnerHTML={{ __html: body }} />
                 ) : (
-                  <RichEditor
-                    ref={editorRef}
-                    key={editorKey}
-                    initialHtml={body}
-                    onChange={setBody}
-                    onInsertImageClick={() => inlineInputRef.current?.click()}
-                    uploadingInline={uploading === "inline"}
-                  />
+                  <div className="mt-1">
+                    <TiptapEditor
+                      resetKey={editorKey}
+                      initialHtml={body}
+                      onChange={setBody}
+                      onUploadImage={uploadInlineImage}
+                    />
+                  </div>
                 )}
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-ink-soft">Live preview <span className="font-normal">— what your customers see</span></label>
-                <div className="mt-1 max-h-[30rem] overflow-y-auto rounded-xl border border-line bg-[#f5f7fb]" dangerouslySetInnerHTML={{ __html: previewHtml(view.biz, banner, body) }} />
+              <div className="lg:sticky lg:top-4 lg:self-start">
+                <MobilePreview biz={view.biz} bannerUrl={banner} bodyHtml={body} />
               </div>
             </div>
 
@@ -424,69 +440,3 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
     </div>
   );
 }
-
-// ── Rich text editor ────────────────────────────────────────────────────────────────────────────
-// Lightweight contentEditable with a formatting toolbar. The div is UNCONTROLLED (seeded once from
-// initialHtml) so React never fights the cursor; edits flow out via onChange(innerHTML). Remount it
-// (via `key`) to reseed after AI generate/revise.
-type EditorHandle = { insertImage: (url: string) => void };
-
-const RichEditor = forwardRef<EditorHandle, {
-  initialHtml: string;
-  onChange: (html: string) => void;
-  onInsertImageClick: () => void;
-  uploadingInline: boolean;
-}>(function RichEditor({ initialHtml, onChange, onInsertImageClick, uploadingInline }, ref) {
-  const elRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (elRef.current) elRef.current.innerHTML = initialHtml || "";
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const emit = () => onChange(elRef.current?.innerHTML ?? "");
-  const cmd = (command: string, value?: string) => {
-    elRef.current?.focus();
-    document.execCommand(command, false, value);
-    emit();
-  };
-
-  useImperativeHandle(ref, () => ({
-    insertImage(url: string) {
-      elRef.current?.focus();
-      document.execCommand("insertHTML", false, `<img src="${url}" alt="" />`);
-      emit();
-    },
-  }));
-
-  const Btn = ({ onClick, title, children }: { onClick: () => void; title: string; children: React.ReactNode }) => (
-    <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={onClick} title={title}
-      className="rounded-md px-2 py-1 text-xs font-semibold text-ink hover:bg-surface">
-      {children}
-    </button>
-  );
-
-  return (
-    <div className="mt-1 rounded-xl border border-line bg-surface focus-within:border-brand">
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-line px-2 py-1">
-        <Btn onClick={() => cmd("formatBlock", "<h2>")} title="Heading">H</Btn>
-        <Btn onClick={() => cmd("bold")} title="Bold"><span className="font-bold">B</span></Btn>
-        <Btn onClick={() => cmd("italic")} title="Italic"><span className="italic">I</span></Btn>
-        <Btn onClick={() => cmd("insertUnorderedList")} title="Bulleted list">• List</Btn>
-        <Btn onClick={() => { const u = window.prompt("Link URL"); if (u) cmd("createLink", u); }} title="Link">🔗</Btn>
-        <span className="mx-1 h-4 w-px bg-line" />
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={onInsertImageClick} disabled={uploadingInline}
-          className="rounded-md px-2 py-1 text-xs font-semibold text-brand hover:bg-brand-tint/40 disabled:opacity-50">
-          {uploadingInline ? "Uploading…" : "🖼 Image"}
-        </button>
-      </div>
-      <div
-        ref={elRef}
-        contentEditable
-        suppressContentEditableWarning
-        onInput={emit}
-        className="prose-sm max-h-80 min-h-[16rem] overflow-y-auto px-3 py-2 text-sm leading-relaxed outline-none [&_h2]:mb-1 [&_h2]:mt-3 [&_h2]:text-base [&_h2]:font-bold [&_img]:my-2 [&_img]:max-w-full [&_img]:rounded-lg [&_li]:ml-4 [&_li]:list-disc [&_p]:my-2"
-      />
-    </div>
-  );
-});
