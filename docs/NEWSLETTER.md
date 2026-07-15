@@ -8,15 +8,19 @@ content, images, and AI co-editing.
 
 1. **UI** — `/portal/newsletter` (`page.tsx` + `newsletter-client.tsx`). One-page studio:
    - **List** — upload the customer list (CSV/paste) or **Sync Google Contacts**.
-   - **Compose** — AI-draft from a prompt (or **Start from scratch**), then edit in a lightweight
-     **rich editor** (contentEditable: heading / bold / italic / list / link / image). A **banner
-     image** shows across the top; **inline images** drop into the body at the cursor.
+   - **Compose** — AI-draft from a prompt (or **Start from scratch**), then edit in a **TipTap**
+     rich editor (`tiptap-editor.tsx`; StarterKit + Image), modeled on chatRealty's CMS: toolbar for
+     bold / italic / H2 / H3 / bullet + numbered lists / quote / link / image / undo / redo. A
+     **banner image** shows across the top; **inline images** drop into the body (the editor owns the
+     upload → insert). `resetKey` re-seeds the editor when AI replaces the whole draft.
    - **AI co-edit** — an instruction box ("shorten the intro", "add our winter hours", "warmer
      tone") rewrites the *current* draft via `reviseDraft` → `reviseNewsletter()`, preserving the
      owner's edits + images instead of regenerating from scratch.
-   - **Live preview** — a client-side mirror of `renderNewsletter` shows the **actual branded email**
-     (banner, call button, unsubscribe footer) as you type. ⚠️ If you change the email shell in
-     `src/lib/newsletter.ts`, change the `previewHtml()` mirror in `newsletter-client.tsx` too.
+   - **Mobile preview** — a phone mockup renders the **actual branded email** inside an isolated
+     `iframe` (mobile viewport) as you type — banner, call button, unsubscribe footer. The iframe
+     doc is built by `previewHtml()`, a client mirror of `renderNewsletter`. ⚠️ If you change the
+     email shell in `src/lib/newsletter.ts`, change the `previewHtml()` mirror in
+     `newsletter-client.tsx` too.
    - Server actions in `portal/newsletter/actions.ts` (all scoped to the caller's claimed site):
      `generateDraft`, `createBlankDraft`, `reviseDraft`, `saveDraft`, `setBanner`, `approveAndSend`,
      `setNewsletterPaused`, `uploadContacts`, `syncGoogleContacts`, `removeContact`.
