@@ -91,7 +91,10 @@ export async function removeContact(siteId: number, contactId: number): Promise<
  * content (e.g. "spring cleaning special, we're booking now"); it's persisted so a re-draft keeps
  * the same direction, and shown back in the UI. Upserts the current-period newsletter row.
  */
-export async function generateDraft(siteId: number, prompt?: string): Promise<{ ok: boolean; message?: string }> {
+export async function generateDraft(
+  siteId: number,
+  prompt?: string,
+): Promise<{ ok: boolean; message?: string; id?: number; subject?: string; html?: string }> {
   const biz = await requireOwnedSite(siteId);
   const key = monthKey();
   const steer = (prompt || "").trim().slice(0, 800);
@@ -100,34 +103,36 @@ export async function generateDraft(siteId: number, prompt?: string): Promise<{ 
 
   const [existing] = await db.select({ id: newsletters.id, status: newsletters.status })
     .from(newsletters).where(and(eq(newsletters.siteId, siteId), eq(newsletters.period, key))).limit(1);
+  let id: number;
   if (existing) {
     if (existing.status === "sent") return { ok: false, message: "This month's newsletter already went out." };
     await db.update(newsletters).set({ subject: draft.subject, bodyHtml: draft.html, prompt: steer || null, status: "draft", updatedAt: new Date().toISOString() }).where(eq(newsletters.id, existing.id));
+    id = existing.id;
   } else {
-    await db.insert(newsletters).values({ siteId, period: key, subject: draft.subject, bodyHtml: draft.html, prompt: steer || null, status: "draft" });
+    const [row] = await db.insert(newsletters).values({ siteId, period: key, subject: draft.subject, bodyHtml: draft.html, prompt: steer || null, status: "draft" }).returning({ id: newsletters.id });
+    id = row.id;
   }
   revalidatePath("/portal/newsletter");
-  return { ok: true };
+  return { ok: true, id, subject: draft.subject, html: draft.html };
 }
 
 /** Start an empty draft for this month so the owner can write/upload from scratch (no AI). */
-export async function createBlankDraft(siteId: number): Promise<{ ok: boolean; message?: string }> {
+export async function createBlankDraft(
+  siteId: number,
+): Promise<{ ok: boolean; message?: string; id?: number; subject?: string; html?: string; bannerUrl?: string | null }> {
   await requireOwnedSite(siteId);
   const key = monthKey();
-  const [existing] = await db.select({ id: newsletters.id, status: newsletters.status })
+  const [existing] = await db.select({ id: newsletters.id, status: newsletters.status, subject: newsletters.subject, bodyHtml: newsletters.bodyHtml, bannerUrl: newsletters.bannerUrl })
     .from(newsletters).where(and(eq(newsletters.siteId, siteId), eq(newsletters.period, key))).limit(1);
   if (existing) {
     if (existing.status === "sent") return { ok: false, message: "This month's newsletter already went out." };
-    revalidatePath("/portal/newsletter");
-    return { ok: true };
+    return { ok: true, id: existing.id, subject: existing.subject, html: existing.bodyHtml, bannerUrl: existing.bannerUrl };
   }
-  await db.insert(newsletters).values({
-    siteId, period: key, status: "draft",
-    subject: `${monthLabel(key)} update`,
-    bodyHtml: "<h2>Hello!</h2><p>Write your message here…</p>",
-  });
+  const subject = `${monthLabel(key)} update`;
+  const html = "<h2>Hello!</h2><p>Write your message here…</p>";
+  const [row] = await db.insert(newsletters).values({ siteId, period: key, status: "draft", subject, bodyHtml: html }).returning({ id: newsletters.id });
   revalidatePath("/portal/newsletter");
-  return { ok: true };
+  return { ok: true, id: row.id, subject, html, bannerUrl: null };
 }
 
 /**

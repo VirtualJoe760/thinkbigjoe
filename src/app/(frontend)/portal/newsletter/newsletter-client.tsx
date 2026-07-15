@@ -86,30 +86,48 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
   };
 
   // ── draft state ──
+  // Held in client state (not read from props) so that creating/redrafting a draft within the
+  // session updates the editor immediately — a server-action revalidate re-renders with new props
+  // but does NOT re-run useState initializers, so props alone would leave these stale.
+  const [nlId, setNlId] = useState<number | null>(view.current?.id ?? null);
+  const [status, setStatus] = useState<string | null>(view.current?.status ?? null);
   const [subject, setSubject] = useState(view.current?.subject ?? "");
   const [body, setBody] = useState(view.current?.bodyHtml ?? "");
   const [banner, setBannerUrl] = useState<string | null>(view.current?.bannerUrl ?? null);
   const [prompt, setPrompt] = useState(view.current?.prompt ?? "");
   const [aiInstruction, setAiInstruction] = useState("");
   const [editorMsg, setEditorMsg] = useState<string | null>(null);
-  const alreadySent = view.current?.status === "sent";
-  const paused = view.current?.status === "cancelled";
-  const nlId = view.current?.id ?? null;
+  const alreadySent = status === "sent";
+  const paused = status === "cancelled";
 
   // Bump this to force the contentEditable to re-seed its innerHTML (after AI generate/revise).
   const [editorKey, setEditorKey] = useState(0);
   const editorRef = useRef<EditorHandle>(null);
   const reseedEditor = (html: string) => { setBody(html); setEditorKey((k) => k + 1); };
 
+  const adoptDraft = (r: { id?: number; subject?: string; html?: string; bannerUrl?: string | null }) => {
+    if (r.id) setNlId(r.id);
+    setStatus("draft");
+    if (typeof r.subject === "string") setSubject(r.subject);
+    if (typeof r.html === "string") reseedEditor(r.html);
+    if (r.bannerUrl !== undefined) setBannerUrl(r.bannerUrl);
+  };
+
   const doGenerate = () =>
     start(async () => {
       setEditorMsg(null);
       const r = await generateDraft(view.siteId, prompt);
-      setEditorMsg(r.ok ? null : r.message || "Couldn't draft right now.");
-      // page revalidates; new draft comes back on reload
+      if (r.ok) adoptDraft(r);
+      else setEditorMsg(r.message || "Couldn't draft right now.");
     });
 
-  const doBlank = () => start(async () => { setEditorMsg(null); await createBlankDraft(view.siteId); });
+  const doBlank = () =>
+    start(async () => {
+      setEditorMsg(null);
+      const r = await createBlankDraft(view.siteId);
+      if (r.ok) adoptDraft(r);
+      else setEditorMsg(r.message || null);
+    });
 
   const doSave = () => {
     if (!nlId) return;
@@ -135,6 +153,7 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
     start(async () => {
       setEditorMsg(null);
       const r = await approveAndSend(view.siteId, nlId, subject, body);
+      if (r.ok) setStatus("sent");
       setEditorMsg(r.message || (r.ok ? "Sent!" : "Couldn't send."));
     });
   };
@@ -143,6 +162,7 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
     start(async () => {
       setEditorMsg(null);
       const r = await setNewsletterPaused(view.siteId, nlId!, next);
+      if (r.ok) setStatus(next ? "cancelled" : "draft");
       setEditorMsg(r.message || null);
     });
 
@@ -251,7 +271,7 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
           {paused && <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">Paused</span>}
         </div>
 
-        {view.current && !alreadySent && (
+        {nlId && !alreadySent && (
           <div className={`mt-2 rounded-xl border px-3 py-2 text-xs ${paused ? "border-amber-200 bg-amber-50 text-amber-800" : "border-sky-200 bg-sky-50 text-sky-800"}`}>
             {paused
               ? "⏸ Paused — this month's newsletter won't send automatically. Resume it below to put it back on schedule."
@@ -263,7 +283,7 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
         {!alreadySent && (
           <div className="mt-3 rounded-xl border border-brand/30 bg-brand-tint/30 p-3">
             <label className="block text-xs font-semibold text-ink">
-              {view.current ? "Steer the AI — what should this newsletter be about?" : "What should this newsletter be about? (optional)"}
+              {nlId ? "Steer the AI — what should this newsletter be about?" : "What should this newsletter be about? (optional)"}
             </label>
             <textarea
               value={prompt}
@@ -274,9 +294,9 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
             />
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <button onClick={doGenerate} disabled={pending} className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50">
-                {pending ? "Writing…" : view.current ? "↻ Re-draft with AI" : "✨ Draft this newsletter"}
+                {pending ? "Writing…" : nlId ? "↻ Re-draft with AI" : "✨ Draft this newsletter"}
               </button>
-              {!view.current && (
+              {!nlId && (
                 <button onClick={doBlank} disabled={pending} className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-surface disabled:opacity-50">
                   Start from scratch
                 </button>
@@ -285,7 +305,7 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
           </div>
         )}
 
-        {view.current && (
+        {nlId && (
           <div className="mt-4 space-y-4">
             <div>
               <label className="block text-xs font-semibold text-ink-soft">Subject</label>
