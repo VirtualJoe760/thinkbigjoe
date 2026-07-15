@@ -55,12 +55,12 @@ When you touch the delivery system, re-verify the relevant rows and update the d
 | **SPF** | ✅ | `dig TXT thinkbigjoe.com` → `v=spf1 include:zohomail.com ~all`. (Add `include:amazonses.com` only when sending bulk from the apex MAIL FROM — not needed yet; DKIM alignment carries DMARC.) |
 | **DKIM (Zoho, transactional)** | ✅ | selector `zmail._domainkey` (Zoho) |
 | **DMARC** | ✅ | `dig TXT _dmarc.thinkbigjoe.com` → `v=DMARC1; p=none; rua=mailto:joe@thinkbigjoe.com` (added in Vercel DNS 2026-07-14, monitor mode) |
-| **SES domain identity (bulk)** | ✅ **Verified** | Identity `thinkbigjoe.com` in **us-east-1**, Easy-DKIM (RSA-2048) — SES shows Verified + DKIM Successful. Account still in **sandbox** (200/day) — production access request is the last blocker. |
+| **SES domain identity (bulk)** | ✅ **Verified** | Identity `thinkbigjoe.com` in **us-east-1**, Easy-DKIM (RSA-2048) — Verified + DKIM Successful. **Production access request submitted 2026-07-14 (status: Under review, ≤24h).** Once approved, out of the 200/day sandbox. |
 | **SES bounce/complaint pipeline** | ✅ **live** | SNS topic `ses-newsletter-events` → HTTPS subscription to `/api/ses/notifications` (**auto-confirmed** — signature-verified end to end); SES identity Bounce + Complaint feedback routed to it. A bounce/complaint now auto-suppresses. |
 | **Paced newsletter sender** | ✅ **loaded** | `newsletter_sends` queue drained by `com.thinkbigjoe.newslettersend` (launchd, 120s) → `/api/newsletter/send-batch`. Verified firing (`processed:0` on empty queue). Uses SES once creds land, Zoho fallback until then. |
 | **Transactional send** | ✅ | `GET /api/health/email` (`verify()`); `?to=you@x.com` sends a real test |
 | **Inbound bounce/reply poller** | ❌ **DOWN** | `launchctl list \| grep inboxpoll` → **exit 127**. This is the ZOHO inbound/reply poller (separate from the SES pipeline above) → outreach replies + Zoho bounces unprocessed. Fix the plist's node path. |
-| **Client newsletter at scale** | ⚠️ **almost ready** | Queue + SES transport + bounce suppression all built & wired. Remaining: (1) `SES_SMTP_*` creds in Vercel (Joe — flips send from Zoho→SES), (2) SES **production access** (out of sandbox), (3) per-client sending identity. Safe for **small lists** now (Zoho fallback). |
+| **Client newsletter at scale** | ⚠️ **almost ready** | Queue + SES transport + bounce suppression all built & wired; SES verified; production access under review. Remaining: (1) `SES_SMTP_*` creds in Vercel (Joe — flips send from Zoho→SES), (2) production-access approval (pending, ≤24h), (3) per-client sending identity. Safe for **small lists** now (Zoho fallback). |
 
 ### How to check delivery health (runbook)
 
