@@ -2,3 +2,16 @@ allowBuilds:
   esbuild: true
   sharp: true
   unrs-resolver: true
+# Vercel's serverless runtime is linux-x64 (glibc). Without this, a lockfile generated on macOS
+# only pins the darwin sharp binaries, so the frozen install on Vercel never pulls
+# @img/sharp-libvips-linux-x64 and sharp fails at runtime with ERR_DLOPEN_FAILED (libvips-cpp.so).
+supportedArchitectures:
+  os:
+    - current
+    - linux
+  cpu:
+    - current
+    - x64
+  libc:
+    - current
+    - glibc
