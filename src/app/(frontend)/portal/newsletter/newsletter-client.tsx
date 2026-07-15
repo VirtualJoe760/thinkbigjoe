@@ -11,7 +11,7 @@ export type NewsletterView = {
   subscribed: number;
   totalContacts: number;
   contacts: { id: number; email: string; name: string | null; status: string }[];
-  current: { id: number; subject: string; bodyHtml: string; status: string } | null;
+  current: { id: number; subject: string; bodyHtml: string; prompt: string | null; status: string } | null;
   history: { id: number; label: string; subject: string; sentAt: string | null; recipients: number }[];
 };
 
@@ -41,6 +41,7 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
   // ── draft editor ──
   const [subject, setSubject] = useState(view.current?.subject ?? "");
   const [body, setBody] = useState(view.current?.bodyHtml ?? "");
+  const [prompt, setPrompt] = useState(view.current?.prompt ?? "");
   const [editorMsg, setEditorMsg] = useState<string | null>(null);
   const alreadySent = view.current?.status === "sent";
   const paused = view.current?.status === "cancelled";
@@ -54,7 +55,7 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
   const doGenerate = () =>
     start(async () => {
       setEditorMsg(null);
-      const r = await generateDraft(view.siteId);
+      const r = await generateDraft(view.siteId, prompt);
       if (!r.ok) setEditorMsg(r.message || "Couldn't draft right now.");
       // page revalidates with the new draft; reflect it locally too on next load
     });
@@ -160,14 +161,39 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
 
         {!view.current ? (
           <div className="mt-3">
-            <p className="text-sm text-ink-soft">No draft yet. We&apos;ll write one for you — then you can tweak and send it.</p>
+            <p className="text-sm text-ink-soft">
+              Tell the AI what to write about — a special, a seasonal note, an update — and it drafts the whole
+              email. Leave it blank for a friendly monthly check-in. You review and edit before anything sends.
+            </p>
+            <label className="mt-3 block text-xs font-semibold text-ink-soft">What should this newsletter be about? (optional)</label>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={3}
+              placeholder="e.g. Announce our spring gutter-cleaning special — we're booking now. Warm, not pushy."
+              className="mt-1 w-full resize-y rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
+            />
             <button onClick={doGenerate} disabled={pending} className="mt-3 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50">
-              {pending ? "Writing…" : "✨ Draft this month's newsletter"}
+              {pending ? "Writing…" : "✨ Draft this newsletter"}
             </button>
             {editorMsg && <p className="mt-2 text-xs text-ink-soft">{editorMsg}</p>}
           </div>
         ) : (
           <div className="mt-3 space-y-3">
+            {!alreadySent && (
+              <div className="rounded-xl border border-brand/30 bg-brand-tint/30 p-3">
+                <label className="block text-xs font-semibold text-ink">Steer the AI — what should this newsletter be about?</label>
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. Thank customers for a great year, mention we're closed Dec 25, wish them happy holidays."
+                  className="mt-1 w-full resize-y rounded-lg border border-line bg-background px-3 py-2 text-sm outline-none focus:border-brand"
+                />
+                <p className="mt-1 text-[11px] text-ink-soft">Edit this and hit “Re-draft with AI” to rewrite the message below.</p>
+              </div>
+            )}
+
             <label className="block text-xs font-semibold text-ink-soft">Subject</label>
             <input value={subject} onChange={(e) => setSubject(e.target.value)} disabled={alreadySent} className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand disabled:opacity-60" />
 

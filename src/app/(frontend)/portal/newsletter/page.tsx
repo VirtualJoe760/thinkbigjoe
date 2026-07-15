@@ -45,7 +45,7 @@ export default async function NewsletterPage() {
 
   const key = monthKey();
   const [current] = await db
-    .select({ id: newsletters.id, subject: newsletters.subject, bodyHtml: newsletters.bodyHtml, status: newsletters.status })
+    .select({ id: newsletters.id, subject: newsletters.subject, bodyHtml: newsletters.bodyHtml, prompt: newsletters.prompt, status: newsletters.status })
     .from(newsletters)
     .where(and(eq(newsletters.siteId, site.id), eq(newsletters.period, key)))
     .limit(1);
@@ -64,7 +64,7 @@ export default async function NewsletterPage() {
     subscribed,
     totalContacts: contacts.length,
     contacts: contacts.slice(0, 100),
-    current: current ? { id: current.id, subject: current.subject, bodyHtml: current.bodyHtml, status: current.status } : null,
+    current: current ? { id: current.id, subject: current.subject, bodyHtml: current.bodyHtml, prompt: current.prompt, status: current.status } : null,
     history: history.map((h) => ({ id: h.id, label: monthLabel(h.period), subject: h.subject, sentAt: h.sentAt, recipients: h.recipientCount })),
   };
 

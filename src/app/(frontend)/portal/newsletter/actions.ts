@@ -86,20 +86,25 @@ export async function removeContact(siteId: number, contactId: number): Promise<
   return { ok: true };
 }
 
-/** Generate (or regenerate) this month's AI draft. Upserts the current-period newsletter row. */
-export async function generateDraft(siteId: number): Promise<{ ok: boolean; message?: string }> {
+/**
+ * Generate (or regenerate) this month's AI draft. `prompt` is the owner's steer for the theme +
+ * content (e.g. "spring cleaning special, we're booking now"); it's persisted so a re-draft keeps
+ * the same direction, and shown back in the UI. Upserts the current-period newsletter row.
+ */
+export async function generateDraft(siteId: number, prompt?: string): Promise<{ ok: boolean; message?: string }> {
   const biz = await requireOwnedSite(siteId);
   const key = monthKey();
-  const draft = await draftNewsletter(biz, monthLabel(key));
+  const steer = (prompt || "").trim().slice(0, 800);
+  const draft = await draftNewsletter(biz, monthLabel(key), steer);
   if (!draft) return { ok: false, message: "Couldn't draft right now — try again in a moment." };
 
   const [existing] = await db.select({ id: newsletters.id, status: newsletters.status })
     .from(newsletters).where(and(eq(newsletters.siteId, siteId), eq(newsletters.period, key))).limit(1);
   if (existing) {
     if (existing.status === "sent") return { ok: false, message: "This month's newsletter already went out." };
-    await db.update(newsletters).set({ subject: draft.subject, bodyHtml: draft.html, status: "draft", updatedAt: new Date().toISOString() }).where(eq(newsletters.id, existing.id));
+    await db.update(newsletters).set({ subject: draft.subject, bodyHtml: draft.html, prompt: steer || null, status: "draft", updatedAt: new Date().toISOString() }).where(eq(newsletters.id, existing.id));
   } else {
-    await db.insert(newsletters).values({ siteId, period: key, subject: draft.subject, bodyHtml: draft.html, status: "draft" });
+    await db.insert(newsletters).values({ siteId, period: key, subject: draft.subject, bodyHtml: draft.html, prompt: steer || null, status: "draft" });
   }
   revalidatePath("/portal/newsletter");
   return { ok: true };

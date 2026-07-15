@@ -47,16 +47,32 @@ function bizSiteUrl(b: NewsletterBiz): string | null {
 /**
  * AI-draft a monthly newsletter for the business. Returns { subject, html } where html is simple
  * body markup (<h2>/<p>/<ul>) — the client reviews/edits before it ever sends. Null if unavailable.
+ *
+ * `userPrompt` (optional) is the owner's own steer — "announce our spring gutter-cleaning special",
+ * "warm holiday thank-you, mention we're closed the 25th". It's woven in as the CONTENT direction
+ * while the guardrails (voice, length, opt-in tone, HTML-only output) stay fixed so a client can't
+ * accidentally produce a spammy or malformed email. Mirrors chatRealty's Groq "Generate" panel:
+ * free-text topic → structured draft that fills the form.
  */
-export async function draftNewsletter(b: NewsletterBiz, label: string): Promise<{ subject: string; html: string } | null> {
+export async function draftNewsletter(
+  b: NewsletterBiz,
+  label: string,
+  userPrompt?: string,
+): Promise<{ subject: string; html: string } | null> {
   if (!KEY) return null;
   const place = b.city || b.serviceArea || "";
-  const prompt = `Write a short, warm monthly email newsletter that a local business sends to its EXISTING customers to stay top of mind.
+  const steer = (userPrompt || "").trim().slice(0, 800);
+  const direction = steer
+    ? `The owner asked for this newsletter specifically: "${steer}". Build the newsletter around that — it is the main content. Keep it truthful to a ${b.niche || "local"} business; do not invent specific dates, prices, or offers the owner didn't state.`
+    : `Content: a warm hello tied to the season/month, one helpful tip or update relevant to their trade, and a simple call to action (call them or stop by).`;
+  const prompt = `Write a short, warm email newsletter that a local business sends to its EXISTING customers to stay top of mind.
 
 Business: ${b.businessName}${b.niche ? ` — ${b.niche}` : ""}${place ? `, ${place}` : ""}.
 Month: ${label}.
 
-Voice: genuine and friendly, like a quick note from the owner — NOT salesy, no hype. 2–3 short sections: a warm hello tied to the season/month, one helpful tip or update relevant to their trade, and a simple call to action (call them or stop by). Under 180 words total.
+${direction}
+
+Voice: genuine and friendly, like a quick note from the owner — NOT salesy, no hype. 2–3 short sections, under 200 words total.
 
 Return "html" as clean email body HTML using only <h2>, <p>, and <ul>/<li> tags (no <html>, <head>, <style>, images, or inline styles). Return a compelling "subject" line under 55 characters, no emojis.`;
 

@@ -558,26 +558,6 @@ export const newsletterContacts = pgTable("newsletter_contacts", {
 	unique("newsletter_contacts_unsubscribe_token_key").on(table.unsubscribeToken),
 ]);
 
-export const newsletters = pgTable("newsletters", {
-	id: serial().primaryKey().notNull(),
-	siteId: integer("site_id").notNull(),
-	period: text().notNull(),
-	subject: text().notNull(),
-	bodyHtml: text("body_html").notNull(),
-	status: text().default('draft').notNull(),
-	recipientCount: integer("recipient_count").default(0).notNull(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	sentAt: timestamp("sent_at", { withTimezone: true, mode: 'string' }),
-}, (table) => [
-	index("newsletters_site_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops")),
-	foreignKey({
-			columns: [table.siteId],
-			foreignColumns: [forgeSites.id],
-			name: "newsletters_site_id_fkey"
-		}).onDelete("cascade"),
-]);
-
 export const contacts = pgTable("contacts", {
 	id: serial().primaryKey().notNull(),
 	siteId: integer("site_id"),
@@ -669,4 +649,25 @@ export const newsletterSends = pgTable("newsletter_sends", {
 			foreignColumns: [forgeSites.id],
 			name: "newsletter_sends_site_id_fkey"
 		}).onDelete("set null"),
+]);
+
+export const newsletters = pgTable("newsletters", {
+	id: serial().primaryKey().notNull(),
+	siteId: integer("site_id").notNull(),
+	period: text().notNull(),
+	subject: text().notNull(),
+	bodyHtml: text("body_html").notNull(),
+	status: text().default('draft').notNull(),
+	recipientCount: integer("recipient_count").default(0).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	sentAt: timestamp("sent_at", { withTimezone: true, mode: 'string' }),
+	prompt: text(),
+}, (table) => [
+	index("newsletters_site_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.siteId],
+			foreignColumns: [forgeSites.id],
+			name: "newsletters_site_id_fkey"
+		}).onDelete("cascade"),
 ]);
