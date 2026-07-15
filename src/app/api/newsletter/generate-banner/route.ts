@@ -73,6 +73,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, url });
   } catch (err) {
     console.error("[newsletter/generate-banner] failed:", err);
-    return NextResponse.json({ ok: false, message: "Couldn't generate that banner — try again." }, { status: 500 });
+    const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    return NextResponse.json({ ok: false, message: "Couldn't generate that banner — try again.", detail }, { status: 500 });
   }
 }
