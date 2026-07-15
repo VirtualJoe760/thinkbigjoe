@@ -41,8 +41,20 @@ content, images, and AI co-editing.
   downscales + re-encodes with `sharp` (banner ≤1200px, inline ≤800px → WebP; GIFs pass through),
   returns a **public CDN URL**. Never base64 in the email (clients strip it) and never served from
   Neon (egress). `setBanner` only accepts `*.public.blob.vercel-storage.com` URLs.
+- **AI-generated banner:** a "Generate a banner with AI" checkbox reveals an image prompt →
+  **`/api/newsletter/generate-banner`**: Gemini image gen (`gemini-2.5-flash-image`, 21:9 — its
+  widest ratio) from the prompt + business niche, `sharp` cover-crops to a fixed **1200×400** banner,
+  stores on Blob, sets `banner_url`. Steered **textless** (image models render garbled words) — the
+  business name renders below the banner in the email.
 - **Why CDN, not Postgres:** emailed images load on every open. Big clients (Gmail/Yahoo) proxy+cache
   images, so origin bandwidth stays tiny — but it must be object storage, not the DB.
+- **⚠️ sharp on Vercel — three things must ALL be in place** or the image routes 500 at runtime with
+  `ERR_DLOPEN_FAILED (libvips-cpp.so)`, because the linux native binary isn't in the serverless
+  function: (1) `serverExternalPackages: ["sharp"]` in `next.config.ts`; (2) `outputFileTracingIncludes`
+  in `next.config.ts` forcing `./node_modules/@img/**` into the two routes' trace; (3) `.npmrc`
+  `node-linker=hoisted` + `supportedArchitectures` (linux/x64/glibc) in `pnpm-workspace.yaml` so the
+  lockfile pins the linux binaries. Also import sharp **dynamically** inside the handler
+  (`(await import("sharp")).default`) so a load failure is catchable, not a module-load crash.
 
 ## Data
 - `newsletter_contacts` — a client's uploaded list (per `site_id`): email, name, status
