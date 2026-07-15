@@ -55,10 +55,12 @@ When you touch the delivery system, re-verify the relevant rows and update the d
 | **SPF** | ✅ | `dig TXT thinkbigjoe.com` → `v=spf1 include:zohomail.com ~all`. (Add `include:amazonses.com` only when sending bulk from the apex MAIL FROM — not needed yet; DKIM alignment carries DMARC.) |
 | **DKIM (Zoho, transactional)** | ✅ | selector `zmail._domainkey` (Zoho) |
 | **DMARC** | ✅ | `dig TXT _dmarc.thinkbigjoe.com` → `v=DMARC1; p=none; rua=mailto:joe@thinkbigjoe.com` (added in Vercel DNS 2026-07-14, monitor mode) |
-| **SES domain identity (bulk)** | ⏳ **verifying** | Identity `thinkbigjoe.com` created in **us-east-1**; 3 Easy-DKIM CNAMEs (RSA-2048) added in Vercel DNS. SES auto-verifies once all resolve. Account still in **sandbox** (200/day) — production access to be requested AFTER bounce handling is built. |
+| **SES domain identity (bulk)** | ✅ **Verified** | Identity `thinkbigjoe.com` in **us-east-1**, Easy-DKIM (RSA-2048) — SES shows Verified + DKIM Successful. Account still in **sandbox** (200/day) — production access request is the last blocker. |
+| **SES bounce/complaint pipeline** | ✅ **live** | SNS topic `ses-newsletter-events` → HTTPS subscription to `/api/ses/notifications` (**auto-confirmed** — signature-verified end to end); SES identity Bounce + Complaint feedback routed to it. A bounce/complaint now auto-suppresses. |
+| **Paced newsletter sender** | ✅ **loaded** | `newsletter_sends` queue drained by `com.thinkbigjoe.newslettersend` (launchd, 120s) → `/api/newsletter/send-batch`. Verified firing (`processed:0` on empty queue). Uses SES once creds land, Zoho fallback until then. |
 | **Transactional send** | ✅ | `GET /api/health/email` (`verify()`); `?to=you@x.com` sends a real test |
-| **Inbound bounce/reply poller** | ❌ **DOWN** | `launchctl list \| grep inboxpoll` → **exit 127**. **Bounces are NOT being processed** → we cannot suppress dead addresses → reputation risk. Fix the plist's node path. |
-| **Client newsletter at scale** | ⚠️ **NOT READY** | Still on Zoho SMTP (caps + ToS risk), synchronous sender (times out on large lists), shared `no-reply@` identity (no per-client reputation isolation), no bounce suppression for client sends. Safe for **small lists only** until `EMAIL_SCALE.md` ships. |
+| **Inbound bounce/reply poller** | ❌ **DOWN** | `launchctl list \| grep inboxpoll` → **exit 127**. This is the ZOHO inbound/reply poller (separate from the SES pipeline above) → outreach replies + Zoho bounces unprocessed. Fix the plist's node path. |
+| **Client newsletter at scale** | ⚠️ **almost ready** | Queue + SES transport + bounce suppression all built & wired. Remaining: (1) `SES_SMTP_*` creds in Vercel (Joe — flips send from Zoho→SES), (2) SES **production access** (out of sandbox), (3) per-client sending identity. Safe for **small lists** now (Zoho fallback). |
 
 ### How to check delivery health (runbook)
 
