@@ -202,6 +202,10 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
   // ── image uploads ──
   const bannerInputRef = useRef<HTMLInputElement>(null);
   const [bannerUploading, setBannerUploading] = useState(false);
+  // AI banner generation (checkbox reveals a prompt).
+  const [aiBanner, setAiBanner] = useState(false);
+  const [bannerPrompt, setBannerPrompt] = useState("");
+  const [bannerGenerating, setBannerGenerating] = useState(false);
 
   const uploadFile = useCallback(async (file: File, kind: "banner" | "inline"): Promise<string | null> => {
     const fd = new FormData();
@@ -230,6 +234,22 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
     if (!nlId) return;
     setBannerUrl(null);
     start(async () => { await setBanner(view.siteId, nlId, null); });
+  };
+
+  const doGenerateBanner = () => {
+    if (!nlId || !bannerPrompt.trim()) return;
+    setBannerGenerating(true); setEditorMsg(null);
+    start(async () => {
+      const res = await fetch("/api/newsletter/generate-banner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ siteId: view.siteId, newsletterId: nlId, prompt: bannerPrompt }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok && j?.ok) setBannerUrl(j.url as string);
+      else setEditorMsg(j?.message || "Couldn't generate the banner — try again.");
+      setBannerGenerating(false);
+    });
   };
 
   return (
@@ -351,17 +371,47 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
             <div>
               <label className="block text-xs font-semibold text-ink-soft">Banner image <span className="font-normal">(optional — shows across the top)</span></label>
               <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { onBannerFile(e.target.files?.[0] ?? null); e.target.value = ""; }} />
-              {banner ? (
+
+              {banner && (
                 <div className="mt-1 flex items-center gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={banner} alt="Banner" className="h-16 w-28 rounded-lg border border-line object-cover" />
-                  <button onClick={() => bannerInputRef.current?.click()} disabled={alreadySent || pending} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-50">Replace</button>
                   <button onClick={removeBanner} disabled={alreadySent || pending} className="text-xs text-ink-soft hover:text-rose-600 disabled:opacity-50">Remove</button>
                 </div>
-              ) : (
-                <button onClick={() => bannerInputRef.current?.click()} disabled={alreadySent || bannerUploading} className="mt-1 rounded-xl border border-dashed border-line px-4 py-3 text-sm text-ink-soft hover:border-brand hover:text-brand disabled:opacity-50">
-                  {bannerUploading ? "Uploading…" : "＋ Add a banner image"}
-                </button>
+              )}
+
+              {!alreadySent && (
+                <label className="mt-2 flex w-fit items-center gap-2 text-sm text-ink">
+                  <input type="checkbox" checked={aiBanner} onChange={(e) => setAiBanner(e.target.checked)} className="h-4 w-4 rounded border-line text-brand focus:ring-brand" />
+                  ✨ Generate a banner with AI
+                </label>
+              )}
+
+              {!alreadySent && (
+                aiBanner ? (
+                  <div className="mt-2 rounded-xl border border-brand/30 bg-brand-tint/20 p-3">
+                    <label className="block text-xs font-semibold text-ink">Describe the banner image</label>
+                    <textarea
+                      value={bannerPrompt}
+                      onChange={(e) => setBannerPrompt(e.target.value)}
+                      rows={2}
+                      placeholder="e.g. a bright, clean plumbing van parked outside a desert home at sunrise"
+                      className="mt-1 w-full resize-y rounded-lg border border-line bg-background px-3 py-2 text-sm outline-none focus:border-brand"
+                    />
+                    <div className="mt-2 flex items-center gap-2">
+                      <button onClick={doGenerateBanner} disabled={bannerGenerating || pending || !bannerPrompt.trim()} className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50">
+                        {bannerGenerating ? "Generating…" : banner ? "↻ Regenerate banner" : "✨ Generate banner"}
+                      </button>
+                      <span className="text-[11px] text-ink-soft">Takes a few seconds. No text in the image — your business name shows below it.</span>
+                    </div>
+                  </div>
+                ) : (
+                  !banner && (
+                    <button onClick={() => bannerInputRef.current?.click()} disabled={bannerUploading} className="mt-2 block rounded-xl border border-dashed border-line px-4 py-3 text-sm text-ink-soft hover:border-brand hover:text-brand disabled:opacity-50">
+                      {bannerUploading ? "Uploading…" : "＋ Upload a banner image"}
+                    </button>
+                  )
+                )
               )}
             </div>
 
