@@ -1,9 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Nodemailer uses dynamic requires for its transports — keep it external so
-  // the bundler doesn't choke on it.
-  serverExternalPackages: ["nodemailer"],
+  // Keep native/dynamic-require packages external so the bundler doesn't break them:
+  // nodemailer uses dynamic requires for its transports; sharp ships a per-platform native
+  // binary that must load at runtime (bundling it 500s the newsletter image routes on Vercel).
+  serverExternalPackages: ["nodemailer", "sharp"],
   async headers() {
     return [
       {
