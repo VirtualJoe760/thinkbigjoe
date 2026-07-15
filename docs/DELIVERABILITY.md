@@ -108,6 +108,6 @@ If any of 1–4 is unmet, cap the client to a **small list** and don't promise t
 ## Related
 
 - [`AUTH.md`](AUTH.md) — TBJ's own mailbox, DNS, SMTP env, and the inbound bounce/reply pipeline.
-- [`EMAIL_SCALE.md`](EMAIL_SCALE.md) — the SES + paced-sender + per-client-identity build that makes
-  "thousands of emails for clients" actually safe. *(planned — write when the build starts)*
+- [`EMAIL_SCALE.md`](EMAIL_SCALE.md) — the SES + paced-sender + per-client-identity build plan that
+  makes "thousands of emails for clients" actually safe, incl. the AWS-console setup steps.
 - [`NEWSLETTER.md`](NEWSLETTER.md) — the client newsletter product surface + AI drafting.
