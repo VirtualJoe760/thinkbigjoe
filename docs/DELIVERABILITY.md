@@ -52,9 +52,10 @@ When you touch the delivery system, re-verify the relevant rows and update the d
 
 | Component | State | Notes / how verified |
 |---|---|---|
-| **SPF** | ✅ | `dig TXT thinkbigjoe.com` → `v=spf1 include:zohomail.com ~all` |
-| **DKIM** | ✅ | selector `zmail._domainkey` (Zoho) |
-| **DMARC** | ❌ **MISSING** | `dig TXT _dmarc.thinkbigjoe.com` → empty. **Add** `v=DMARC1; p=none; rua=mailto:joe@thinkbigjoe.com` at `_dmarc` in **Vercel DNS**. Blocks safe bulk sending. |
+| **SPF** | ✅ | `dig TXT thinkbigjoe.com` → `v=spf1 include:zohomail.com ~all`. (Add `include:amazonses.com` only when sending bulk from the apex MAIL FROM — not needed yet; DKIM alignment carries DMARC.) |
+| **DKIM (Zoho, transactional)** | ✅ | selector `zmail._domainkey` (Zoho) |
+| **DMARC** | ✅ | `dig TXT _dmarc.thinkbigjoe.com` → `v=DMARC1; p=none; rua=mailto:joe@thinkbigjoe.com` (added in Vercel DNS 2026-07-14, monitor mode) |
+| **SES domain identity (bulk)** | ⏳ **verifying** | Identity `thinkbigjoe.com` created in **us-east-1**; 3 Easy-DKIM CNAMEs (RSA-2048) added in Vercel DNS. SES auto-verifies once all resolve. Account still in **sandbox** (200/day) — production access to be requested AFTER bounce handling is built. |
 | **Transactional send** | ✅ | `GET /api/health/email` (`verify()`); `?to=you@x.com` sends a real test |
 | **Inbound bounce/reply poller** | ❌ **DOWN** | `launchctl list \| grep inboxpoll` → **exit 127**. **Bounces are NOT being processed** → we cannot suppress dead addresses → reputation risk. Fix the plist's node path. |
 | **Client newsletter at scale** | ⚠️ **NOT READY** | Still on Zoho SMTP (caps + ToS risk), synchronous sender (times out on large lists), shared `no-reply@` identity (no per-client reputation isolation), no bounce suppression for client sends. Safe for **small lists only** until `EMAIL_SCALE.md` ships. |
@@ -82,7 +83,7 @@ launchctl list | grep com.thinkbigjoe.inboxpoll
 Until per-client identity ships (`EMAIL_SCALE.md`), a client mailing thousands from our shared domain
 is **not safe**. The standard, in order:
 
-1. **DMARC exists** on the sending domain (currently ❌ — blocks everything below).
+1. **DMARC exists** on the sending domain (✅ done — `p=none` monitor mode).
 2. **Bounce/complaint suppression is live** — the poller is up (currently ❌) or SES webhooks are wired.
 3. **The send is paced + backgrounded**, not the synchronous loop (currently a `for` loop — see gap).
 4. **Sending identity is isolated per client** (shared subdomain → their own domain). Not yet built.
@@ -95,7 +96,8 @@ If any of 1–4 is unmet, cap the client to a **small list** and don't promise t
 
 ## Known gaps / risk register (work these down)
 
-- ❌ **DMARC missing** — 5-minute Vercel DNS fix; blocks safe bulk. Highest leverage.
+- ✅ **DMARC added** (2026-07-14, `p=none` monitor mode) — advance to `p=quarantine`/`reject` once SES + Zoho both show clean DMARC reports.
+- ⏳ **SES domain verification** — DKIM CNAMEs published; waiting on propagation + SES auto-verify.
 - ❌ **Bounce poller dead (exit 127)** — we're flying blind on bounces; every send to a dead address
   compounds reputation damage. Fix before any volume.
 - ⚠️ **Newsletter sender is synchronous + Zoho** — times out on large lists AND risks the mailbox.
