@@ -19,6 +19,14 @@ function authed(req: Request): boolean {
 export async function POST(req: Request) {
   if (!authed(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const limit = Math.min(200, Math.max(1, Number(new URL(req.url).searchParams.get("limit")) || 40));
-  const r = await sendNewsletterBatch(limit);
-  return NextResponse.json({ ok: true, ...r });
+  try {
+    const r = await sendNewsletterBatch(limit);
+    return NextResponse.json({ ok: true, ...r });
+  } catch (err) {
+    // A cron endpoint that 500s with an empty body is undebuggable — surface the reason (behind the
+    // CRON_SECRET auth above, so this never leaks to the public). launchd logs the body on failure.
+    const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error("[newsletter/send-batch] failed:", err);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
 }
