@@ -11,7 +11,7 @@ import { isForgeTemplate } from "@/lib/forge-templates";
 import { notifyTelegram } from "@/lib/telegram";
 import { sendBookingConfirmationEmail, sendNotificationEmail } from "@/lib/email";
 import { stripe, ensureStripeCustomer } from "@/lib/stripe";
-import { buildPriceId, isPlanKey, planPriceId, type BillingInterval } from "@/lib/plans";
+import { buildPriceId, firstMonthFree, isPlanKey, planPriceId, type BillingInterval } from "@/lib/plans";
 import { quoteDomain, domainsConfigured } from "@/lib/domains";
 import { fulfillDomain } from "@/lib/domain-fulfill";
 import {
@@ -528,7 +528,12 @@ export async function startCheckout(
       cancel_url: `${SITE_URL}/portal`,
       allow_promotion_codes: true,
       metadata: { siteId: String(siteId), userId: session.user.id, plan, interval },
-      subscription_data: { metadata: { siteId: String(siteId), plan, interval } },
+      subscription_data: {
+        // Basic (Website) gets the first month free — today they pay only the $300 build, first
+        // monthly charge runs in 30 days. Voice/Complete are charged their first month up front.
+        ...(firstMonthFree(plan) ? { trial_period_days: 30 } : {}),
+        metadata: { siteId: String(siteId), plan, interval },
+      },
     });
     if (!checkout.url) return { ok: false, message: "Couldn't start checkout — try again." };
     return { ok: true, message: "Redirecting to checkout…", url: checkout.url };

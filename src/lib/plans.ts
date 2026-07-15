@@ -81,3 +81,13 @@ export function planKeyForPrice(priceId: string | null | undefined): PlanKey | n
 export function buildPriceId(): string | null {
   return process.env.STRIPE_PRICE_BUILD || null;
 }
+
+/**
+ * Plans whose FIRST MONTH is free when bought with the website: today they pay only the $300 build,
+ * and the first monthly charge runs 30 days later (implemented as a 30-day trial on the subscription
+ * — the site is live + fully unlocked immediately via the one-time payment). The higher tiers (Voice,
+ * Complete) have real per-month cost, so their first month is charged up front. Basic (Website) only.
+ */
+export function firstMonthFree(key: PlanKey): boolean {
+  return key === "website";
+}

@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 
 import { startCheckout, type CheckoutState } from "./actions";
-import { PLANS, PLAN_KEYS, ONE_TIME_BUILD_AMOUNT, type PlanKey, type BillingInterval } from "@/lib/plans";
+import { PLANS, PLAN_KEYS, ONE_TIME_BUILD_AMOUNT, firstMonthFree, type PlanKey, type BillingInterval } from "@/lib/plans";
 
 const initial: CheckoutState = { ok: false, message: "" };
 
@@ -19,9 +19,12 @@ export function SiteBilling({ siteId }: { siteId: number }) {
 
   const yearly = interval === "year";
   const priceOf = (k: PlanKey) => (yearly ? `$${PLANS[k].annual.toLocaleString()}/yr` : `$${PLANS[k].monthly}/mo`);
-  const dueLabel = yearly
-    ? `$${ONE_TIME_BUILD_AMOUNT} today + $${PLANS[plan].annual.toLocaleString()}/yr`
-    : `$${ONE_TIME_BUILD_AMOUNT} today + $${PLANS[plan].monthly}/mo`;
+  const recurring = yearly ? `$${PLANS[plan].annual.toLocaleString()}/yr` : `$${PLANS[plan].monthly}/mo`;
+  // Basic (Website) = first month free, so only the $300 build is due today. Other tiers are charged
+  // their first period up front (build + first month/year).
+  const dueLabel = firstMonthFree(plan)
+    ? `$${ONE_TIME_BUILD_AMOUNT} today · first month free, then ${recurring}`
+    : `$${(ONE_TIME_BUILD_AMOUNT + (yearly ? PLANS[plan].annual : PLANS[plan].monthly)).toLocaleString()} today, then ${recurring}`;
 
   return (
     <form action={action} className="mt-4">
