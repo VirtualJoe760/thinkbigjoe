@@ -6,7 +6,7 @@ import { and, eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { db, forgeSites, newsletters, newsletterContacts } from "@/db";
-import { draftNewsletter, monthKey, monthLabel, newsletterToken, type NewsletterBiz } from "@/lib/newsletter";
+import { draftNewsletter, reviseNewsletter, monthKey, monthLabel, newsletterToken, type NewsletterBiz } from "@/lib/newsletter";
 import { enqueueNewsletter } from "@/lib/newsletter-queue";
 import { getConnection, getValidAccessToken, listGoogleContacts } from "@/lib/google-oauth";
 
@@ -110,6 +110,26 @@ export async function generateDraft(siteId: number, prompt?: string): Promise<{ 
   return { ok: true };
 }
 
+/** Start an empty draft for this month so the owner can write/upload from scratch (no AI). */
+export async function createBlankDraft(siteId: number): Promise<{ ok: boolean; message?: string }> {
+  await requireOwnedSite(siteId);
+  const key = monthKey();
+  const [existing] = await db.select({ id: newsletters.id, status: newsletters.status })
+    .from(newsletters).where(and(eq(newsletters.siteId, siteId), eq(newsletters.period, key))).limit(1);
+  if (existing) {
+    if (existing.status === "sent") return { ok: false, message: "This month's newsletter already went out." };
+    revalidatePath("/portal/newsletter");
+    return { ok: true };
+  }
+  await db.insert(newsletters).values({
+    siteId, period: key, status: "draft",
+    subject: `${monthLabel(key)} update`,
+    bodyHtml: "<h2>Hello!</h2><p>Write your message here…</p>",
+  });
+  revalidatePath("/portal/newsletter");
+  return { ok: true };
+}
+
 /**
  * Pause (or resume) this month's auto-send. Paused = status 'cancelled' → the monthly cron skips it;
  * resuming puts it back to 'draft' so it auto-sends on the 15th again. Only affects the current month.
@@ -132,6 +152,48 @@ export async function saveDraft(siteId: number, newsletterId: number, subject: s
   await requireOwnedSite(siteId);
   await db.update(newsletters)
     .set({ subject: subject.slice(0, 200), bodyHtml, updatedAt: new Date().toISOString() })
+    .where(and(eq(newsletters.id, newsletterId), eq(newsletters.siteId, siteId)));
+  revalidatePath("/portal/newsletter");
+  return { ok: true };
+}
+
+/**
+ * AI co-edit: rewrite the current draft per the owner's instruction (keeps their edits + images as
+ * the base, unlike generateDraft which starts fresh). `currentHtml` is sent up so unsaved edits are
+ * honored; the revised HTML is persisted and returned for the editor to swap in.
+ */
+export async function reviseDraft(
+  siteId: number,
+  newsletterId: number,
+  instruction: string,
+  currentHtml: string,
+): Promise<{ ok: boolean; html?: string; message?: string }> {
+  const biz = await requireOwnedSite(siteId);
+  const [nl] = await db.select({ status: newsletters.status }).from(newsletters)
+    .where(and(eq(newsletters.id, newsletterId), eq(newsletters.siteId, siteId))).limit(1);
+  if (!nl) return { ok: false, message: "Newsletter not found." };
+  if (nl.status === "sent") return { ok: false, message: "This month's newsletter already went out." };
+
+  const revised = await reviseNewsletter(biz, currentHtml || "", instruction);
+  if (!revised) return { ok: false, message: "Couldn't revise right now — try again in a moment." };
+
+  await db.update(newsletters)
+    .set({ bodyHtml: revised.html, updatedAt: new Date().toISOString() })
+    .where(and(eq(newsletters.id, newsletterId), eq(newsletters.siteId, siteId)));
+  revalidatePath("/portal/newsletter");
+  return { ok: true, html: revised.html };
+}
+
+/** Set (or clear) the draft's banner image. `bannerUrl` is a public Blob URL from /api/newsletter/upload. */
+export async function setBanner(siteId: number, newsletterId: number, bannerUrl: string | null): Promise<{ ok: boolean; message?: string }> {
+  await requireOwnedSite(siteId);
+  const url = (bannerUrl || "").trim();
+  // Only accept our own Blob URLs (or empty to clear) — never an arbitrary external URL.
+  if (url && !/^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\//i.test(url)) {
+    return { ok: false, message: "That image URL isn't allowed." };
+  }
+  await db.update(newsletters)
+    .set({ bannerUrl: url || null, updatedAt: new Date().toISOString() })
     .where(and(eq(newsletters.id, newsletterId), eq(newsletters.siteId, siteId)));
   revalidatePath("/portal/newsletter");
   return { ok: true };

@@ -1,19 +1,66 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, useTransition } from "react";
 
-import { uploadContacts, removeContact, generateDraft, saveDraft, approveAndSend, setNewsletterPaused, syncGoogleContacts } from "./actions";
+import {
+  uploadContacts, removeContact, generateDraft, createBlankDraft, saveDraft, approveAndSend,
+  setNewsletterPaused, syncGoogleContacts, reviseDraft, setBanner,
+} from "./actions";
+
+export type NewsletterBizPreview = {
+  businessName: string;
+  phone: string | null;
+  place: string | null;
+  siteUrl: string | null;
+};
 
 export type NewsletterView = {
   siteId: number;
   businessName: string;
+  biz: NewsletterBizPreview;
   monthLabel: string;
   subscribed: number;
   totalContacts: number;
   contacts: { id: number; email: string; name: string | null; status: string }[];
-  current: { id: number; subject: string; bodyHtml: string; prompt: string | null; status: string } | null;
+  current: { id: number; subject: string; bodyHtml: string; bannerUrl: string | null; prompt: string | null; status: string } | null;
   history: { id: number; label: string; subject: string; sentAt: string | null; recipients: number }[];
 };
+
+const BRAND = "#2f6bff";
+
+/**
+ * Client mirror of `renderNewsletter` in src/lib/newsletter.ts — kept in sync so the live preview
+ * shows the ACTUAL email the customer receives (branded shell, banner, call button, unsubscribe
+ * footer), not raw body HTML. If you change the email shell there, change it here too.
+ */
+function previewHtml(biz: NewsletterBizPreview, bannerUrl: string | null, bodyHtml: string): string {
+  const contact = [biz.phone, biz.place].filter(Boolean).join(" · ");
+  const banner = bannerUrl
+    ? `<img src="${bannerUrl}" alt="" style="display:block;width:100%;max-width:520px;height:auto;border-radius:14px;margin:0 0 14px;" />`
+    : "";
+  const body = bodyHtml.replace(/<img\b(?![^>]*\bstyle=)([^>]*?)\/?>/gi,
+    (_m, a) => `<img${a} style="max-width:100%;height:auto;display:block;margin:14px 0;border-radius:10px;" />`);
+  return `
+  <div style="background:#f5f7fb;font-family:Helvetica,Arial,sans-serif;color:#0a0a0b;padding:22px 16px;">
+    <div style="max-width:520px;margin:0 auto;">
+      ${banner}
+      <div style="font-size:20px;font-weight:800;letter-spacing:-0.3px;">${escapeHtml(biz.businessName)}</div>
+      <div style="margin-top:14px;background:#fff;border:1px solid #e6e9ef;border-radius:14px;padding:22px;line-height:1.55;font-size:14px;">
+        ${body}
+        ${biz.phone ? `<p style="margin-top:20px;"><span style="display:inline-block;background:${BRAND};color:#fff;font-weight:600;padding:10px 18px;border-radius:999px;">Call us: ${escapeHtml(biz.phone)}</span></p>` : ""}
+      </div>
+      <p style="margin-top:16px;font-size:11px;color:#9aa0ad;text-align:center;line-height:1.6;">
+        ${escapeHtml(biz.businessName)}${contact ? ` · ${escapeHtml(contact)}` : ""}<br/>
+        You're receiving this because you're a customer of ${escapeHtml(biz.businessName)}.<br/>
+        <span style="color:#9aa0ad;text-decoration:underline;">Unsubscribe</span>${biz.siteUrl ? ` · <span style="color:#9aa0ad;text-decoration:underline;">Visit our site</span>` : ""}
+      </p>
+    </div>
+  </div>`;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
 export function NewsletterClient({ view }: { view: NewsletterView }) {
   const [pending, start] = useTransition();
@@ -38,44 +85,96 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
     reader.readAsText(f);
   };
 
-  // ── draft editor ──
+  // ── draft state ──
   const [subject, setSubject] = useState(view.current?.subject ?? "");
   const [body, setBody] = useState(view.current?.bodyHtml ?? "");
+  const [banner, setBannerUrl] = useState<string | null>(view.current?.bannerUrl ?? null);
   const [prompt, setPrompt] = useState(view.current?.prompt ?? "");
+  const [aiInstruction, setAiInstruction] = useState("");
   const [editorMsg, setEditorMsg] = useState<string | null>(null);
   const alreadySent = view.current?.status === "sent";
   const paused = view.current?.status === "cancelled";
-  const doPause = (next: boolean) =>
-    start(async () => {
-      setEditorMsg(null);
-      const r = await setNewsletterPaused(view.siteId, view.current!.id, next);
-      setEditorMsg(r.message || null);
-    });
+  const nlId = view.current?.id ?? null;
+
+  // Bump this to force the contentEditable to re-seed its innerHTML (after AI generate/revise).
+  const [editorKey, setEditorKey] = useState(0);
+  const editorRef = useRef<EditorHandle>(null);
+  const reseedEditor = (html: string) => { setBody(html); setEditorKey((k) => k + 1); };
 
   const doGenerate = () =>
     start(async () => {
       setEditorMsg(null);
       const r = await generateDraft(view.siteId, prompt);
-      if (!r.ok) setEditorMsg(r.message || "Couldn't draft right now.");
-      // page revalidates with the new draft; reflect it locally too on next load
+      setEditorMsg(r.ok ? null : r.message || "Couldn't draft right now.");
+      // page revalidates; new draft comes back on reload
     });
 
+  const doBlank = () => start(async () => { setEditorMsg(null); await createBlankDraft(view.siteId); });
+
   const doSave = () => {
-    if (!view.current) return;
+    if (!nlId) return;
     start(async () => {
-      await saveDraft(view.siteId, view.current!.id, subject, body);
+      await saveDraft(view.siteId, nlId, subject, body);
       setEditorMsg("Saved.");
     });
   };
 
+  const doRevise = () => {
+    if (!nlId || !aiInstruction.trim()) return;
+    start(async () => {
+      setEditorMsg("Revising…");
+      const r = await reviseDraft(view.siteId, nlId, aiInstruction, body);
+      if (r.ok && r.html) { reseedEditor(r.html); setAiInstruction(""); setEditorMsg("Updated by AI ✨"); }
+      else setEditorMsg(r.message || "Couldn't revise right now.");
+    });
+  };
+
   const doSend = () => {
-    if (!view.current) return;
+    if (!nlId) return;
     if (!confirm(`Send this newsletter to ${view.subscribed} customer${view.subscribed === 1 ? "" : "s"}?`)) return;
     start(async () => {
       setEditorMsg(null);
-      const r = await approveAndSend(view.siteId, view.current!.id, subject, body);
+      const r = await approveAndSend(view.siteId, nlId, subject, body);
       setEditorMsg(r.message || (r.ok ? "Sent!" : "Couldn't send."));
     });
+  };
+
+  const doPause = (next: boolean) =>
+    start(async () => {
+      setEditorMsg(null);
+      const r = await setNewsletterPaused(view.siteId, nlId!, next);
+      setEditorMsg(r.message || null);
+    });
+
+  // ── image uploads ──
+  const bannerInputRef = useRef<HTMLInputElement>(null);
+  const inlineInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState<null | "banner" | "inline">(null);
+
+  const uploadFile = useCallback(async (file: File, kind: "banner" | "inline"): Promise<string | null> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("siteId", String(view.siteId));
+    fd.append("kind", kind);
+    const res = await fetch("/api/newsletter/upload", { method: "POST", body: fd });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j?.ok) { setEditorMsg(j?.message || "Upload failed."); return null; }
+    return j.url as string;
+  }, [view.siteId]);
+
+  const onBannerFile = (f: File | null) => {
+    if (!f || !nlId) return;
+    setUploading("banner"); setEditorMsg(null);
+    start(async () => {
+      const url = await uploadFile(f, "banner");
+      if (url) { setBannerUrl(url); await setBanner(view.siteId, nlId, url); }
+      setUploading(null);
+    });
+  };
+  const removeBanner = () => {
+    if (!nlId) return;
+    setBannerUrl(null);
+    start(async () => { await setBanner(view.siteId, nlId, null); });
   };
 
   return (
@@ -83,7 +182,8 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
       <header>
         <h1 className="text-2xl font-extrabold tracking-tight">Monthly Newsletter</h1>
         <p className="mt-1 text-sm text-ink-soft">
-          Stay top of mind with your customers. We draft a friendly monthly note for {view.businessName} — you review it and send it to your list.
+          Stay top of mind with your customers. Draft a note for {view.businessName} with AI, make it your own, add
+          photos — and preview exactly what lands in their inbox before you send.
         </p>
       </header>
 
@@ -155,58 +255,119 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
           <div className={`mt-2 rounded-xl border px-3 py-2 text-xs ${paused ? "border-amber-200 bg-amber-50 text-amber-800" : "border-sky-200 bg-sky-50 text-sky-800"}`}>
             {paused
               ? "⏸ Paused — this month's newsletter won't send automatically. Resume it below to put it back on schedule."
-              : "📅 This sends automatically on the 15th at 12:00 PM Pacific. Review and edit it below anytime before then — or send it now, or pause this month."}
+              : "📅 This sends automatically on the 15th at 12:00 PM Pacific. Edit it below anytime before then — or send it now, or pause this month."}
           </div>
         )}
 
-        {!view.current ? (
-          <div className="mt-3">
-            <p className="text-sm text-ink-soft">
-              Tell the AI what to write about — a special, a seasonal note, an update — and it drafts the whole
-              email. Leave it blank for a friendly monthly check-in. You review and edit before anything sends.
-            </p>
-            <label className="mt-3 block text-xs font-semibold text-ink-soft">What should this newsletter be about? (optional)</label>
+        {/* Prompt + entry (always available until sent) */}
+        {!alreadySent && (
+          <div className="mt-3 rounded-xl border border-brand/30 bg-brand-tint/30 p-3">
+            <label className="block text-xs font-semibold text-ink">
+              {view.current ? "Steer the AI — what should this newsletter be about?" : "What should this newsletter be about? (optional)"}
+            </label>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              rows={3}
+              rows={2}
               placeholder="e.g. Announce our spring gutter-cleaning special — we're booking now. Warm, not pushy."
-              className="mt-1 w-full resize-y rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
+              className="mt-1 w-full resize-y rounded-lg border border-line bg-background px-3 py-2 text-sm outline-none focus:border-brand"
             />
-            <button onClick={doGenerate} disabled={pending} className="mt-3 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50">
-              {pending ? "Writing…" : "✨ Draft this newsletter"}
-            </button>
-            {editorMsg && <p className="mt-2 text-xs text-ink-soft">{editorMsg}</p>}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button onClick={doGenerate} disabled={pending} className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50">
+                {pending ? "Writing…" : view.current ? "↻ Re-draft with AI" : "✨ Draft this newsletter"}
+              </button>
+              {!view.current && (
+                <button onClick={doBlank} disabled={pending} className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-surface disabled:opacity-50">
+                  Start from scratch
+                </button>
+              )}
+            </div>
           </div>
-        ) : (
-          <div className="mt-3 space-y-3">
-            {!alreadySent && (
-              <div className="rounded-xl border border-brand/30 bg-brand-tint/30 p-3">
-                <label className="block text-xs font-semibold text-ink">Steer the AI — what should this newsletter be about?</label>
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  rows={2}
-                  placeholder="e.g. Thank customers for a great year, mention we're closed Dec 25, wish them happy holidays."
-                  className="mt-1 w-full resize-y rounded-lg border border-line bg-background px-3 py-2 text-sm outline-none focus:border-brand"
-                />
-                <p className="mt-1 text-[11px] text-ink-soft">Edit this and hit “Re-draft with AI” to rewrite the message below.</p>
-              </div>
-            )}
+        )}
 
-            <label className="block text-xs font-semibold text-ink-soft">Subject</label>
-            <input value={subject} onChange={(e) => setSubject(e.target.value)} disabled={alreadySent} className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand disabled:opacity-60" />
+        {view.current && (
+          <div className="mt-4 space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-ink-soft">Subject</label>
+              <input value={subject} onChange={(e) => setSubject(e.target.value)} disabled={alreadySent} className="mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand disabled:opacity-60" />
+            </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
+            {/* Banner */}
+            <div>
+              <label className="block text-xs font-semibold text-ink-soft">Banner image <span className="font-normal">(optional — shows across the top)</span></label>
+              <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { onBannerFile(e.target.files?.[0] ?? null); e.target.value = ""; }} />
+              {banner ? (
+                <div className="mt-1 flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={banner} alt="Banner" className="h-16 w-28 rounded-lg border border-line object-cover" />
+                  <button onClick={() => bannerInputRef.current?.click()} disabled={alreadySent || pending} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-50">Replace</button>
+                  <button onClick={removeBanner} disabled={alreadySent || pending} className="text-xs text-ink-soft hover:text-rose-600 disabled:opacity-50">Remove</button>
+                </div>
+              ) : (
+                <button onClick={() => bannerInputRef.current?.click()} disabled={alreadySent || uploading === "banner"} className="mt-1 rounded-xl border border-dashed border-line px-4 py-3 text-sm text-ink-soft hover:border-brand hover:text-brand disabled:opacity-50">
+                  {uploading === "banner" ? "Uploading…" : "＋ Add a banner image"}
+                </button>
+              )}
+            </div>
+
+            {/* Editor + live preview */}
+            <div className="grid gap-4 lg:grid-cols-2">
               <div>
-                <label className="block text-xs font-semibold text-ink-soft">Message</label>
-                <textarea value={body} onChange={(e) => setBody(e.target.value)} disabled={alreadySent} rows={12} className="mt-1 w-full resize-y rounded-xl border border-line bg-surface px-3 py-2 font-mono text-xs outline-none focus:border-brand disabled:opacity-60" />
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-ink-soft">Message</label>
+                  {!alreadySent && (
+                    <input ref={inlineInputRef} type="file" accept="image/*" className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]; e.target.value = "";
+                        if (!f) return;
+                        setUploading("inline"); setEditorMsg(null);
+                        start(async () => {
+                          const url = await uploadFile(f, "inline");
+                          if (url) editorRef.current?.insertImage(url);
+                          setUploading(null);
+                        });
+                      }} />
+                  )}
+                </div>
+                {alreadySent ? (
+                  <div className="mt-1 rounded-xl border border-line bg-surface p-3 text-sm" dangerouslySetInnerHTML={{ __html: body }} />
+                ) : (
+                  <RichEditor
+                    ref={editorRef}
+                    key={editorKey}
+                    initialHtml={body}
+                    onChange={setBody}
+                    onInsertImageClick={() => inlineInputRef.current?.click()}
+                    uploadingInline={uploading === "inline"}
+                  />
+                )}
               </div>
+
               <div>
-                <label className="block text-xs font-semibold text-ink-soft">Preview</label>
-                <div className="prose-sm mt-1 max-h-72 overflow-y-auto rounded-xl border border-line bg-surface p-3 text-sm leading-relaxed [&_h2]:mb-1 [&_h2]:mt-3 [&_h2]:text-base [&_h2]:font-bold [&_li]:ml-4 [&_li]:list-disc [&_p]:my-2" dangerouslySetInnerHTML={{ __html: body }} />
+                <label className="block text-xs font-semibold text-ink-soft">Live preview <span className="font-normal">— what your customers see</span></label>
+                <div className="mt-1 max-h-[30rem] overflow-y-auto rounded-xl border border-line bg-[#f5f7fb]" dangerouslySetInnerHTML={{ __html: previewHtml(view.biz, banner, body) }} />
               </div>
             </div>
+
+            {/* AI co-edit */}
+            {!alreadySent && (
+              <div className="rounded-xl border border-violet-200 bg-violet-50 p-3">
+                <label className="block text-xs font-semibold text-violet-900">✨ Ask AI to change it</label>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  <input
+                    value={aiInstruction}
+                    onChange={(e) => setAiInstruction(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doRevise(); } }}
+                    placeholder="e.g. shorten the intro, add a line about our winter hours, warmer tone"
+                    className="min-w-0 flex-1 rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm outline-none focus:border-violet-500"
+                  />
+                  <button onClick={doRevise} disabled={pending || !aiInstruction.trim()} className="rounded-full bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
+                    {pending ? "Working…" : "Apply"}
+                  </button>
+                </div>
+                <p className="mt-1 text-[11px] text-violet-700">AI edits your current draft — it keeps your images and edits, just changes what you ask for.</p>
+              </div>
+            )}
 
             {!alreadySent && (
               <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -214,7 +375,6 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
                   {pending ? "Working…" : `Approve & send to ${view.subscribed}`}
                 </button>
                 <button onClick={doSave} disabled={pending} className="rounded-full border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-surface disabled:opacity-50">Save draft</button>
-                <button onClick={doGenerate} disabled={pending} className="rounded-full border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-surface disabled:opacity-50">↻ Re-draft with AI</button>
                 <button onClick={() => doPause(!paused)} disabled={pending} className="rounded-full border border-line px-4 py-2.5 text-sm font-semibold text-ink-soft hover:bg-surface disabled:opacity-50">
                   {paused ? "▶ Resume auto-send" : "⏸ Pause this month"}
                 </button>
@@ -222,6 +382,7 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
                 {editorMsg && <span className="text-xs text-ink-soft">{editorMsg}</span>}
               </div>
             )}
+            {alreadySent && editorMsg && <span className="text-xs text-ink-soft">{editorMsg}</span>}
           </div>
         )}
       </section>
@@ -243,3 +404,69 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
     </div>
   );
 }
+
+// ── Rich text editor ────────────────────────────────────────────────────────────────────────────
+// Lightweight contentEditable with a formatting toolbar. The div is UNCONTROLLED (seeded once from
+// initialHtml) so React never fights the cursor; edits flow out via onChange(innerHTML). Remount it
+// (via `key`) to reseed after AI generate/revise.
+type EditorHandle = { insertImage: (url: string) => void };
+
+const RichEditor = forwardRef<EditorHandle, {
+  initialHtml: string;
+  onChange: (html: string) => void;
+  onInsertImageClick: () => void;
+  uploadingInline: boolean;
+}>(function RichEditor({ initialHtml, onChange, onInsertImageClick, uploadingInline }, ref) {
+  const elRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (elRef.current) elRef.current.innerHTML = initialHtml || "";
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const emit = () => onChange(elRef.current?.innerHTML ?? "");
+  const cmd = (command: string, value?: string) => {
+    elRef.current?.focus();
+    document.execCommand(command, false, value);
+    emit();
+  };
+
+  useImperativeHandle(ref, () => ({
+    insertImage(url: string) {
+      elRef.current?.focus();
+      document.execCommand("insertHTML", false, `<img src="${url}" alt="" />`);
+      emit();
+    },
+  }));
+
+  const Btn = ({ onClick, title, children }: { onClick: () => void; title: string; children: React.ReactNode }) => (
+    <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={onClick} title={title}
+      className="rounded-md px-2 py-1 text-xs font-semibold text-ink hover:bg-surface">
+      {children}
+    </button>
+  );
+
+  return (
+    <div className="mt-1 rounded-xl border border-line bg-surface focus-within:border-brand">
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-line px-2 py-1">
+        <Btn onClick={() => cmd("formatBlock", "<h2>")} title="Heading">H</Btn>
+        <Btn onClick={() => cmd("bold")} title="Bold"><span className="font-bold">B</span></Btn>
+        <Btn onClick={() => cmd("italic")} title="Italic"><span className="italic">I</span></Btn>
+        <Btn onClick={() => cmd("insertUnorderedList")} title="Bulleted list">• List</Btn>
+        <Btn onClick={() => { const u = window.prompt("Link URL"); if (u) cmd("createLink", u); }} title="Link">🔗</Btn>
+        <span className="mx-1 h-4 w-px bg-line" />
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={onInsertImageClick} disabled={uploadingInline}
+          className="rounded-md px-2 py-1 text-xs font-semibold text-brand hover:bg-brand-tint/40 disabled:opacity-50">
+          {uploadingInline ? "Uploading…" : "🖼 Image"}
+        </button>
+      </div>
+      <div
+        ref={elRef}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={emit}
+        className="prose-sm max-h-80 min-h-[16rem] overflow-y-auto px-3 py-2 text-sm leading-relaxed outline-none [&_h2]:mb-1 [&_h2]:mt-3 [&_h2]:text-base [&_h2]:font-bold [&_img]:my-2 [&_img]:max-w-full [&_img]:rounded-lg [&_li]:ml-4 [&_li]:list-disc [&_p]:my-2"
+      />
+    </div>
+  );
+});

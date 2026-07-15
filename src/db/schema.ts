@@ -663,6 +663,7 @@ export const newsletters = pgTable("newsletters", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	sentAt: timestamp("sent_at", { withTimezone: true, mode: 'string' }),
 	prompt: text(),
+	bannerUrl: text("banner_url"),
 }, (table) => [
 	index("newsletters_site_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops")),
 	foreignKey({

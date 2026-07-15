@@ -18,7 +18,11 @@ export default async function NewsletterPage() {
 
   // The client's claimed business (first non-deleted claimed site).
   const [site] = await db
-    .select({ id: forgeSites.id, businessName: forgeSites.businessName })
+    .select({
+      id: forgeSites.id, businessName: forgeSites.businessName,
+      phone: forgeSites.phone, city: forgeSites.city, serviceArea: forgeSites.serviceArea,
+      liveUrl: forgeSites.liveUrl, slug: forgeSites.slug,
+    })
     .from(forgeSites)
     .where(and(eq(forgeSites.claimedByUserId, user.id), ne(forgeSites.status, "deleted")))
     .orderBy(desc(forgeSites.claimedAt))
@@ -45,7 +49,7 @@ export default async function NewsletterPage() {
 
   const key = monthKey();
   const [current] = await db
-    .select({ id: newsletters.id, subject: newsletters.subject, bodyHtml: newsletters.bodyHtml, prompt: newsletters.prompt, status: newsletters.status })
+    .select({ id: newsletters.id, subject: newsletters.subject, bodyHtml: newsletters.bodyHtml, bannerUrl: newsletters.bannerUrl, prompt: newsletters.prompt, status: newsletters.status })
     .from(newsletters)
     .where(and(eq(newsletters.siteId, site.id), eq(newsletters.period, key)))
     .limit(1);
@@ -60,11 +64,17 @@ export default async function NewsletterPage() {
   const view: NewsletterView = {
     siteId: site.id,
     businessName: site.businessName,
+    biz: {
+      businessName: site.businessName,
+      phone: site.phone,
+      place: site.city || site.serviceArea || null,
+      siteUrl: site.liveUrl?.trim() || (site.slug ? `/s/${site.slug}` : null),
+    },
     monthLabel: monthLabel(key),
     subscribed,
     totalContacts: contacts.length,
     contacts: contacts.slice(0, 100),
-    current: current ? { id: current.id, subject: current.subject, bodyHtml: current.bodyHtml, prompt: current.prompt, status: current.status } : null,
+    current: current ? { id: current.id, subject: current.subject, bodyHtml: current.bodyHtml, bannerUrl: current.bannerUrl, prompt: current.prompt, status: current.status } : null,
     history: history.map((h) => ({ id: h.id, label: monthLabel(h.period), subject: h.subject, sentAt: h.sentAt, recipients: h.recipientCount })),
   };
 

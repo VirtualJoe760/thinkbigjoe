@@ -61,6 +61,7 @@ type QueuedRow = {
   email: string;
   subject: string;
   bodyHtml: string;
+  bannerUrl: string | null;
 };
 
 const bizCache = new Map<number, NewsletterBiz | null>();
@@ -87,7 +88,7 @@ export async function sendNewsletterBatch(limit = 40): Promise<{ processed: numb
   const rows = (
     await db.execute(sql`
       SELECT ns.id, ns.newsletter_id AS "newsletterId", ns.site_id AS "siteId", ns.email,
-             n.subject, n.body_html AS "bodyHtml"
+             n.subject, n.body_html AS "bodyHtml", n.banner_url AS "bannerUrl"
       FROM newsletter_sends ns
       JOIN newsletters n ON n.id = ns.newsletter_id
       WHERE ns.status = 'queued' AND n.status = 'sending'
@@ -124,7 +125,7 @@ export async function sendNewsletterBatch(limit = 40): Promise<{ processed: numb
       .where(and(eq(newsletterContacts.siteId, r.siteId), sql`lower(email) = ${r.email.trim().toLowerCase()}`))
       .limit(1);
     const unsubscribeUrl = `${SITE}/api/newsletter/unsubscribe?t=${contact?.token ?? ""}`;
-    const html = renderNewsletter(biz, r.bodyHtml, unsubscribeUrl);
+    const html = renderNewsletter(biz, r.bodyHtml, unsubscribeUrl, r.bannerUrl);
 
     const res = await sendNewsletterViaSes({ to: r.email, subject: r.subject, html, fromName: biz.businessName, unsubscribeUrl });
     if (res.ok) {

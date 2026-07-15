@@ -105,16 +105,93 @@ Return "html" as clean email body HTML using only <h2>, <p>, and <ul>/<li> tags 
   }
 }
 
-/** Wrap the body in a business-branded email shell + required unsubscribe footer (CAN-SPAM). */
-export function renderNewsletter(b: NewsletterBiz, bodyHtml: string, unsubscribeUrl: string): string {
+/**
+ * AI co-edit: revise an EXISTING draft per the owner's instruction ("shorten the intro", "add a
+ * section about our winter hours", "make it warmer"), instead of regenerating from scratch. The
+ * current body is the source of truth — the model edits it and returns the full revised body. Any
+ * <img> tags the owner inserted are preserved verbatim (their src URLs must not change). Returns the
+ * new body HTML, or null if unavailable.
+ */
+export async function reviseNewsletter(
+  b: NewsletterBiz,
+  currentHtml: string,
+  instruction: string,
+): Promise<{ html: string } | null> {
+  if (!KEY) return null;
+  const steer = (instruction || "").trim().slice(0, 800);
+  if (!steer) return null;
+  const prompt = `You are editing an email newsletter for ${b.businessName}${b.niche ? ` (a ${b.niche} business)` : ""}.
+
+Here is the CURRENT newsletter body (HTML):
+"""
+${currentHtml.slice(0, 6000)}
+"""
+
+The owner's instruction: "${steer}".
+
+Apply that instruction and return the FULL revised body. Rules:
+- Keep it truthful to the business; do not invent specific dates, prices, or offers not already present or requested.
+- Preserve any <img ...> tags EXACTLY as they appear (same src) unless the instruction explicitly says to remove an image.
+- Voice: genuine and friendly, like a note from the owner — not salesy. Keep it concise.
+- Return "html" using only <h2>, <p>, <ul>/<li>, <a>, <strong>, and <img> tags (no <html>, <head>, <style>, or inline styles except on tags that already have them).`;
+
+  try {
+    const res = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": KEY },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 4096,
+          responseMimeType: "application/json",
+          responseSchema: { type: "OBJECT", properties: { html: { type: "STRING" } }, required: ["html"] },
+        },
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const text = (json?.candidates?.[0]?.content?.parts ?? []).map((p: any) => (typeof p.text === "string" ? p.text : "")).join("");
+    const parsed = JSON.parse(text);
+    if (!parsed?.html) return null;
+    return { html: String(parsed.html) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Force every inline <img> in the body to be email-safe: never wider than the column, auto height,
+ * block-level with a little breathing room. Email clients ignore <style>, so this must be inline on
+ * each tag. We only ADD to imgs that don't already declare a width/style so we never fight the
+ * editor's own sizing. Kept deliberately simple (regex over trusted, self-authored HTML).
+ */
+function constrainInlineImages(html: string): string {
+  return html.replace(/<img\b(?![^>]*\bstyle=)([^>]*?)\/?>/gi, (_m, attrs) =>
+    `<img${attrs} style="max-width:100%;height:auto;display:block;margin:14px 0;border-radius:10px;" />`,
+  );
+}
+
+/**
+ * Wrap the body in a business-branded email shell + required unsubscribe footer (CAN-SPAM).
+ * `bannerUrl` (optional) renders a full-width hero image above the message — the client's uploaded
+ * banner. Inline images inside `bodyHtml` are made responsive so they never overflow the column.
+ */
+export function renderNewsletter(b: NewsletterBiz, bodyHtml: string, unsubscribeUrl: string, bannerUrl?: string | null): string {
   const site = bizSiteUrl(b);
   const contact = [b.phone, b.city || b.serviceArea].filter(Boolean).join(" · ");
+  const banner = bannerUrl?.trim()
+    ? `<img src="${bannerUrl}" alt="${b.businessName}" width="560" style="display:block;width:100%;max-width:560px;height:auto;border-radius:16px;margin:0 0 16px;" />`
+    : "";
   return `
   <div style="margin:0;padding:0;background:#f5f7fb;font-family:Helvetica,Arial,sans-serif;color:#0a0a0b;">
     <div style="max-width:560px;margin:0 auto;padding:32px 20px;">
+      ${banner}
       <div style="font-size:22px;font-weight:800;letter-spacing:-0.3px;color:#0a0a0b;">${b.businessName}</div>
       <div style="margin-top:16px;background:#ffffff;border:1px solid #e6e9ef;border-radius:16px;padding:28px;line-height:1.55;font-size:15px;">
-        ${bodyHtml}
+        ${constrainInlineImages(bodyHtml)}
         ${b.phone ? `<p style="margin-top:22px;"><a href="tel:${b.phone.replace(/[^0-9+]/g, "")}" style="display:inline-block;background:${BRAND};color:#fff;text-decoration:none;font-weight:600;padding:11px 20px;border-radius:999px;">Call us: ${b.phone}</a></p>` : ""}
       </div>
       <p style="margin-top:20px;font-size:12px;color:#9aa0ad;text-align:center;line-height:1.6;">

@@ -15,6 +15,7 @@
     "@marsidev/react-turnstile": "^1.5.3",
     "@neondatabase/serverless": "^1.1.0",
     "@vercel/analytics": "^2.0.1",
+    "@vercel/blob": "^2.6.1",
     "better-auth": "^1.6.16",
     "drizzle-orm": "^0.45.2",
     "imapflow": "^1.4.6",
