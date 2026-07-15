@@ -83,11 +83,11 @@ export function buildPriceId(): string | null {
 }
 
 /**
- * Plans whose FIRST MONTH is free when bought with the website: today they pay only the $300 build,
- * and the first monthly charge runs 30 days later (implemented as a 30-day trial on the subscription
- * — the site is live + fully unlocked immediately via the one-time payment). The higher tiers (Voice,
- * Complete) have real per-month cost, so their first month is charged up front. Basic (Website) only.
+ * Buying a website earns a one-time $99 credit toward the first month of ANY subscription tier
+ * (you must own a website to subscribe). Applied at checkout as a $99-off-once Stripe coupon, so:
+ * Basic's first month is effectively free ($99 − $99), while Voice/Complete get $99 off their first
+ * month ($200 / $900). Recurring stays full price (the coupon only touches the first invoice).
  */
-export function firstMonthFree(key: PlanKey): boolean {
-  return key === "website";
-}
+export const WEBSITE_FIRST_MONTH_CREDIT = 99;
+/** The Stripe coupon (created once in the dashboard/API) that applies the credit above. */
+export const FIRST_MONTH_CREDIT_COUPON = "website-first-month-99";
