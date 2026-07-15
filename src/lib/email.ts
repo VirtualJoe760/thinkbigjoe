@@ -30,6 +30,56 @@ const FROM_ADDRESS = FROM.match(/<([^>]+)>/)?.[1] || FROM;
 /** True when SMTP env vars are present (host + user + pass). */
 export const isEmailConfigured = isConfigured;
 
+// ── SES transport (BULK — client newsletters) ─────────────────────────────────────────────────
+// Separate from the Zoho transactional transport above, on purpose: bulk volume must NOT ride the
+// mailbox (caps + ToS + it would risk transactional mail). Configured via SES SMTP credentials in
+// Vercel (SES_SMTP_USER/PASS — Joe creates these; the secret never touches the codebase). Region
+// host default is us-east-1 to match the verified identity. See docs/EMAIL_SCALE.md.
+const SES_HOST = process.env.SES_SMTP_HOST || "email-smtp.us-east-1.amazonaws.com";
+const SES_PORT = Number(process.env.SES_SMTP_PORT || 587);
+const SES_USER = process.env.SES_SMTP_USER;
+const SES_PASS = process.env.SES_SMTP_PASS;
+export const isSesConfigured = Boolean(SES_USER && SES_PASS);
+
+const sesTransporter = isSesConfigured
+  ? nodemailer.createTransport({
+      host: SES_HOST,
+      port: SES_PORT,
+      secure: SES_PORT === 465,
+      auth: { user: SES_USER, pass: SES_PASS },
+    })
+  : null;
+
+/**
+ * Send one newsletter email via SES. Returns the SES Message-ID on success so the caller can store
+ * it and later match an SNS bounce/complaint notification back to this recipient. Never throws.
+ * Falls back to the Zoho transport ONLY if SES isn't configured yet (dev / pre-cutover).
+ */
+export async function sendNewsletterViaSes(args: {
+  to: string; subject: string; html: string; fromName: string; unsubscribeUrl: string; replyTo?: string;
+}): Promise<{ ok: true; messageId?: string } | { ok: false; error: string }> {
+  const tx = sesTransporter || transporter; // graceful fallback until SES creds land
+  if (!tx) return { ok: false, error: "no_transport" };
+  try {
+    const info = await tx.sendMail({
+      from: `"${args.fromName.replace(/["\\<>]/g, "")}" <${FROM_ADDRESS}>`,
+      to: args.to,
+      subject: args.subject,
+      html: args.html,
+      ...(args.replyTo ? { replyTo: args.replyTo } : {}),
+      headers: {
+        "List-Unsubscribe": `<${args.unsubscribeUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
+    });
+    // SES returns the id as "<id@region.amazonses.com>"; strip the brackets for matching.
+    const messageId = (info.messageId || "").replace(/^<|>$/g, "") || undefined;
+    return { ok: true, messageId };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 /**
  * Send a client's customer newsletter. Sends "from" the business's name (envelope stays on our
  * verified no-reply domain so it authenticates), includes the one-click List-Unsubscribe header,

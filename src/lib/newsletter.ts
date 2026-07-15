@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 
 import { db, newsletters, newsletterContacts, forgeSites } from "@/db";
-import { sendNewsletterEmail } from "@/lib/email";
 
 /**
  * The $99-plan monthly newsletter: our AI drafts a warm, on-brand note for each client's business,
@@ -111,48 +110,9 @@ export function renderNewsletter(b: NewsletterBiz, bodyHtml: string, unsubscribe
   </div>`;
 }
 
-/**
- * Send an approved newsletter to every subscribed contact on the business's list. Renders per
- * recipient (each gets their own one-click unsubscribe link), marks the newsletter sent, and
- * returns how many went out. Idempotent-ish: refuses to re-send an already-sent newsletter.
- */
-export async function sendNewsletter(newsletterId: number): Promise<{ ok: boolean; sent: number; message?: string }> {
-  const [nl] = await db.select().from(newsletters).where(eq(newsletters.id, newsletterId)).limit(1);
-  if (!nl) return { ok: false, sent: 0, message: "Newsletter not found." };
-  if (nl.status === "sent") return { ok: false, sent: 0, message: "This newsletter was already sent." };
-  if (!nl.subject.trim() || !nl.bodyHtml.trim()) return { ok: false, sent: 0, message: "Add a subject and body before sending." };
-
-  const [biz] = await db
-    .select({
-      id: forgeSites.id, businessName: forgeSites.businessName, niche: forgeSites.niche,
-      city: forgeSites.city, serviceArea: forgeSites.serviceArea, phone: forgeSites.phone,
-      liveUrl: forgeSites.liveUrl, slug: forgeSites.slug,
-    })
-    .from(forgeSites).where(eq(forgeSites.id, nl.siteId)).limit(1);
-  if (!biz) return { ok: false, sent: 0, message: "Business not found." };
-
-  const contacts = await db
-    .select({ email: newsletterContacts.email, name: newsletterContacts.name, token: newsletterContacts.unsubscribeToken })
-    .from(newsletterContacts)
-    .where(and(eq(newsletterContacts.siteId, nl.siteId), eq(newsletterContacts.status, "subscribed")));
-  if (contacts.length === 0) return { ok: false, sent: 0, message: "No subscribers on the list yet." };
-
-  const fromName = biz.businessName;
-  const replyTo = undefined; // replies bounce to no-reply; clients handle replies via their own channels
-  let sent = 0;
-  for (const c of contacts) {
-    const unsubscribeUrl = `${SITE}/api/newsletter/unsubscribe?t=${c.token}`;
-    const html = renderNewsletter(biz, nl.bodyHtml, unsubscribeUrl);
-    const res = await sendNewsletterEmail({ to: c.email, subject: nl.subject, html, fromName, unsubscribeUrl, replyTo });
-    if (!("error" in res)) sent++;
-  }
-
-  await db.update(newsletters)
-    .set({ status: "sent", sentAt: new Date().toISOString(), recipientCount: sent, updatedAt: new Date().toISOString() })
-    .where(eq(newsletters.id, newsletterId));
-
-  return { ok: true, sent };
-}
+// NOTE: the old synchronous sendNewsletter() lived here. It's gone — sending is now the paced,
+// resumable queue in `src/lib/newsletter-queue.ts` (enqueueNewsletter + sendNewsletterBatch), which
+// scales to thousands without timing out and rides SES, not the Zoho mailbox. See docs/EMAIL_SCALE.md.
 
 /** One-click unsubscribe by token. Returns the business name for the confirmation page. */
 export async function unsubscribeByToken(token: string): Promise<{ ok: boolean; business?: string }> {

@@ -6,7 +6,8 @@ import { and, eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { db, forgeSites, newsletters, newsletterContacts } from "@/db";
-import { draftNewsletter, sendNewsletter, monthKey, monthLabel, newsletterToken, type NewsletterBiz } from "@/lib/newsletter";
+import { draftNewsletter, monthKey, monthLabel, newsletterToken, type NewsletterBiz } from "@/lib/newsletter";
+import { enqueueNewsletter } from "@/lib/newsletter-queue";
 import { getConnection, getValidAccessToken, listGoogleContacts } from "@/lib/google-oauth";
 
 /** Resolve the caller's claimed business (site). Every action is scoped to it. */
@@ -135,7 +136,12 @@ export async function saveDraft(siteId: number, newsletterId: number, subject: s
 export async function approveAndSend(siteId: number, newsletterId: number, subject: string, bodyHtml: string): Promise<{ ok: boolean; sent?: number; message?: string }> {
   await requireOwnedSite(siteId);
   await saveDraft(siteId, newsletterId, subject, bodyHtml);
-  const r = await sendNewsletter(newsletterId);
+  // Queue the send instead of blocking the request on a synchronous loop — the background tick
+  // (com.thinkbigjoe.newslettersend → /api/newsletter/send-batch) drains it, paced, over the next
+  // few minutes. Scales to thousands without timing out. See docs/EMAIL_SCALE.md.
+  const r = await enqueueNewsletter(newsletterId);
   revalidatePath("/portal/newsletter");
-  return r.ok ? { ok: true, sent: r.sent, message: `Sent to ${r.sent} customer${r.sent === 1 ? "" : "s"}. 🎉` } : { ok: false, message: r.message };
+  return r.ok
+    ? { ok: true, sent: r.queued, message: `Sending to ${r.queued} customer${r.queued === 1 ? "" : "s"} — they'll go out over the next few minutes. 🎉` }
+    : { ok: false, message: r.message };
 }

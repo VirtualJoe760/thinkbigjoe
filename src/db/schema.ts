@@ -631,3 +631,42 @@ export const googleConnections = pgTable("google_connections", {
 }, (table) => [
 	unique("google_connections_user_id_key").on(table.userId),
 ]);
+
+export const emailSuppressions = pgTable("email_suppressions", {
+	id: serial().primaryKey().notNull(),
+	email: text().notNull(),
+	reason: text().default('bounce').notNull(),
+	detail: text(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("email_suppressions_email_key").using("btree", sql`lower(email)`),
+]);
+
+export const newsletterSends = pgTable("newsletter_sends", {
+	id: serial().primaryKey().notNull(),
+	newsletterId: integer("newsletter_id").notNull(),
+	siteId: integer("site_id"),
+	email: text().notNull(),
+	name: text(),
+	status: text().default('queued').notNull(),
+	attempts: integer().default(0).notNull(),
+	error: text(),
+	messageId: text("message_id"),
+	sentAt: timestamp("sent_at", { withTimezone: true, mode: 'string' }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("newsletter_sends_msgid_idx").using("btree", table.messageId.asc().nullsLast().op("text_ops")),
+	uniqueIndex("newsletter_sends_nl_email_key").using("btree", sql`newsletter_id`, sql`lower(email)`),
+	index("newsletter_sends_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+	foreignKey({
+			columns: [table.newsletterId],
+			foreignColumns: [newsletters.id],
+			name: "newsletter_sends_newsletter_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.siteId],
+			foreignColumns: [forgeSites.id],
+			name: "newsletter_sends_site_id_fkey"
+		}).onDelete("set null"),
+]);

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 
 import { db, forgeSites, newsletters } from "@/db";
-import { draftNewsletter, sendNewsletter, monthLabel } from "@/lib/newsletter";
+import { draftNewsletter, monthLabel } from "@/lib/newsletter";
+import { enqueueNewsletter } from "@/lib/newsletter-queue";
 import { sendNotificationEmail } from "@/lib/email";
 import { notifyTelegram } from "@/lib/telegram";
 
@@ -97,7 +98,8 @@ export async function POST(req: Request) {
         id = nl.id;
       }
       if (id) {
-        const r = await sendNewsletter(id);
+        // Queue it; the send-batch tick drains it (paced). Counts newsletters queued this run.
+        const r = await enqueueNewsletter(id);
         if (r.ok) sent++;
       }
     }
