@@ -135,6 +135,9 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
   const [editorKey, setEditorKey] = useState(0);
   const reseedEditor = (html: string) => { setBody(html); setEditorKey((k) => k + 1); };
 
+  // Compose vs preview are toggled (not side-by-side) — cleaner on both desktop and mobile.
+  const [tab, setTab] = useState<"edit" | "preview">("edit");
+
   const adoptDraft = (r: { id?: number; subject?: string; html?: string; bannerUrl?: string | null }) => {
     if (r.id) setNlId(r.id);
     setStatus("draft");
@@ -362,26 +365,42 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
               )}
             </div>
 
-            {/* Editor + mobile preview */}
-            <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
-              <div className="min-w-0">
-                <label className="block text-xs font-semibold text-ink-soft">Message</label>
-                {alreadySent ? (
-                  <div className="prose prose-sm mt-1 max-w-none rounded-xl border border-line bg-surface p-3" dangerouslySetInnerHTML={{ __html: body }} />
-                ) : (
-                  <div className="mt-1">
+            {/* Message: toggle between the editor and a phone preview */}
+            <div>
+              <div className="inline-flex rounded-lg border border-line bg-surface p-0.5 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setTab("edit")}
+                  className={`rounded-md px-3 py-1.5 transition-colors ${tab === "edit" ? "bg-brand text-white" : "text-ink-soft hover:text-ink"}`}
+                >
+                  ✎ Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab("preview")}
+                  className={`rounded-md px-3 py-1.5 transition-colors ${tab === "preview" ? "bg-brand text-white" : "text-ink-soft hover:text-ink"}`}
+                >
+                  📱 Preview
+                </button>
+              </div>
+
+              <div className="mt-2">
+                {tab === "edit" ? (
+                  alreadySent ? (
+                    <div className="prose prose-sm max-w-none rounded-xl border border-line bg-surface p-3" dangerouslySetInnerHTML={{ __html: body }} />
+                  ) : (
                     <TiptapEditor
                       resetKey={editorKey}
                       initialHtml={body}
                       onChange={setBody}
                       onUploadImage={uploadInlineImage}
                     />
+                  )
+                ) : (
+                  <div className="rounded-xl border border-line bg-background py-6">
+                    <MobilePreview biz={view.biz} bannerUrl={banner} bodyHtml={body} />
                   </div>
                 )}
-              </div>
-
-              <div className="lg:sticky lg:top-4 lg:self-start">
-                <MobilePreview biz={view.biz} bannerUrl={banner} bodyHtml={body} />
               </div>
             </div>
 
