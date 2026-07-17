@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
-import { SiteNav } from "@/components/site-nav";
-import { SiteFooter } from "@/components/site-footer";
+import { SiteNav } from "@/components/marketing/site-nav";
+import { SiteFooter } from "@/components/marketing/site-footer";
 import { BUSINESS } from "@/lib/business";
 
 export const metadata: Metadata = {

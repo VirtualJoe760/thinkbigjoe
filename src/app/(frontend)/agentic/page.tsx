@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { SiteFooter } from "@/components/site-footer";
-import { SiteNav } from "@/components/site-nav";
+import { SiteFooter } from "@/components/marketing/site-footer";
+import { SiteNav } from "@/components/marketing/site-nav";
 
 export const metadata: Metadata = {
   title: "AI Agent Sales Pipelines",

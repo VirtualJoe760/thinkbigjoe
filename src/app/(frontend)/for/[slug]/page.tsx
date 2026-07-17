@@ -3,8 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { BookingWizard } from "@/components/booking/booking-wizard";
-import { SiteFooter } from "@/components/site-footer";
-import { SiteNav } from "@/components/site-nav";
+import { SiteFooter } from "@/components/marketing/site-footer";
+import { SiteNav } from "@/components/marketing/site-nav";
 import { getIndustry, INDUSTRIES } from "@/lib/industries";
 
 export function generateStaticParams() {
