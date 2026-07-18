@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { denyForgeSite, deleteForgeSite, sendForgeOutreach, skipForgeOutreach, approveForMarketing, unapproveMarketing, requestForgeRevision, requestForgeRebuild } from "../actions";
 import { toast } from "@/components/toast";
-import { Card, cardClass } from "@/components/ui";
+import { Card, cardClass, StatusPill as UIStatusPill } from "@/components/ui";
 
 export type ForgeSiteItem = {
   id: string;
@@ -134,20 +134,17 @@ function cityState(item: ForgeSiteItem): string {
   return st ? `${city}, ${st}` : city;
 }
 
+const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "info" | "neutral"> = {
+  discovered: "warning",
+  approved: "info",
+  building: "info",
+  built: "success",
+  denied: "neutral",
+  build_failed: "danger",
+};
+
 function StatusPill({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    discovered: "bg-amber-100 text-amber-800",
-    approved: "bg-blue-100 text-blue-800",
-    building: "bg-blue-100 text-blue-800",
-    built: "bg-green-100 text-green-800",
-    denied: "bg-surface text-ink-soft",
-    build_failed: "bg-red-100 text-red-700",
-  };
-  return (
-    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${styles[status] || "bg-surface text-ink-soft"}`}>
-      {status.replace("_", " ")}
-    </span>
-  );
+  return <UIStatusPill tone={STATUS_TONE[status] || "neutral"}>{status.replace("_", " ")}</UIStatusPill>;
 }
 
 function Rating({ item }: { item: ForgeSiteItem }) {

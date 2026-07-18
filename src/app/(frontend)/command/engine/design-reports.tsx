@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 
-import { Card } from "@/components/ui";
+import { Card, StatusPill } from "@/components/ui";
 
 import { setDesignReportStatus } from "../actions";
 
@@ -19,10 +19,10 @@ export type DesignReport = {
   createdAt: string | null;
 };
 
-const STATUS_STYLE: Record<string, string> = {
-  proposed: "bg-amber-100 text-amber-800",
-  verified: "bg-green-100 text-green-800",
-  rejected: "bg-neutral-200 text-neutral-600",
+const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "info" | "neutral"> = {
+  proposed: "warning",
+  verified: "success",
+  rejected: "neutral",
 };
 
 function relTime(iso: string | null): string {
@@ -70,9 +70,7 @@ function ReportCard({ report }: { report: DesignReport }) {
             {report.archetype && (
               <span className="rounded-full bg-ink/5 px-2 py-0.5 text-[11px] font-medium text-ink-soft">{report.archetype}</span>
             )}
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_STYLE[status] ?? "bg-ink/5 text-ink-soft"}`}>
-              {status}
-            </span>
+            <StatusPill tone={STATUS_TONE[status] ?? "neutral"}>{status}</StatusPill>
           </div>
           <h3 className="mt-1.5 text-sm font-bold tracking-tight text-ink">{report.title}</h3>
           <p className="mt-0.5 text-sm text-ink-soft">{report.summary}</p>

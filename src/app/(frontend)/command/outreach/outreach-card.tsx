@@ -4,13 +4,13 @@ import { useState, useTransition } from "react";
 
 import { setOutreachSkip } from "../actions";
 import type { OutreachQueueItem } from "@/lib/forge-outreach";
-import { cardClass } from "@/components/ui";
+import { cardClass, StatusPill } from "@/components/ui";
 
-const BADGE: Record<OutreachQueueItem["status"], { label: string; cls: string }> = {
-  queued: { label: "Queued · sends 10am", cls: "bg-blue-100 text-blue-700" },
-  sent: { label: "✓ Sent", cls: "bg-green-100 text-green-700" },
-  skipped: { label: "Skipped", cls: "bg-line text-ink-soft" },
-  "needs-email": { label: "Needs an email", cls: "bg-amber-100 text-amber-700" },
+const BADGE: Record<OutreachQueueItem["status"], { label: string; tone: "success" | "warning" | "danger" | "info" | "neutral" }> = {
+  queued: { label: "Queued · sends 10am", tone: "info" },
+  sent: { label: "✓ Sent", tone: "success" },
+  skipped: { label: "Skipped", tone: "neutral" },
+  "needs-email": { label: "Needs an email", tone: "warning" },
 };
 
 export function OutreachCard({ item }: { item: OutreachQueueItem }) {
@@ -28,7 +28,7 @@ export function OutreachCard({ item }: { item: OutreachQueueItem }) {
     <div className={cardClass({ padding: "sm", className: status === "skipped" ? "opacity-60" : "" })}>
       <div className="flex flex-wrap items-center gap-3">
         <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink">{item.businessName}</span>
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${badge.cls}`}>{badge.label}</span>
+        <StatusPill tone={badge.tone}>{badge.label}</StatusPill>
         {item.liveUrl && (
           <a href={item.liveUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-brand hover:underline">
             View site ↗
