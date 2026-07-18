@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { Card } from "@/components/ui";
+
 const STEPS = [
   {
     n: "01",
@@ -56,7 +58,7 @@ export function HowItWorks() {
               to the AI that runs behind it.
             </p>
 
-            <div className="mt-8 rounded-2xl border border-line bg-background p-5">
+            <Card className="mt-8">
               <p className="text-sm font-semibold text-ink">Prefer to talk?</p>
               <p className="mt-1 text-sm leading-relaxed text-ink-soft">
                 Call our AI receptionist any time — she&apos;ll walk you through
@@ -68,7 +70,7 @@ export function HowItWorks() {
               >
                 📞 (480) 764-2121 · 24/7
               </a>
-            </div>
+            </Card>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
