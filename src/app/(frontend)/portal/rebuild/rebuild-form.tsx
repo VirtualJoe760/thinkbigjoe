@@ -3,6 +3,8 @@
 import { useActionState } from "react";
 import Link from "next/link";
 
+import { cardClass } from "@/components/ui";
+
 import { requestRebuild, type RebuildState } from "../actions";
 
 const initial: RebuildState = { ok: false, message: "" };
@@ -29,7 +31,7 @@ export function RebuildForm() {
   }
 
   return (
-    <form action={action} className="rounded-2xl border border-line bg-surface p-8">
+    <form action={action} className={cardClass({ tone: "surface", padding: "xl" })}>
       <label htmlFor="url" className="block text-sm font-semibold text-ink">
         Your current website
       </label>

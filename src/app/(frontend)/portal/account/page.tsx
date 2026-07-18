@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { AccountForm } from "@/components/portal/account-form";
+import { cardClass } from "@/components/ui";
 import { auth } from "@/lib/auth";
 import { PLANS, PLAN_KEYS, ONE_TIME_BUILD_AMOUNT } from "@/lib/plans";
 
@@ -41,12 +42,12 @@ export default async function AccountPage() {
             </section>
           )}
 
-          <section className="rounded-2xl border border-line bg-surface p-8">
+          <section className={cardClass({ tone: "surface", padding: "xl" })}>
             <h2 className="text-xl font-bold tracking-tight">Profile</h2>
             <AccountForm initialName={user.name ?? ""} email={user.email} />
           </section>
 
-          <section className="rounded-2xl border border-line bg-surface p-8">
+          <section className={cardClass({ tone: "surface", padding: "xl" })}>
             <h2 className="text-xl font-bold tracking-tight">Plan options</h2>
             <p className="mt-2 leading-relaxed text-ink-soft">
               A one-time <span className="font-semibold text-ink">${ONE_TIME_BUILD_AMOUNT}</span> build fee
@@ -58,7 +59,7 @@ export default async function AccountPage() {
                 const plan = PLANS[key];
                 const bookJoe = key === "complete";
                 return (
-                  <div key={key} className="flex flex-col rounded-2xl border border-line bg-background p-5">
+                  <div key={key} className={cardClass({ className: "flex flex-col" })}>
                     <div className="text-sm font-bold tracking-tight">{plan.label}</div>
                     <div className="mt-1 flex items-baseline gap-1">
                       <span className="text-2xl font-extrabold tabular-nums">${plan.monthly}</span>
@@ -88,7 +89,7 @@ export default async function AccountPage() {
             </p>
           </section>
 
-          <section className="rounded-2xl border border-line bg-surface p-8">
+          <section className={cardClass({ tone: "surface", padding: "xl" })}>
             <h2 className="text-xl font-bold tracking-tight">Billing</h2>
             <p className="mt-2 leading-relaxed text-ink-soft">
               Manage your payment method, view invoices, and update billing

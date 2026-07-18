@@ -3,6 +3,8 @@
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { cardClass } from "@/components/ui";
+
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 const ADVANCE_DAYS = 30;
 
@@ -256,7 +258,7 @@ export function BookingWizard({
         ))}
       </div>
 
-      <div className="mt-6 rounded-2xl border border-line bg-background p-6 md:p-8">
+      <div className={cardClass({ padding: "lg", className: "mt-6 md:p-8" })}>
         {step === "intake" && (
           <form onSubmit={submitIntake} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { cardClass, Eyebrow } from "@/components/ui";
 import { PortalHeader } from "@/components/portal/portal-header";
 import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
@@ -146,9 +147,7 @@ export default async function SolutionsPage() {
                 }`}
               >
                 <div>
-                  <p className="text-xs font-semibold tracking-wide text-ink-soft uppercase">
-                    {s.verticals}
-                  </p>
+                  <Eyebrow>{s.verticals}</Eyebrow>
                   <h3 className="mt-3 text-2xl font-bold tracking-tight md:text-3xl">
                     {s.name}
                   </h3>
@@ -186,7 +185,7 @@ export default async function SolutionsPage() {
                       </li>
                     ))}
                   </ul>
-                  <div className="mt-5 rounded-xl border border-line bg-surface p-5">
+                  <div className={cardClass({ radius: "xl", tone: "surface", className: "mt-5" })}>
                     <p className="text-xs font-semibold tracking-wide text-brand uppercase">
                       How we build it
                     </p>

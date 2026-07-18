@@ -7,6 +7,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, denyForgeSite, dropLeadVoicemail, setLeadStage, queueLeadBuild, scheduleCallback, clearCallback, type ContactSlot, type BookForContactState } from "../actions";
 import type { ForgeSiteItem } from "../sites/sites-queue";
 import type { LeadHistoryEvent } from "@/lib/forge-outreach";
+import { cardClass, StatusPill } from "@/components/ui";
 
 // `total` = successful touches (delivered email + text + call). `failed` = bounced email sends
 // (attempted, not delivered) — kept out of `total` so a bounced lead never reads as "contacted".
@@ -158,7 +159,7 @@ function StageDropdown({ itemId, stage }: { itemId: string; stage: LeadStage }) 
         <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="opacity-70"><path d="M6 9l6 6 6-6" /></svg>
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 w-32 overflow-hidden rounded-xl border border-line bg-background py-1 text-left shadow-lg">
+        <div className={cardClass({ radius: "xl", padding: "none", className: "absolute right-0 top-full z-30 mt-1 w-32 overflow-hidden py-1 text-left shadow-lg" })}>
           {([["new", "New"], ["contacted", "Contacted"], ["hot", "Hot"], ["reschedule", "Reschedule"], ["declined", "Declined"]] as const).map(([v, l]) => {
             const active = stage === v || (v === "declined" && stage === "opted_out");
             return (
@@ -186,12 +187,12 @@ const HIST: Record<LeadHistoryEvent["kind"], { icon: string; verb: string; outco
   code: { icon: "🎟️", verb: "Texted callback code", outcome: "sent" },
   voicemail: { icon: "📞", verb: "Dropped a voicemail", outcome: "sent" },
 };
-const OUTCOME_CLS: Record<Outcome, string> = {
-  positive: "bg-emerald-50 text-emerald-700",
-  sent: "bg-blue-50 text-blue-700",
-  neutral: "bg-surface text-ink-soft",
-  negative: "bg-red-50 text-red-700",
-};
+const OUTCOME_TONE = {
+  positive: "success",
+  sent: "info",
+  neutral: "neutral",
+  negative: "danger",
+} as const;
 const OUTCOME_LABEL: Record<Outcome, string> = { positive: "success", sent: "sent", neutral: "attempt", negative: "failed" };
 
 function Timeline({ history }: { history: LeadHistoryEvent[] }) {
@@ -209,11 +210,11 @@ function Timeline({ history }: { history: LeadHistoryEvent[] }) {
         const expandable = paras.length > 1 || (paras[0]?.length ?? 0) > 140;
         const isOpen = open === i;
         return (
-          <li key={i} className="rounded-xl border border-line bg-background p-3">
+          <li key={i} className={cardClass({ radius: "xl", padding: "none", className: "p-3" })}>
             <div className="flex items-center gap-2">
               <span aria-hidden>{e.failed && e.kind !== "bounce" ? "⚠️" : h.icon}</span>
               <span className={`font-semibold ${e.failed ? "text-red-700" : "text-ink"}`}>{verb}</span>
-              <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${OUTCOME_CLS[outcome]}`}>{OUTCOME_LABEL[outcome]}</span>
+              <StatusPill tone={OUTCOME_TONE[outcome]}>{OUTCOME_LABEL[outcome]}</StatusPill>
               <span className="ml-auto text-xs text-ink-soft" suppressHydrationWarning>{relTime(e.at)}</span>
             </div>
             {e.subject && <p className="mt-1.5 text-sm font-medium text-ink">“{e.subject}”</p>}
@@ -284,7 +285,7 @@ function BookForLead({ siteId, onBooked }: { siteId: string; onBooked: () => voi
   if (state.ok) return <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{state.message}</div>;
 
   return (
-    <form action={action} className="mt-2 rounded-xl border border-line bg-surface p-3">
+    <form action={action} className={cardClass({ radius: "xl", tone: "surface", padding: "none", className: "mt-2 p-3" })}>
       <input type="hidden" name="siteId" value={siteId} />
       <input type="hidden" name="startTime" value={slot} />
       <div className="flex flex-wrap gap-1.5">

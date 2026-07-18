@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
+import { cardClass } from "@/components/ui";
 
 export const metadata: Metadata = {
   title: "Connect your domain",
@@ -51,7 +52,7 @@ export default async function TransferPage() {
         </p>
 
         {/* Option A: point DNS */}
-        <section className="mt-10 rounded-2xl border border-line bg-surface p-8">
+        <section className={cardClass({ tone: "surface", padding: "xl", className: "mt-10" })}>
           <h2 className="text-lg font-bold tracking-tight">Option A — Point it at us (recommended)</h2>
           <p className="mt-1 text-sm text-ink-soft">
             Stay with your current registrar (GoDaddy, Namecheap, etc.) and just
@@ -62,7 +63,7 @@ export default async function TransferPage() {
               Go to wherever you bought the domain and open its DNS settings.
             </Step>
             <Step n={2} title="Add these two records">
-              <div className="mt-2 rounded-xl border border-line bg-background p-4">
+              <div className={cardClass({ radius: "xl", padding: "sm", className: "mt-2" })}>
                 <Record type="A" name="@" value="76.76.21.21" />
                 <Record type="CNAME" name="www" value="cname.vercel-dns.com" />
               </div>
@@ -76,7 +77,7 @@ export default async function TransferPage() {
         </section>
 
         {/* Option B: transfer */}
-        <section className="mt-6 rounded-2xl border border-line bg-surface p-8">
+        <section className={cardClass({ tone: "surface", padding: "xl", className: "mt-6" })}>
           <h2 className="text-lg font-bold tracking-tight">Option B — Transfer it to us</h2>
           <p className="mt-1 text-sm text-ink-soft">
             We become your registrar and manage renewals. Takes 5–7 days (a

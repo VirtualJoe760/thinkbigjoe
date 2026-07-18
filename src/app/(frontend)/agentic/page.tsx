@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { SiteNav } from "@/components/marketing/site-nav";
+import { cardClass } from "@/components/ui";
 
 export const metadata: Metadata = {
   title: "AI Agent Sales Pipelines",
@@ -144,7 +145,7 @@ export default function AgenticPage() {
                   "Wired into your CRM, calendar, and site through secure integrations",
                   "Ongoing tuning + support as your business grows",
                 ].map((item) => (
-                  <li key={item} className="flex gap-3 rounded-xl border border-line bg-background p-4 text-sm leading-relaxed">
+                  <li key={item} className={cardClass({ radius: "xl", padding: "sm", className: "flex gap-3 text-sm leading-relaxed" })}>
                     <svg viewBox="0 0 24 24" className="mt-0.5 h-4 w-4 flex-shrink-0 text-brand" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
                     <span>{item}</span>
                   </li>

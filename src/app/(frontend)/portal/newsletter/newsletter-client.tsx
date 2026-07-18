@@ -7,6 +7,7 @@ import {
   setNewsletterPaused, syncGoogleContacts, reviseDraft, setBanner,
 } from "./actions";
 import { TiptapEditor } from "./tiptap-editor";
+import { cardClass } from "@/components/ui";
 
 export type NewsletterBizPreview = {
   businessName: string;
@@ -263,7 +264,7 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
       </header>
 
       {/* ── Your customer list ── */}
-      <section className="rounded-2xl border border-line bg-background p-5">
+      <section className={cardClass()}>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-base font-bold">Your customers</h2>
           <span className="text-sm text-ink-soft">
@@ -319,7 +320,7 @@ export function NewsletterClient({ view }: { view: NewsletterView }) {
       </section>
 
       {/* ── This month's newsletter ── */}
-      <section className="rounded-2xl border border-line bg-background p-5">
+      <section className={cardClass()}>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-base font-bold">{view.monthLabel} newsletter</h2>
           {alreadySent && <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">Sent ✓</span>}

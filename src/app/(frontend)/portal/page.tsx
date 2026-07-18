@@ -10,6 +10,7 @@ import { auth } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
 import { PLANS, type PlanKey } from "@/lib/plans";
 import { trialStatus } from "@/lib/trial";
+import { cardClass } from "@/components/ui";
 import { TemplatePicker } from "./template-picker";
 
 export const metadata: Metadata = {
@@ -228,7 +229,7 @@ export default async function PortalPage({
                 <Link
                   key={page.href}
                   href={page.href}
-                  className="group flex flex-col gap-1 rounded-xl border border-line bg-surface p-5 transition-colors hover:border-brand hover:bg-brand-tint"
+                  className={cardClass({ radius: "xl", tone: "surface", className: "group flex flex-col gap-1 transition-colors hover:border-brand hover:bg-brand-tint" })}
                 >
                   <span className="font-semibold tracking-tight group-hover:text-brand">
                     {page.label}
@@ -250,7 +251,7 @@ export default async function PortalPage({
             {mySites.map((site) => {
               const t = trialStatus(site);
               return (
-              <div key={site.id} className="rounded-2xl border border-line bg-surface p-8">
+              <div key={site.id} className={cardClass({ tone: "surface", padding: "xl" })}>
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="text-xl font-bold tracking-tight">{site.businessName}</h3>
                   {t.state === "paid" ? (
@@ -313,7 +314,7 @@ export default async function PortalPage({
                     </p>
 
                     {site.domain ? (
-                      <div className="mt-4 rounded-xl border border-line bg-background p-4">
+                      <div className={cardClass({ radius: "xl", padding: "sm", className: "mt-4" })}>
                         <p className="text-sm font-semibold">🌐 {site.domain}</p>
                         <p className="mt-1 text-xs text-ink-soft">
                           {site.domainStatus === "registered"
@@ -465,7 +466,7 @@ export default async function PortalPage({
             })}
             <Link
               href="/portal/claim"
-              className="group flex flex-col justify-center rounded-2xl border border-dashed border-line bg-surface p-8 text-center transition-colors hover:border-brand hover:bg-brand-tint"
+              className={cardClass({ tone: "surface", padding: "xl", className: "group flex flex-col justify-center border-dashed text-center transition-colors hover:border-brand hover:bg-brand-tint" })}
             >
               <span className="text-2xl">＋</span>
               <span className="mt-1 font-semibold tracking-tight group-hover:text-brand">
@@ -477,7 +478,7 @@ export default async function PortalPage({
             </Link>
             <Link
               href="/portal/build"
-              className="group flex flex-col justify-center rounded-2xl border border-dashed border-line bg-surface p-8 text-center transition-colors hover:border-brand hover:bg-brand-tint"
+              className={cardClass({ tone: "surface", padding: "xl", className: "group flex flex-col justify-center border-dashed text-center transition-colors hover:border-brand hover:bg-brand-tint" })}
             >
               <span className="text-2xl">🛠️</span>
               <span className="mt-1 font-semibold tracking-tight group-hover:text-brand">
@@ -489,7 +490,7 @@ export default async function PortalPage({
             </Link>
             <Link
               href="/portal/rebuild"
-              className="group flex flex-col justify-center rounded-2xl border border-dashed border-line bg-surface p-8 text-center transition-colors hover:border-brand hover:bg-brand-tint"
+              className={cardClass({ tone: "surface", padding: "xl", className: "group flex flex-col justify-center border-dashed text-center transition-colors hover:border-brand hover:bg-brand-tint" })}
             >
               <span className="text-2xl">↻</span>
               <span className="mt-1 font-semibold tracking-tight group-hover:text-brand">
@@ -509,7 +510,7 @@ export default async function PortalPage({
           <div className="mt-4 grid gap-6 md:grid-cols-2">
             <Link
               href="/solutions"
-              className="group rounded-2xl border border-line bg-surface p-8 transition-colors hover:border-brand hover:bg-brand-tint"
+              className={cardClass({ tone: "surface", padding: "xl", className: "group transition-colors hover:border-brand hover:bg-brand-tint" })}
             >
               <span className="text-2xl">🤖</span>
               <h3 className="mt-2 text-xl font-bold tracking-tight group-hover:text-brand">
@@ -527,7 +528,7 @@ export default async function PortalPage({
 
             <Link
               href="/portal/receptionist"
-              className="group rounded-2xl border border-line bg-surface p-8 transition-colors hover:border-brand hover:bg-brand-tint"
+              className={cardClass({ tone: "surface", padding: "xl", className: "group transition-colors hover:border-brand hover:bg-brand-tint" })}
             >
               <span className="text-2xl">🎙️</span>
               <h3 className="mt-2 text-xl font-bold tracking-tight group-hover:text-brand">
@@ -550,7 +551,7 @@ export default async function PortalPage({
             {isAdmin ? "Client" : "Your account"}
           </h2>
           <div className="mt-4 grid gap-6 md:grid-cols-2">
-            <div className="rounded-2xl border border-line bg-surface p-8">
+            <div className={cardClass({ tone: "surface", padding: "xl" })}>
               <h3 className="text-xl font-bold tracking-tight">Book a call with Joe</h3>
               <p className="mt-2 leading-relaxed text-ink-soft">
                 Grab a 30-minute strategy call over Google Meet — talk plans, your
@@ -564,7 +565,7 @@ export default async function PortalPage({
               </Link>
             </div>
 
-            <div className="rounded-2xl border border-line bg-surface p-8">
+            <div className={cardClass({ tone: "surface", padding: "xl" })}>
               <h3 className="text-xl font-bold tracking-tight">Billing</h3>
               <p className="mt-2 leading-relaxed text-ink-soft">
                 Manage your payment method, view invoices, and update billing

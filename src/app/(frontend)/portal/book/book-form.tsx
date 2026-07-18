@@ -3,6 +3,8 @@
 import { useEffect, useState, useTransition } from "react";
 import { useActionState } from "react";
 
+import { inputClass } from "@/components/ui";
+
 import { bookStrategyCall, getPortalSlots, requestCallOutsideWindow, type BookState, type PortalSlot } from "../actions";
 
 const TZ = "America/Los_Angeles";
@@ -127,7 +129,7 @@ export function BookForm({ defaultName, email }: { defaultName?: string | null; 
           name="reason"
           rows={3}
           placeholder="e.g. I'd like to add the AI receptionist and connect my domain."
-          className="mt-2 w-full rounded-xl border border-line bg-background px-3.5 py-2.5 text-sm leading-relaxed text-ink focus:border-brand focus:outline-none"
+          className={inputClass({ className: "leading-relaxed" })}
         />
       </label>
 
@@ -186,7 +188,7 @@ function OutOfWindowRequest() {
             <input
               name="preferred"
               placeholder="e.g. weekday mornings before 10, or Thursday afternoon"
-              className="mt-2 w-full rounded-xl border border-line bg-background px-3.5 py-2.5 text-sm text-ink focus:border-brand focus:outline-none"
+              className={inputClass()}
             />
           </label>
           <label className="block">
@@ -194,7 +196,7 @@ function OutOfWindowRequest() {
             <input
               name="reason"
               placeholder="What you'd like to talk about"
-              className="mt-2 w-full rounded-xl border border-line bg-background px-3.5 py-2.5 text-sm text-ink focus:border-brand focus:outline-none"
+              className={inputClass()}
             />
           </label>
           {state.message && !state.ok && <p className="text-sm font-medium text-red-600">{state.message}</p>}

@@ -11,6 +11,7 @@ import {
   type DomainRegisterState,
   type DomainCheckoutState,
 } from "../actions";
+import { cardClass } from "@/components/ui";
 
 const checkInit: DomainCheckState = { ok: false, message: "" };
 const regInit: DomainRegisterState = { ok: false, message: "" };
@@ -46,7 +47,7 @@ export function DomainForm() {
   return (
     <div className="space-y-4">
       {/* Step 1 — search */}
-      <form action={checkAction} className="rounded-2xl border border-line bg-surface p-8">
+      <form action={checkAction} className={cardClass({ tone: "surface", padding: "xl" })}>
         <label htmlFor="domain" className="block text-sm font-semibold text-ink">
           The domain you want
         </label>
@@ -77,7 +78,7 @@ export function DomainForm() {
 
       {/* Step 2 — result */}
       {showResult && !check.available && (
-        <div className="rounded-2xl border border-line bg-surface p-6">
+        <div className={cardClass({ tone: "surface", padding: "lg" })}>
           <p className="text-sm font-medium text-ink">
             <span className="font-mono">{check.domain}</span> isn't available — try another above.
           </p>
@@ -107,7 +108,7 @@ export function DomainForm() {
       )}
 
       {showResult && check.available && !check.hasCredit && (
-        <form action={buyAction} className="rounded-2xl border border-line bg-surface p-6">
+        <form action={buyAction} className={cardClass({ tone: "surface", padding: "lg" })}>
           <input type="hidden" name="domain" value={check.domain} />
           <p className="text-sm font-medium text-ink">
             <span className="font-mono">{check.domain}</span> is available for{" "}

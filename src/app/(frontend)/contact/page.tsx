@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { SiteNav } from "@/components/marketing/site-nav";
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { BUSINESS } from "@/lib/business";
+import { cardClass, inputClass, Eyebrow } from "@/components/ui";
 
 export const metadata: Metadata = {
   title: "Contact",
@@ -21,17 +22,17 @@ export default async function ContactPage({ searchParams }: { searchParams: Prom
           Questions about a website, the AI receptionist, or anything else? Reach out — we usually reply the same day.
         </p>
 
-        <div className="mt-6 grid gap-3 rounded-2xl border border-line bg-surface p-5 sm:grid-cols-2">
+        <div className={cardClass({ tone: "surface", className: "mt-6 grid gap-3 sm:grid-cols-2" })}>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">Email</p>
+            <Eyebrow>Email</Eyebrow>
             <a href={`mailto:${BUSINESS.email}`} className="mt-1 block font-semibold text-brand hover:underline">{BUSINESS.email}</a>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">Phone</p>
+            <Eyebrow>Phone</Eyebrow>
             <a href={`tel:${BUSINESS.phoneHref}`} className="mt-1 block font-semibold text-brand hover:underline">{BUSINESS.phone}</a>
           </div>
           <div className="sm:col-span-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">Business</p>
+            <Eyebrow>Business</Eyebrow>
             <p className="mt-1 text-sm text-ink">{BUSINESS.dba} · {BUSINESS.address}</p>
           </div>
         </div>
@@ -55,24 +56,24 @@ export default async function ContactPage({ searchParams }: { searchParams: Prom
           <div className="grid gap-5 sm:grid-cols-2">
             <label className="block">
               <span className="text-sm font-semibold text-ink">Name *</span>
-              <input name="name" required className="mt-2 w-full rounded-xl border border-line bg-background px-3.5 py-2.5 text-sm text-ink focus:border-brand focus:outline-none" />
+              <input name="name" required className={inputClass()} />
             </label>
             <label className="block">
               <span className="text-sm font-semibold text-ink">Phone</span>
-              <input name="phone" type="tel" placeholder="(480) 555-1234" className="mt-2 w-full rounded-xl border border-line bg-background px-3.5 py-2.5 text-sm text-ink focus:border-brand focus:outline-none" />
+              <input name="phone" type="tel" placeholder="(480) 555-1234" className={inputClass()} />
             </label>
           </div>
           <label className="block">
             <span className="text-sm font-semibold text-ink">Email *</span>
-            <input name="email" type="email" required className="mt-2 w-full rounded-xl border border-line bg-background px-3.5 py-2.5 text-sm text-ink focus:border-brand focus:outline-none" />
+            <input name="email" type="email" required className={inputClass()} />
           </label>
           <label className="block">
             <span className="text-sm font-semibold text-ink">Message *</span>
-            <textarea name="message" rows={4} required className="mt-2 w-full rounded-xl border border-line bg-background px-3.5 py-2.5 text-sm text-ink focus:border-brand focus:outline-none" />
+            <textarea name="message" rows={4} required className={inputClass()} />
           </label>
 
           {/* Explicit, itemized consent — the A2P 10DLC opt-in record. */}
-          <fieldset className="space-y-3 rounded-xl border border-line bg-surface p-4">
+          <fieldset className={cardClass({ radius: "xl", tone: "surface", padding: "sm", className: "space-y-3" })}>
             <legend className="px-1 text-sm font-semibold text-ink">How can we reach you?</legend>
 
             <label className="flex items-start gap-3 text-sm text-ink-soft">
