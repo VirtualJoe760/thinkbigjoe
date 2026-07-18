@@ -8,6 +8,7 @@ import { calendarHealth } from "@/lib/gcal";
 import { getForgeDigest } from "@/lib/forge-stats";
 import { getPendingReplies } from "@/lib/forge-outreach";
 import { AutoRefresh } from "@/components/auto-refresh";
+import { Card, cardClass, StatGrid } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -166,7 +167,7 @@ export default async function OverviewPage() {
         </p>
 
         {/* Health tiles — growth + throughput at a glance */}
-        <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3">
+        <StatGrid cols={3} className="mt-6">
           {metrics.map((m) => (
             <div key={m.label} className="rounded-xl bg-surface p-4">
               <div className="text-sm text-ink-soft">{m.label}</div>
@@ -174,7 +175,7 @@ export default async function OverviewPage() {
               <div className="mt-0.5 text-xs text-ink-soft">{m.sub}</div>
             </div>
           ))}
-        </div>
+        </StatGrid>
 
         {/* Engine flow — the forge digest at a glance (are the build agents running?) */}
         <div className="mt-8 flex items-center justify-between">
@@ -183,7 +184,7 @@ export default async function OverviewPage() {
             Engine room →
           </Link>
         </div>
-        <div className="mt-2 rounded-2xl border border-line bg-background p-5">
+        <div className={cardClass({ className: "mt-2" })}>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="text-sm font-semibold">
               Forge{" "}
@@ -223,7 +224,7 @@ export default async function OverviewPage() {
 
         {/* Communications + Sales */}
         <div className="mt-8 grid gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-line bg-background p-5">
+          <Card>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-bold tracking-tight">Recent communications</h2>
               <Link href="/command/leads" className="text-xs font-semibold text-brand hover:underline">
@@ -247,9 +248,9 @@ export default async function OverviewPage() {
                 ))}
               </ul>
             )}
-          </div>
+          </Card>
 
-          <div className="rounded-2xl border border-line bg-background p-5">
+          <Card>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-bold tracking-tight">Recent sales</h2>
               <span className="text-xs font-semibold text-ink-soft">{customers} total</span>
@@ -269,11 +270,11 @@ export default async function OverviewPage() {
                 ))}
               </ul>
             )}
-          </div>
+          </Card>
         </div>
 
         {/* Recent builds */}
-        <div className="mt-4 rounded-2xl border border-line bg-background p-5">
+        <div className={cardClass({ className: "mt-4" })}>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-bold tracking-tight">Recent builds</h2>
             <Link href="/command/prospects" className="text-xs font-semibold text-brand hover:underline">
@@ -302,7 +303,7 @@ export default async function OverviewPage() {
         </div>
 
         {/* Recent sign-ups — did the people we reached actually create an account? */}
-        <div className="mt-4 rounded-2xl border border-line bg-background p-5">
+        <div className={cardClass({ className: "mt-4" })}>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-bold tracking-tight">Recent sign-ups</h2>
             <span className="text-xs font-semibold text-ink-soft">{signups} accounts</span>
@@ -334,7 +335,7 @@ export default async function OverviewPage() {
         </div>
 
         {/* Upcoming appointments */}
-        <div className="mt-4 rounded-2xl border border-line bg-background p-5">
+        <div className={cardClass({ className: "mt-4" })}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold tracking-tight">Upcoming appointments</h2>
@@ -429,7 +430,7 @@ export default async function OverviewPage() {
         </div>
 
         {/* Agent activity — proof the OpenClaw crew is working */}
-        <div className="mt-4 rounded-2xl border border-line bg-background p-5">
+        <div className={cardClass({ className: "mt-4" })}>
           <h2 className="mb-3 text-sm font-bold tracking-tight">Agent activity</h2>
           {recentActivity.length === 0 ? (
             <p className="text-sm text-ink-soft">Nothing logged yet.</p>

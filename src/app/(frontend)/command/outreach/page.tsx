@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { requireAdmin } from "@/lib/require-admin";
 import { getOutreachQueue } from "@/lib/forge-outreach";
+import { cardClass } from "@/components/ui";
 import { OutreachCard } from "./outreach-card";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +38,7 @@ export default async function OutreachPage() {
         </div>
 
         {queue.length === 0 ? (
-          <div className="mt-6 rounded-2xl border border-line bg-background p-8 text-center text-ink-soft">
+          <div className={cardClass({ padding: "xl", className: "mt-6 text-center text-ink-soft" })}>
             No approved sites yet — approve built sites in Prospecting and they line up here for outreach.
           </div>
         ) : (

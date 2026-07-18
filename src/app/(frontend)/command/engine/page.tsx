@@ -4,6 +4,7 @@ import { desc, sql } from "drizzle-orm";
 import { db, activityLog, designReports } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { getForgeDigest } from "@/lib/forge-stats";
+import { cardClass } from "@/components/ui";
 import { ClearBuildCache } from "./clear-cache";
 import { EngineControls } from "./engine-controls";
 import { ActivityChart } from "./activity-chart";
@@ -57,7 +58,7 @@ function liveUrlOf(metadata: unknown): string | null {
 
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
-    <div className="rounded-xl border border-line bg-surface px-4 py-3">
+    <div className={cardClass({ radius: "xl", tone: "surface", padding: "none", className: "px-4 py-3" })}>
       <p className="text-[11px] font-medium uppercase tracking-wide text-ink-soft">{label}</p>
       <p className="mt-0.5 text-xl font-bold tabular-nums text-ink">{value}</p>
       {sub && <p className="text-[11px] text-ink-soft">{sub}</p>}
@@ -163,7 +164,7 @@ export default async function EnginePage() {
         </p>
 
         {/* Spend gauge */}
-        <section className="mt-6 rounded-2xl border border-line bg-background p-5">
+        <section className={cardClass({ className: "mt-6" })}>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-base font-bold tracking-tight">Weekly spend</h2>
             <span className="text-sm text-ink-soft">
@@ -192,7 +193,7 @@ export default async function EnginePage() {
         </div>
 
         {/* Preview engine — the sell-first pre-sale pages (one Gemini call each; the claim triggers the build) */}
-        <section className="mt-4 rounded-2xl border border-line bg-background p-5">
+        <section className={cardClass({ className: "mt-4" })}>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-base font-bold tracking-tight">Preview engine</h2>
             <span className="text-sm text-ink-soft">
@@ -224,7 +225,7 @@ export default async function EnginePage() {
         </div>
 
         {/* Design research — the Brand Lead's accumulating reports per vertical, each verifiable by its cited sources */}
-        <section className="mt-4 rounded-2xl border border-line bg-background p-5">
+        <section className={cardClass({ className: "mt-4" })}>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-base font-bold tracking-tight">Design research</h2>
             <span className="text-sm text-ink-soft">
@@ -247,7 +248,7 @@ export default async function EnginePage() {
         </section>
 
         {/* Activity chart */}
-        <section className="mt-4 rounded-2xl border border-line bg-background p-5">
+        <section className={cardClass({ className: "mt-4" })}>
           <h2 className="mb-2 text-base font-bold tracking-tight">Activity</h2>
           <ActivityChart data={digest.series} />
         </section>
@@ -258,7 +259,7 @@ export default async function EnginePage() {
         </div>
 
         {/* Build queue */}
-        <section className="mt-4 rounded-2xl border border-line bg-background p-5">
+        <section className={cardClass({ className: "mt-4" })}>
           <div className="flex items-center justify-between text-sm">
             <h2 className="text-base font-bold tracking-tight">Build queue</h2>
             <span className="text-ink-soft">{buildQueue.total} in line</span>
@@ -295,7 +296,7 @@ export default async function EnginePage() {
         </section>
 
         {/* Edit queue */}
-        <section className="mt-4 rounded-2xl border border-line bg-background p-5">
+        <section className={cardClass({ className: "mt-4" })}>
           <div className="flex items-center justify-between text-sm">
             <h2 className="text-base font-bold tracking-tight">Customer edit queue</h2>
             <span className="text-ink-soft">{editQueue.total} waiting</span>
@@ -307,7 +308,7 @@ export default async function EnginePage() {
           ) : (
             <ol className="mt-3 flex flex-col gap-2">
               {editQueue.items.map((e) => (
-                <li key={e.id} className="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+                <li key={e.id} className={cardClass({ radius: "xl", tone: "surface", padding: "none", className: "flex items-center gap-3 px-4 py-3" })}>
                   <span className="text-base">✏️</span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-ink">{e.businessName}</p>
@@ -329,7 +330,7 @@ export default async function EnginePage() {
 
         {/* Maintenance */}
         <h2 className="mt-8 text-sm font-semibold uppercase tracking-widest text-ink-soft">Maintenance</h2>
-        <div className="mt-3 rounded-2xl border border-line bg-background p-4">
+        <div className={cardClass({ padding: "sm", className: "mt-3" })}>
           <ClearBuildCache />
           <p className="mt-2 text-xs text-ink-soft">
             Re-queues any build stuck over 25 minutes (a crashed or hung run) so the forge picks it up fresh on the next tick.
@@ -339,11 +340,11 @@ export default async function EnginePage() {
         {/* Activity feed */}
         <h2 className="mt-8 text-sm font-semibold uppercase tracking-widest text-ink-soft">Forge activity</h2>
         {activity.length === 0 ? (
-          <div className="mt-3 rounded-2xl border border-line bg-background p-8 text-center text-ink-soft">
+          <div className={cardClass({ padding: "xl", className: "mt-3 text-center text-ink-soft" })}>
             No forge activity yet.
           </div>
         ) : (
-          <div className="mt-3 divide-y divide-line rounded-2xl border border-line bg-background">
+          <div className={cardClass({ padding: "none", className: "mt-3 divide-y divide-line" })}>
             {activity.map((e) => {
               const live = liveUrlOf(e.metadata);
               return (

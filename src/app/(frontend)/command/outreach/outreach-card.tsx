@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 
 import { setOutreachSkip } from "../actions";
 import type { OutreachQueueItem } from "@/lib/forge-outreach";
+import { cardClass } from "@/components/ui";
 
 const BADGE: Record<OutreachQueueItem["status"], { label: string; cls: string }> = {
   queued: { label: "Queued · sends 10am", cls: "bg-blue-100 text-blue-700" },
@@ -24,7 +25,7 @@ export function OutreachCard({ item }: { item: OutreachQueueItem }) {
   };
 
   return (
-    <div className={`rounded-2xl border bg-background p-4 ${status === "skipped" ? "border-line opacity-60" : "border-line"}`}>
+    <div className={cardClass({ padding: "sm", className: status === "skipped" ? "opacity-60" : "" })}>
       <div className="flex flex-wrap items-center gap-3">
         <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink">{item.businessName}</span>
         <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${badge.cls}`}>{badge.label}</span>
@@ -44,7 +45,7 @@ export function OutreachCard({ item }: { item: OutreachQueueItem }) {
       </div>
 
       {open && (
-        <div className="mt-3 rounded-xl border border-line bg-surface p-3 text-sm">
+        <div className={cardClass({ radius: "xl", tone: "surface", padding: "none", className: "mt-3 p-3 text-sm" })}>
           <p className="font-semibold text-ink">{item.subject}</p>
           <div className="mt-2 space-y-2 text-ink-soft">
             {item.body.split("\n\n").map((p, i) => <p key={i}>{p}</p>)}

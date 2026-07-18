@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from "react";
 
+import { Card } from "@/components/ui";
+
 import { setDesignReportStatus } from "../actions";
 
 export type DesignReport = {
@@ -60,7 +62,7 @@ function ReportCard({ report }: { report: DesignReport }) {
   const sources = (report.sources ?? []).filter((s) => s && (s.url || s.label));
 
   return (
-    <div className="rounded-xl border border-line bg-surface p-4">
+    <Card radius="xl" tone="surface" padding="sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -153,7 +155,7 @@ function ReportCard({ report }: { report: DesignReport }) {
         )}
         {note && <span className="text-[11px] text-ink-soft">{note}</span>}
       </div>
-    </div>
+    </Card>
   );
 }
 

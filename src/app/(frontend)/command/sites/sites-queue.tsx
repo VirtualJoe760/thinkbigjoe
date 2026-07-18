@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { denyForgeSite, deleteForgeSite, sendForgeOutreach, skipForgeOutreach, approveForMarketing, unapproveMarketing, requestForgeRevision, requestForgeRebuild } from "../actions";
 import { toast } from "@/components/toast";
+import { Card, cardClass } from "@/components/ui";
 
 export type ForgeSiteItem = {
   id: string;
@@ -186,7 +187,7 @@ function ContactCard({ item }: { item: ForgeSiteItem }) {
     item.linkedinUrl && { label: "LinkedIn", href: item.linkedinUrl },
   ].filter(Boolean) as Array<{ label: string; href: string }>;
   return (
-    <div className="mt-2 rounded-xl border border-line bg-surface px-3 py-2.5">
+    <div className={cardClass({ radius: "xl", tone: "surface", padding: "none", className: "mt-2 px-3 py-2.5" })}>
       <div className="flex flex-wrap items-center gap-2">
         {item.ownerName && <span className="text-sm font-semibold text-ink">{item.ownerName}</span>}
         {item.phone ? (
@@ -293,7 +294,7 @@ function DiscoveredRow({ item }: { item: ForgeSiteItem }) {
   if (removed) return null;
 
   return (
-    <div className="rounded-2xl border border-line bg-background p-4">
+    <Card padding="sm">
       <div className="grid gap-4 sm:grid-cols-[1fr_15rem]">
         <div className="order-2 min-w-0 sm:order-1">
           <div className="flex items-start justify-between gap-2">
@@ -362,7 +363,7 @@ function DiscoveredRow({ item }: { item: ForgeSiteItem }) {
           <BusinessMap item={item} />
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -386,7 +387,7 @@ function BuiltActions({ item }: { item: ForgeSiteItem }) {
   };
 
   return (
-    <div className="mt-3 rounded-xl border border-line bg-surface p-3">
+    <div className={cardClass({ radius: "xl", tone: "surface", padding: "none", className: "mt-3 p-3" })}>
       <div className="flex flex-wrap items-center gap-2">
         <a href={`/portal/edit/${item.id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border border-line bg-background px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface">
           ✏️ Edit site
@@ -471,7 +472,7 @@ function BuiltActions({ item }: { item: ForgeSiteItem }) {
 function SimpleRow({ item }: { item: ForgeSiteItem }) {
   const showOutreach = item.status === "built" && !item.claimed;
   return (
-    <div className="rounded-2xl border border-line bg-background p-4">
+    <Card padding="sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -494,7 +495,7 @@ function SimpleRow({ item }: { item: ForgeSiteItem }) {
       <ContactCard item={item} />
       {/* Outreach only after the site is approved for marketing (it's a lead then). */}
       {showOutreach && item.marketingApprovedAt && <OutreachPanel item={item} />}
-    </div>
+    </Card>
   );
 }
 

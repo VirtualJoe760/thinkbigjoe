@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { SiteAnalysis } from "@/lib/site-analyzer";
+import { Card, cardClass } from "@/components/ui";
 
 export type AnalysisRow = {
   id: number;
@@ -103,7 +104,7 @@ export function Analyzer({
           <div className="mt-3 space-y-2">
             {rebuildRequests.length === 0 && <p className="text-sm text-ink-soft">None yet.</p>}
             {rebuildRequests.map((r) => (
-              <div key={r.id} className="flex items-center justify-between gap-2 rounded-xl border border-line bg-background p-3">
+              <div key={r.id} className={cardClass({ radius: "xl", padding: "none", className: "flex items-center justify-between gap-2 p-3" })}>
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium text-ink">{r.businessName || r.existingUrl}</div>
                   <a href={r.existingUrl} target="_blank" rel="noreferrer" className="truncate text-xs text-brand underline">
@@ -136,7 +137,7 @@ export function Analyzer({
               <button
                 key={r.id}
                 onClick={() => r.analysis && setCurrent(r.analysis)}
-                className="flex w-full items-center justify-between gap-2 rounded-xl border border-line bg-background p-3 text-left transition-colors hover:border-brand"
+                className={cardClass({ radius: "xl", padding: "none", className: "flex w-full items-center justify-between gap-2 p-3 text-left transition-colors hover:border-brand" })}
               >
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium text-ink">{r.businessName || r.url}</div>
@@ -161,7 +162,7 @@ export function Analyzer({
 function AnalysisCard({ a }: { a: SiteAnalysis }) {
   const b = a.business;
   return (
-    <div className="rounded-2xl border border-line bg-background p-5">
+    <Card>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-3">
@@ -266,7 +267,7 @@ function AnalysisCard({ a }: { a: SiteAnalysis }) {
           </div>
         </Field>
       )}
-    </div>
+    </Card>
   );
 }
 

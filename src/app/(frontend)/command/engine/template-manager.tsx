@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from "react";
 
+import { Card, cardClass } from "@/components/ui";
+
 import { setTemplateEnabled, retireTemplate, restoreTemplate, requestTemplateFix } from "../actions";
 
 export type TemplateRow = {
@@ -86,7 +88,7 @@ export function TemplateManager({
   }
 
   return (
-    <div className="rounded-2xl border border-line bg-background p-5">
+    <Card>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-bold tracking-tight">Templates</h2>
@@ -194,7 +196,7 @@ export function TemplateManager({
 
       {/* Retired tray */}
       {tray.length > 0 && (
-        <div className="mt-5 rounded-xl border border-line bg-surface p-4">
+        <div className={cardClass({ radius: "xl", tone: "surface", padding: "sm", className: "mt-5" })}>
           <button type="button" onClick={() => setShowTray((s) => !s)} className="flex w-full items-center justify-between text-sm font-semibold text-ink-soft">
             <span>Retired ({tray.length})</span>
             <span>{showTray ? "Hide" : "Show"}</span>
@@ -240,7 +242,7 @@ export function TemplateManager({
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
