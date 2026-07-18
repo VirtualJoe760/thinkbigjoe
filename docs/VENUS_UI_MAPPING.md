@@ -115,8 +115,12 @@ once claimed) + **Book an appointment**.
 
 For a signed-up user the card adds a **User Profile block**: account # (from `better_auth.user`), plan,
 real subscription/billing state (`subscription_status` / `one_time_paid` / `paid_at`, not just a boolean),
-and live-service status (receptionist, domain). Pipeline stages: `new → contacted → replied → bad-contact
-→ user → customer`. Deliverability is honored: a **bounced email is a failed attempt, never a "touch"**
+and live-service status (receptionist, domain). Pipeline stages: `new → contacted → hot → reschedule →
+replied → bad-contact → user → customer`. The **Reschedule** stage is a manual, high-priority flag Joe
+sets (`setLeadStage(id, "reschedule")` → `forge_sites.lead_stage='reschedule'`) when a near-won client
+bailed on the setup/payment call and needs to rebook — setting it **also un-pauses the AI** (`ai_paused=
+false`) so the outreach agent works them via the `list_forge_reschedule_due` tool + `TBJ Forge Reschedule
+Nudge` cron. Deliverability is honored: a **bounced email is a failed attempt, never a "touch"**
 (see [AUTH.md](AUTH.md) → "Deliverability principle").
 
 **Replies to respond to** (top of the page, when any): inbound email replies caught by the inbox
@@ -201,6 +205,7 @@ tool, and cron are all thin callers. Previews cost ~$0 and expire after 14 days 
 | TBJ Forge Contact Enrichment | prospector | 3×/day | `list_forge_needs_contact`, `enrich_forge_contact`, `list_forge_needs_callprep`, `save_forge_callprep` | Contact cards + Call-prep card (Leads) — **free browser research, explicitly told NOT to use paid Apify tools**, to keep ongoing spend to the cheap "finding" step only |
 | TBJ Forge Outreach | outreach | daily | `list_forge_preview_outreach` (prospects with a **preview** ready), `save_forge_outreach_draft`, `mark_forge_outreach_sent` | Prospecting → first-touch (draft → Approve & send). Pitch = "claim your preview" → claiming builds the site. |
 | TBJ Forge Follow-up | outreach | daily | `list_forge_followup_due` (now preview-aware), `save_forge_outreach_draft` | Same — touches 2–3, re-shares the preview link |
+| TBJ Forge Reschedule Nudge | outreach | 2×/day (3pm + 7pm) | `list_forge_reschedule_due`, `send_sms`, `save_forge_outreach_draft` | `/command/leads` **Reschedule** stage — Joe sets it by hand when a near-won client bails on the setup/payment call; setting it also un-pauses the AI for that client. Warmest leads; low-pressure "your site's ready, rebook in 2 min" nudge. |
 
 Full prompts, exact schedules, and the "ship full-stack" checklist for adding a cron live in
 `src/lib/venus-crons.mjs` itself (the file header) and [OPENCLAW.md](OPENCLAW.md).

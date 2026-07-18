@@ -164,6 +164,7 @@ export default async function LeadsPage() {
     if (paid) stage = "customer";
     else if (claimed) stage = "claimed";
     else if (lead.leadStage === "declined" || lead.outreachStatus === "opted_out") stage = "opted_out";
+    else if (lead.leadStage === "reschedule") stage = "reschedule";
     else if (lead.leadStage === "hot") stage = "hot";
     else if (lead.leadStage === "contacted") stage = "contacted";
     else if (lead.leadStage === "new") stage = "new";

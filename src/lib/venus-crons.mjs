@@ -147,6 +147,28 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
   },
 
   {
+    name: "TBJ Forge Reschedule Nudge",
+    id: "241192cc-2e68-4b5b-9933-f7f109122b2c",
+    agent: "outreach",
+    schedule: "0 15,19 * * *",
+    stagger: "3m",
+    summary: "Nudge near-won clients Joe marked 'Reschedule' to rebook their setup + payment call.",
+    tools: ["list_forge_reschedule_due", "send_sms", "save_forge_outreach_draft", "log_activity"],
+    uiSurface: ["/command/leads (Reschedule stage — Joe sets it by hand when a client bails on setup/payment)"],
+    eventTypes: ["forge_outreach_drafted", "sms_outreach_sent"],
+    prompt: `This is the reschedule run — your WARMEST leads. Joe manually marks a client 'Reschedule' when they got most of the way (often a live/claimed site) but bailed on the SETUP + PAYMENT call. Your job: get them effortlessly back on the calendar.
+
+1. PULL: call list_forge_reschedule_due — clients flagged 'reschedule' with the AI enabled and not yet paid. Each shows the business, owner, their site link + claim code, the channels to reach them, and any notes on what happened.
+
+2. NUDGE each one — SHORT, warm, zero pressure. Their site is ready and waiting on them; finishing setup + payment only takes a few minutes; make rebooking a single tap. Always include the book-a-call link. These people already wanted this — don't re-sell, just remove the friction to rebook.
+   - If you have a mobile: text them via send_sms (warmest, highest reply).
+   - Otherwise: draft with save_forge_outreach_draft(site_id, subject, body) for Joe to review + send.
+   Never guilt-trip, never chase more than gently — one warm touch per run.
+
+3. Finish with log_activity, event_type "forge_outreach_drafted" (or "sms_outreach_sent" if you texted), summary like "Nudged N reschedule clients". marketing-manager reads this for the digest — you don't message Joe directly.`,
+  },
+
+  {
     name: "TBJ Marketing Manager",
     id: "c7e4a1b8-2f63-4d90-a5c1-8b9e0d2f3a4c",
     agent: "marketing-manager",

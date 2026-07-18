@@ -877,6 +877,39 @@ async function toolListForgeFollowupDue() {
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
+async function toolListForgeRescheduleDue() {
+  // Near-won clients Joe flagged 'reschedule' — they got deep into the funnel but bailed on the
+  // setup/payment call and need to rebook. Highest-priority warm leads. AI-paused rows excluded.
+  const res = await query(
+    `SELECT id, slug, business_name, niche, city, owner_name, email, phone, live_url, claim_code,
+            instagram_url, facebook_url, contacted_at, contact_notes
+     FROM forge_sites
+     WHERE lead_stage = 'reschedule'
+       AND ai_paused = false
+       AND one_time_paid = false
+       AND (subscription_status IS NULL OR subscription_status NOT IN ('active', 'trialing'))
+     ORDER BY contacted_at DESC NULLS LAST
+     LIMIT 50`,
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: "No clients are waiting to reschedule right now." }] };
+  }
+  const lines = [`🗓️ **${res.rows.length} client(s) need to reschedule setup + payment:**`, "", `book-a-call link: ${APP_SITE_URL}/book-appointment`, ""];
+  for (const r of res.rows) {
+    const link = r.live_url || `${APP_SITE_URL}/s/${r.slug}`;
+    const channels = [r.phone && `📱 ${r.phone}`, r.email && `✉️ ${r.email}`, r.instagram_url && "IG", r.facebook_url && "FB"].filter(Boolean).join(" · ");
+    lines.push(`**#${r.id} ${r.business_name}** · ${r.niche || "—"} · ${r.city || "—"}${r.owner_name ? ` · owner: ${r.owner_name}` : ""}`);
+    lines.push(`   ${r.live_url ? "live site" : "preview"}: ${link} · claim code: ${r.claim_code || "—"}`);
+    lines.push(`   reach via: ${channels || "no channel on file"}${r.contacted_at ? ` · last touch: ${r.contacted_at}` : ""}`);
+    if (r.contact_notes) lines.push(`   notes: ${String(r.contact_notes).slice(0, 200)}`);
+    lines.push("");
+  }
+  lines.push(
+    `These are your WARMEST leads — they already wanted the site and just need to rebook the setup + payment call. For each, write a SHORT, warm, low-pressure nudge: their site is ready and waiting on them, it only takes a few minutes to finish setup, include the book-a-call link. Prefer a text (send_sms) if you have a mobile, else draft with save_forge_outreach_draft for Joe to review + send. Never pressure; make rebooking effortless.`,
+  );
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
 async function toolUpdateProspect({
   prospect_id, photo_url, email, phone, website_url, google_my_business_url, source,
   website_status, website_rating, website_notes, sales_opportunities,
@@ -1558,7 +1591,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.24.0" },
+  { name: "tbj-mcp", version: "2.25.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1860,6 +1893,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: { type: "object", properties: {} },
     },
     {
+      name: "list_forge_reschedule_due",
+      description: "List near-won clients Joe marked 'Reschedule' — they got most of the way (often a live/claimed site) but bailed on the SETUP + PAYMENT call and need to rebook. These are your highest-priority, warmest leads. For each, reach out warmly to get them back on the calendar to finish setup and pay: reference their site is ready and waiting, keep it short and low-pressure, and include the book-a-call link. Only clients with the AI enabled are returned. Draft with save_forge_outreach_draft or text via send_sms.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
       name: "save_forge_outreach_draft",
       description: "Draft the FIRST-TOUCH message for a built site, on the best channel you have. Warm + personal: (1) their new site is live (include the live URL), (2) the claim code to sign in and claim it, (3) an invite to talk. For channel='email', Joe reviews and sends it. For a social DM (instagram/facebook/linkedin), Joe reviews it, then YOU send it by messaging on that platform and call mark_forge_outreach_sent afterward. This is the AI's first touch — Joe calls them as the second touch.",
       inputSchema: {
@@ -2107,6 +2145,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "save_forge_outreach_draft": return toolSaveForgeOutreachDraft(args);
     case "mark_forge_outreach_sent": return toolMarkForgeOutreachSent(args);
     case "list_forge_followup_due": return toolListForgeFollowupDue(args);
+    case "list_forge_reschedule_due": return toolListForgeRescheduleDue(args);
     case "list_forge_needs_contact": return toolListForgeNeedsContact(args);
     case "enrich_forge_contact": return toolEnrichForgeContact(args);
     case "list_forge_needs_callprep": return toolListForgeNeedsCallprep(args);

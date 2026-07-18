@@ -14,7 +14,7 @@ export type AttemptStat = { call: number; text: number; email: number; failed: n
 
 // The CRM pipeline: a lead becomes a contact (we reach out), then a user profile once they set up
 // on the site (claim), then a paying customer. Each stage is computed server-side (see page.tsx).
-export type LeadStage = "new" | "contacted" | "hot" | "replied" | "opted_out" | "bounced" | "claimed" | "customer";
+export type LeadStage = "new" | "contacted" | "hot" | "reschedule" | "replied" | "opted_out" | "bounced" | "claimed" | "customer";
 export type LeadMeta = {
   stage: LeadStage;
   accountNumber: string | null;
@@ -32,13 +32,14 @@ const STAGE: Record<LeadStage, { label: string; dot: string; chip: string; blurb
   new: { label: "New", dot: "bg-emerald-500", chip: "bg-emerald-50 text-emerald-700", blurb: "Not contacted yet" },
   contacted: { label: "Contacted", dot: "bg-blue-500", chip: "bg-blue-50 text-blue-700", blurb: "Reached out — waiting" },
   hot: { label: "Hot", dot: "bg-orange-500", chip: "bg-orange-50 text-orange-700", blurb: "Strong interest — prioritize + close" },
+  reschedule: { label: "Reschedule", dot: "bg-indigo-500", chip: "bg-indigo-50 text-indigo-700", blurb: "Almost closed — needs to rebook setup + payment (AI on)" },
   replied: { label: "Replied", dot: "bg-amber-500", chip: "bg-amber-50 text-amber-700", blurb: "They wrote back — follow up" },
   opted_out: { label: "Declined", dot: "bg-rose-600", chip: "bg-rose-50 text-rose-700", blurb: "Texted STOP — call to confirm, then remove" },
   bounced: { label: "Bad contact", dot: "bg-red-500", chip: "bg-red-50 text-red-700", blurb: "Email bounced — hunting a new channel" },
   claimed: { label: "User", dot: "bg-violet-500", chip: "bg-violet-50 text-violet-700", blurb: "Signed up + claimed — not paid yet" },
   customer: { label: "Customer", dot: "bg-brand", chip: "bg-brand-tint text-brand", blurb: "Paying customer" },
 };
-const STAGE_ORDER: LeadStage[] = ["hot", "new", "contacted", "replied", "opted_out", "bounced", "claimed", "customer"];
+const STAGE_ORDER: LeadStage[] = ["hot", "reschedule", "new", "contacted", "replied", "opted_out", "bounced", "claimed", "customer"];
 
 const tel = (p: string) => p.replace(/[^\d+]/g, "");
 const firstName = (n: string) => (n || "").trim().split(/\s+/)[0] || "";
@@ -140,7 +141,7 @@ function StageDropdown({ itemId, stage }: { itemId: string; stage: LeadStage }) 
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
   const st = STAGE[stage];
-  const set = (v: "new" | "contacted" | "hot" | "declined") => {
+  const set = (v: "new" | "contacted" | "hot" | "reschedule" | "declined") => {
     setBusy(true);
     setOpen(false);
     setLeadStage(Number(itemId), v).finally(() => setBusy(false));
@@ -158,7 +159,7 @@ function StageDropdown({ itemId, stage }: { itemId: string; stage: LeadStage }) 
       </button>
       {open && (
         <div className="absolute right-0 top-full z-30 mt-1 w-32 overflow-hidden rounded-xl border border-line bg-background py-1 text-left shadow-lg">
-          {([["new", "New"], ["contacted", "Contacted"], ["hot", "Hot"], ["declined", "Declined"]] as const).map(([v, l]) => {
+          {([["new", "New"], ["contacted", "Contacted"], ["hot", "Hot"], ["reschedule", "Reschedule"], ["declined", "Declined"]] as const).map(([v, l]) => {
             const active = stage === v || (v === "declined" && stage === "opted_out");
             return (
               <button key={v} onClick={() => set(v)} className={`block w-full px-3 py-1.5 text-left text-xs font-medium hover:bg-surface ${active ? "text-brand" : "text-ink"}`}>
@@ -756,9 +757,9 @@ function ContactDetail({
             <div className="mt-3">
               <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Stage</p>
               <div className="inline-flex overflow-hidden rounded-full border border-line">
-                {(["new", "contacted", "hot", "declined"] as const).map((s, i) => {
+                {(["new", "contacted", "hot", "reschedule", "declined"] as const).map((s, i) => {
                   const active = meta.stage === s || (s === "declined" && meta.stage === "opted_out");
-                  const label = s === "declined" ? "Declined" : s === "hot" ? "Hot" : s === "contacted" ? "Contacted" : "New";
+                  const label = s === "declined" ? "Declined" : s === "hot" ? "Hot" : s === "reschedule" ? "Reschedule" : s === "contacted" ? "Contacted" : "New";
                   return (
                     <button
                       key={s}
@@ -769,7 +770,7 @@ function ContactDetail({
                       }}
                       className={`px-3.5 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${i > 0 ? "border-l border-line" : ""} ${
                         active
-                          ? s === "declined" ? "bg-rose-600 text-white" : s === "hot" ? "bg-orange-500 text-white" : "bg-brand text-white"
+                          ? s === "declined" ? "bg-rose-600 text-white" : s === "hot" ? "bg-orange-500 text-white" : s === "reschedule" ? "bg-indigo-500 text-white" : "bg-brand text-white"
                           : "bg-background text-ink-soft hover:bg-surface"
                       }`}
                     >

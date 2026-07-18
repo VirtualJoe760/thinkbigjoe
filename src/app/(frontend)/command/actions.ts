@@ -356,11 +356,14 @@ export async function renameContact(phone: string, name: string): Promise<{ ok: 
 }
 
 /**
- * Manually set a lead's pipeline stage (New · Contacted · Declined). "Declined" = someone said
- * they're not interested: suppresses further outreach (opted_out) and stamps declined_at so it can
- * be auto-removed after a few days if they never claim. New/Contacted clear the declined state.
+ * Manually set a lead's pipeline stage (New · Contacted · Hot · Reschedule · Declined).
+ * "Declined" = someone said they're not interested: suppresses further outreach (opted_out) and
+ * stamps declined_at so it can be auto-removed after a few days if they never claim.
+ * "Reschedule" = a near-won client who bailed on the setup/payment call and needs to rebook —
+ * un-pauses the AI and puts them on the agent's reschedule work-queue (list_forge_reschedule_due).
+ * New/Contacted/Hot/Reschedule clear the declined state.
  */
-export async function setLeadStage(siteId: number, stage: "new" | "contacted" | "hot" | "declined"): Promise<{ ok: boolean; message?: string }> {
+export async function setLeadStage(siteId: number, stage: "new" | "contacted" | "hot" | "reschedule" | "declined"): Promise<{ ok: boolean; message?: string }> {
   await assertAdmin();
   if (!Number.isFinite(siteId)) return { ok: false, message: "Bad lead id." };
   const [site] = await db.select({ businessName: forgeSites.businessName, outreachStatus: forgeSites.outreachStatus }).from(forgeSites).where(eq(forgeSites.id, siteId)).limit(1);
@@ -377,8 +380,14 @@ export async function setLeadStage(siteId: number, stage: "new" | "contacted" | 
       metadata: { detail: { siteId, note: "Marked Declined — not interested. Kept live a few days, then removed if unclaimed." } },
     }).catch(() => {});
   } else {
+    // "Reschedule" also flips the AI back on for this client so the comms agent works them.
     await db.update(forgeSites)
-      .set({ leadStage: stage, declinedAt: null, ...(site.outreachStatus === "opted_out" ? { outreachStatus: "none" as const } : {}) })
+      .set({
+        leadStage: stage,
+        declinedAt: null,
+        ...(stage === "reschedule" ? { aiPaused: false } : {}),
+        ...(site.outreachStatus === "opted_out" ? { outreachStatus: "none" as const } : {}),
+      })
       .where(eq(forgeSites.id, siteId));
     if (stage === "hot") {
       await db.insert(activityLog).values({
@@ -386,6 +395,13 @@ export async function setLeadStage(siteId: number, stage: "new" | "contacted" | 
         eventType: "lead_hot",
         summary: `🔥 ${site.businessName} — marked Hot (strong interest)`,
         metadata: { detail: { siteId, note: "Marked Hot — strong interest; prioritize for review + close." } },
+      }).catch(() => {});
+    } else if (stage === "reschedule") {
+      await db.insert(activityLog).values({
+        actor: "joe",
+        eventType: "lead_reschedule",
+        summary: `🗓️ ${site.businessName} — needs to reschedule setup + payment (AI re-enabled)`,
+        metadata: { detail: { siteId, note: "Almost closed — bailed on setup/payment. AI turned back on to rebook the call." } },
       }).catch(() => {});
     }
   }
