@@ -74,12 +74,6 @@ export function meetLinkOf(event: CalendarEvent): string | null {
   return video?.uri || null;
 }
 
-/** The calendar/Google-Meet host — `GCAL_CALENDAR_ID` (defaults to the connected account's primary).
- *  Change this env var to move bookings + the Meet to a different calendar/email. */
-export function bookingHost(): string {
-  return process.env.GCAL_CALENDAR_ID || "primary";
-}
-
 export interface TimeSlot {
   start: string; // ISO
   end: string; // ISO

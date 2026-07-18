@@ -6,7 +6,6 @@
 export type PlanKey = "website" | "voice" | "complete";
 export type BillingInterval = "month" | "year";
 
-export const ONE_TIME_BUILD_LABEL = "One-time website build";
 export const ONE_TIME_BUILD_AMOUNT = 300;
 
 export const PLANS: Record<

@@ -69,7 +69,3 @@ export const SOLUTIONS: Solution[] = [
     industry: "manufacturing",
   },
 ];
-
-export function getSolution(slug: string): Solution | undefined {
-  return SOLUTIONS.find((s) => s.slug === slug);
-}

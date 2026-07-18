@@ -27,9 +27,6 @@ const FROM = process.env.EMAIL_FROM || "ThinkBigJoe <no-reply@thinkbigjoe.com>";
 // (only the display name changes, so deliverability/auth stays on our verified domain).
 const FROM_ADDRESS = FROM.match(/<([^>]+)>/)?.[1] || FROM;
 
-/** True when SMTP env vars are present (host + user + pass). */
-export const isEmailConfigured = isConfigured;
-
 // ── SES transport (BULK — client newsletters) ─────────────────────────────────────────────────
 // Separate from the Zoho transactional transport above, on purpose: bulk volume must NOT ride the
 // mailbox (caps + ToS + it would risk transactional mail). Configured via SES SMTP credentials in

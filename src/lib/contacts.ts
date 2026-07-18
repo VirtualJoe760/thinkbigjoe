@@ -16,7 +16,6 @@ import { db, contacts, forgeSites } from "@/db";
 
 export type Contact = typeof contacts.$inferSelect;
 
-export type ContactRole = "owner" | "decision_maker" | "inbound_lead" | "other";
 export type ContactLifecycle = "prospect" | "lead" | "client" | "past_client";
 export type ContactSource = "scrape" | "enrichment" | "inbound" | "claim" | "manual";
 

@@ -23,18 +23,6 @@ export async function suppress(email: string, reason: SuppressReason, detail?: s
     .onConflictDoNothing();
 }
 
-/** True if this address is suppressed. */
-export async function isSuppressed(email: string): Promise<boolean> {
-  const e = norm(email);
-  if (!e) return true; // no address = don't send
-  const [row] = await db
-    .select({ id: emailSuppressions.id })
-    .from(emailSuppressions)
-    .where(sql`lower(email) = ${e}`)
-    .limit(1);
-  return Boolean(row);
-}
-
 /** The subset of `emails` that are suppressed — one query, for filtering a batch before sending. */
 export async function suppressedSet(emails: string[]): Promise<Set<string>> {
   const lowered = [...new Set(emails.map(norm).filter(Boolean))];

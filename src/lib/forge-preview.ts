@@ -23,10 +23,6 @@ export type PreviewContent = {
   model: string;
 };
 
-export function previewConfigured(): boolean {
-  return Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY);
-}
-
 function titleCase(s: string) {
   return s.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
