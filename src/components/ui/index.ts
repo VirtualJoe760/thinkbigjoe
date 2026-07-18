@@ -5,3 +5,5 @@ export * from "./button";
 export * from "./card";
 export * from "./field";
 export * from "./badge";
+export * from "./stat";
+export * from "./section";
