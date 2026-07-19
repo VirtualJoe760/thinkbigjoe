@@ -132,8 +132,15 @@ with `receptionist_status` `none → submitted → active`. **Gated on a paid We
 plan:** off-plan, the form saves a **draft** (config only, status stays `none`) and the page shows a
 "choose a plan" upsell; on-plan, submitting flips status to `submitted`, logs
 `receptionist_setup_submitted`, **pings Telegram** so the team provisions the per-client agent, and
-**emails the customer a confirmation** (`sendNotificationEmail`). Provisioning itself is still the
-manual team step (Path A auto-provisioning below is not built). Linked from the portal site card.
+**emails the customer a confirmation** (`sendNotificationEmail`). Provisioning is now scripted — see
+"Per-client provisioning" below — but it is still **deliberately human-triggered**, because buying a
+Retell number is a real per-number cost. Nothing flips `receptionist_status` to `active` automatically.
+Linked from the portal site card.
+
+> ⚠️ **The form's free-text `forwardTo` field is not machine-usable on its own.** Provisioning needs a
+> real number to transfer emergencies to and to text messages to. `voice-tenant.ts` prefers structured
+> `escalationPhone` / `notifyPhone` and falls back to parsing a phone out of `forwardTo`; if neither
+> yields a number, `provision-line.mjs` refuses and says exactly what to add.
 
 **Book a call with Joe (portal):** any logged-in client can book a 30-min strategy call from the
 dashboard at **`/portal/book`** — `getPortalSlots()` lists open slots in Joe's regular Mon–Fri 10 AM–5 PM
@@ -145,10 +152,26 @@ branded confirmation email as the voice + web paths. Entry point: the "Book a ca
 **Agentic ($999) marketing:** the public **`/agentic`** page (the "AI agent sales pipelines that make
 you money" breakdown) is what the receptionist points callers to; it books an agentic strategy call.
 
-**Path A per-client provisioning** (the plan): when a client subscribes to Website + Voice, spin
-up a Retell agent *for their business* — same shape as `create-tbj-agent.mjs`, but with the
-client's business info (now captured via the setup UI above), their booking calendar, and their own
-phone number. This is the blueprint; the automated per-client version is **not built yet**.
+**Per-client provisioning — BUILT (2026-07-19), and NOT the shape described below.**
+
+The original plan here was "spin up a Retell agent *for their business*" — one agent per customer.
+**That was the wrong answer and it is not what shipped.** Retell supports an
+[inbound-call webhook](https://docs.retellai.com/features/inbound-call-webhook) that injects
+per-business values into a shared prompt, so there is **exactly ONE shared agent** (`TBJ Shared
+Receptionist`) serving every customer. Improving the prompt improves it for everyone at once, and
+there are no per-customer agents to migrate.
+
+- **Tenancy comes from the number that was DIALLED** (`call.to_number` → `voice_lines` → site), never
+  from a tool argument — otherwise a caller could talk the agent into acting for another business.
+- `scripts/retell/provision-line.mjs --site N` — **dry-run by default**; `--apply` is the only thing
+  that spends money. Validates the config, ensures the shared agent, buys + binds a number, writes
+  `voice_lines`, and prints the forwarding script to read to the customer.
+- Full spec, schema, and the deployment-order constraint:
+  [`VOICE_TENANCY_SPEC.md`](./VOICE_TENANCY_SPEC.md).
+
+⚠️ **The customer-facing agent deliberately does NOT get `identify_caller`, `verify_code`, or
+`verify_callback_code`.** Those search TBJ's own prospect database; on a customer's line they would
+leak our prospect list to their callers. They belong to Ivy only.
 
 Retell billing is **active** (Pay As You Go; the one-time Persona KYC is done), so provisioning a
 number per client works via the API — each number is a PAYG cost, so gate it on a paid Voice plan.

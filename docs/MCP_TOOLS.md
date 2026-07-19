@@ -89,6 +89,16 @@ tool-by-tool → UI-surface map):
   queue depth, 24h/7d throughput. Fetches `GET /api/forge/digest` (`getForgeDigest` — the same
   source the Engine cockpit + Overview render), so ask it anytime for "where are we at with the
   forge, usage, and spend?" `forge_funnel_stats` covers the sell-first funnel counts.
+- **Customer voice receptionist** (v2.26.0): `list_calls`, `get_call`, `set_voice_line_status` — the
+  calls the AI answered **for a customer's business**, not TBJ's own line. Tenancy comes from
+  `voice_lines` (dialled number → site). `list_calls` flags two things loudly because they're what
+  actually needs acting on: an **emergency**, and a call where the **owner was never texted**
+  (`notified_at` null). `set_voice_line_status` pauses/releases/reactivates a line when a customer
+  cancels — it does *not* touch the customer's own phone forwarding (that's their `##61#` kill
+  switch). See [VOICE_TENANCY_SPEC.md](VOICE_TENANCY_SPEC.md).
+  > **Deliberately NOT a tool: provisioning a line.** Buying a Retell number is a real per-number
+  > cost, so an agent must not be able to trigger it. That stays a human-run
+  > `scripts/retell/provision-line.mjs --apply`.
 - **Every state-changing tool in every group calls `audit(...)`** — the mechanism behind
   `/command/jobs`'s "verified" rows. See VENUS_UI_MAPPING.md's Audit log section.
 

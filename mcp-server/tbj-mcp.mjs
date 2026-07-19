@@ -1533,6 +1533,90 @@ async function toolSendSms({ to, body } = {}) {
 // The public number leads text/call (the Twilio A2P sender). Calls to it hit Ivy.
 const TBJ_PHONE_PRETTY = "760-262-0014";
 
+// ── customer voice receptionist ──────────────────────────────────────────────────────────────
+// Read tools over the calls the AI answered FOR A CUSTOMER'S BUSINESS (not TBJ's own line).
+// Tenancy lives in voice_lines: a number maps to exactly one site. See docs/VOICE_TENANCY_SPEC.md.
+//
+// Deliberately NOT exposed as a tool: provisioning a line. That buys a Retell phone number and
+// spends real money on every call — an agent must not be able to trigger it autonomously.
+// Use `node scripts/retell/provision-line.mjs --site N --apply` by hand.
+
+async function toolListCalls({ site_id = null, limit = 20, only_real = false } = {}) {
+  const lim = Math.max(1, Math.min(100, Number(limit) || 20));
+  const where = [];
+  const params = [];
+  if (site_id) { params.push(Number(site_id)); where.push(`c.site_id = $${params.length}`); }
+  if (only_real) where.push(`c.is_real_lead IS NOT FALSE`);
+  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  params.push(lim);
+
+  const { rows } = await query(
+    `SELECT c.id, c.site_id, f.business_name, c.started_at, c.caller_name, c.callback_number,
+            c.urgency, c.problem, c.is_real_lead, c.disposition, c.duration_sec, c.notified_at
+       FROM calls c JOIN forge_sites f ON f.id = c.site_id
+       ${clause}
+       ORDER BY c.started_at DESC NULLS LAST, c.id DESC
+       LIMIT $${params.length}`,
+    params,
+  );
+  if (rows.length === 0) {
+    return { content: [{ type: "text", text: site_id ? `No calls recorded for site ${site_id} yet.` : "No calls recorded yet." }] };
+  }
+  const lines = rows.map((r) => {
+    const when = r.started_at ? new Date(r.started_at).toLocaleString("en-US", { timeZone: "America/Phoenix" }) : "—";
+    const flags = [
+      r.is_real_lead === false ? "spam/wrong-number" : null,
+      r.urgency === "emergency" ? "🚨 EMERGENCY" : r.urgency === "urgent" ? "urgent" : null,
+      // A call we could not text the owner about is the one they most need to know about.
+      r.notified_at ? null : "⚠️ OWNER NOT NOTIFIED",
+    ].filter(Boolean);
+    return `#${r.id} · ${r.business_name} · ${when}\n    ${r.caller_name || "(no name)"} ${r.callback_number || ""} — ${r.problem || "(no detail)"}` +
+      (flags.length ? `\n    ${flags.join(" · ")}` : "");
+  });
+  return { content: [{ type: "text", text: `${rows.length} call(s):\n\n${lines.join("\n\n")}` }] };
+}
+
+async function toolGetCall({ call_id } = {}) {
+  const id = Number(call_id);
+  if (!Number.isFinite(id)) return { content: [{ type: "text", text: "Pass the numeric call id from list_calls." }], isError: true };
+  const { rows } = await query(
+    `SELECT c.*, f.business_name FROM calls c JOIN forge_sites f ON f.id = c.site_id WHERE c.id = $1`, [id],
+  );
+  const c = rows[0];
+  if (!c) return { content: [{ type: "text", text: `No call ${id}.` }], isError: true };
+  const parts = [
+    `Call #${c.id} — ${c.business_name} (site ${c.site_id})`,
+    `when      : ${c.started_at || "—"}${c.duration_sec ? ` (${c.duration_sec}s)` : ""}`,
+    `caller    : ${c.caller_name || "(no name)"} ${c.from_number || ""}`,
+    `callback  : ${c.callback_number || "—"}`,
+    `address   : ${c.address || "—"}`,
+    `problem   : ${c.problem || "—"}`,
+    `urgency   : ${c.urgency || "—"}${c.is_real_lead === false ? "  (flagged spam/wrong number)" : ""}`,
+    `owner text: ${c.notified_at ? `sent ${c.notified_at}` : "NOT SENT — the owner never heard about this call"}`,
+    c.summary ? `\nsummary:\n${c.summary}` : null,
+    c.transcript ? `\ntranscript:\n${c.transcript}` : null,
+  ].filter(Boolean);
+  return { content: [{ type: "text", text: parts.join("\n") }] };
+}
+
+async function toolSetVoiceLineStatus({ site_id, status } = {}) {
+  const id = Number(site_id);
+  const allowed = ["active", "paused", "released"];
+  if (!Number.isFinite(id) || !allowed.includes(status)) {
+    return { content: [{ type: "text", text: `Pass site_id and status (${allowed.join(" | ")}).` }], isError: true };
+  }
+  const { rows } = await query(
+    `UPDATE voice_lines SET status = $2, updated_at = now() WHERE site_id = $1 RETURNING phone_number, status`, [id, status],
+  );
+  if (rows.length === 0) return { content: [{ type: "text", text: `Site ${id} has no provisioned voice line.` }], isError: true };
+  const r = rows[0];
+  await audit("voice_line_status_set", `📞 Voice line ${r.phone_number} for site ${id} set to ${status}`, { target: r.phone_number, detail: status });
+  const note = status === "active"
+    ? "Calls to that number will resolve to this business again."
+    : "That number will stop answering as this business — callers get the generic fallback greeting. The customer's own forwarding is unaffected; they should dial ##61# to send calls back to themselves.";
+  return { content: [{ type: "text", text: `✅ ${r.phone_number} → ${status}. ${note}` }] };
+}
+
 async function toolIssueCallbackCode({ phone, name = null, expires_hours = 720 } = {}) {
   const dest = normalizeUsPhone(phone);
   const hrs = Math.max(1, Math.min(24 * 60, Number(expires_hours) || 720)); // cap 60 days
@@ -1591,7 +1675,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.25.0" },
+  { name: "tbj-mcp", version: "2.26.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -2115,6 +2199,40 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["site_id"],
       },
     },
+    {
+      name: "list_calls",
+      description: "Recent calls the AI receptionist answered FOR CUSTOMER BUSINESSES (not TBJ's own line). Shows caller, callback number, what they needed, urgency, and whether the owner was actually texted. Use this to check a customer is getting value, to spot emergencies that were missed, or to see what a line filtered out as spam. Read-only.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          site_id: { type: "number", description: "Limit to one customer (forge_sites id). Omit for all customers." },
+          limit: { type: "number", description: "How many (default 20, max 100)." },
+          only_real: { type: "boolean", description: "Hide calls the agent flagged as spam/wrong number." },
+        },
+        required: [],
+      },
+    },
+    {
+      name: "get_call",
+      description: "One call in full, including the summary and the transcript, plus whether the owner was ever texted about it. Pass the numeric id from list_calls. Read-only.",
+      inputSchema: {
+        type: "object",
+        properties: { call_id: { type: "number", description: "Numeric call id from list_calls." } },
+        required: ["call_id"],
+      },
+    },
+    {
+      name: "set_voice_line_status",
+      description: "Pause, release, or re-activate a customer's receptionist line. Paused/released lines stop resolving, so callers hear the generic fallback instead of that business — use when a customer cancels or is being moved to a different number. Does NOT touch the customer's own phone forwarding. Cannot buy or delete numbers.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          site_id: { type: "number", description: "The customer's forge_sites id." },
+          status: { type: "string", description: "active | paused | released" },
+        },
+        required: ["site_id", "status"],
+      },
+    },
   ],
 }));
 
@@ -2164,6 +2282,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "save_design_report": return toolSaveDesignReport(args);
     case "list_design_reports": return toolListDesignReports(args);
     case "send_sms": return toolSendSms(args);
+    case "list_calls": return toolListCalls(args);
+    case "get_call": return toolGetCall(args);
+    case "set_voice_line_status": return toolSetVoiceLineStatus(args);
     case "issue_callback_code": return toolIssueCallbackCode(args);
     case "drop_voicemail": return toolDropVoicemail(args);
     default:
