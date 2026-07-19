@@ -6,6 +6,9 @@ import { auth } from "@/lib/auth";
 
 const LINKS: NavLink[] = [
   { href: "/portal", label: "Overview", exact: true },
+  // Sits directly after Overview on purpose: for a Tier-1 receptionist customer this is the page
+  // they open, and a missed-call message they never find is the same as a lead we never took.
+  { href: "/portal/calls", label: "Calls" },
   { href: "/portal/calendar", label: "Calendar" },
   { href: "/portal/newsletter", label: "Newsletter" },
   { href: "/solutions", label: "Agentic Solutions" },
