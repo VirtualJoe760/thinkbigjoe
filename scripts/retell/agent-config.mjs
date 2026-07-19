@@ -42,7 +42,8 @@ When you are in it, lean into the moment: they are listening to an AI receptioni
 
   a) ASK FOR THEIR 6-DIGIT ACCOUNT ID and call start_receptionist_setup with it.
      If it comes back found:false, read the line it gives you and move on. Do NOT theorise about why — no "maybe you're not on the right plan", no "hmm, that account doesn't seem to exist". Guessing out loud tells a stranger things about someone else's account.
-  b) It texts a 6-digit code to the number we already have on file. Ask them to read it back, then call verify_receptionist_code with it. If they fumble it they get a few tries — stay easy about it, codes get misheard.
+  b) It sends a 6-digit code to the number (or email) we already have on file — listen to what it tells you it used, and say that back to them. Ask them to read the code to you, then call verify_receptionist_code with it. If they fumble it they get a few tries — stay easy about it, codes get misheard.
+     IF THE CODE DOESN'T ARRIVE: some businesses list a desk line that can't receive texts. Don't leave them hanging — say "no problem, let me email it instead" and call start_receptionist_setup again with send_by "email". You can't choose where it goes; it uses the address already on their account.
   c) ONCE VERIFIED, run the interview. Call save_receptionist_answers AS YOU GO, every couple of answers — if the call drops you keep what they've told you so far.
 
   THE INTERVIEW — a conversation, not a form read aloud. One question at a time, react to what they say:
@@ -236,6 +237,7 @@ export function buildTools(baseUrl, authHeader, transferTo = "+17602976966") {
         type: "object",
         properties: {
           account_number: { type: "string", description: "The 6-digit account number the caller read out." },
+          send_by: { type: "string", description: "Set to \"email\" ONLY if the caller says the text isn't arriving or that the number we have is a desk phone. Omit otherwise. You cannot choose the address — it comes from their account." },
         },
         required: ["account_number"],
       },

@@ -5,6 +5,7 @@ import {
   MAX_SITES_PER_CALL,
   callChallengeCount,
   challengeThrottled,
+  lastChallengeWentUnansweredBySms,
   onFileDestination,
   planIncludesReceptionist,
   startChallenge,
@@ -40,6 +41,10 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const args = parseRetellArgs(body);
     const accountNumber = String(args.account_number ?? "").trim();
+    // Ivy may ask for email instead — when the caller says the text isn't coming, or that the
+    // number we hold is their desk phone. This chooses BETWEEN on-file destinations; it never
+    // accepts an address from the caller.
+    const prefer = String(args.send_by ?? "").toLowerCase() === "email" ? ("email" as const) : null;
     const call = (body as Record<string, unknown>)?.call as Record<string, unknown> | undefined;
     const retellCallId = typeof call?.call_id === "string" ? call.call_id : null;
 
@@ -81,7 +86,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ found: false, message: DEAD_END });
     }
 
-    const dest = await onFileDestination(target);
+    // If the last code went out by SMS and was never verified, the text probably didn't land —
+    // a landline Lookup couldn't classify, a carrier block, a wrong number on file. Don't repeat
+    // the same failure; try the email we already hold.
+    const autoFallback = !prefer && (await lastChallengeWentUnansweredBySms(target.siteId));
+    const dest = await onFileDestination(target, prefer ?? (autoFallback ? "email" : null));
     if (!dest) {
       console.error(`[voice/onboard/start] site ${target.siteId} has no phone or email on file`);
       return NextResponse.json({ found: false, message: DEAD_END });

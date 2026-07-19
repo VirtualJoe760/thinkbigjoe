@@ -165,3 +165,39 @@ export function verifyTwilioSignature(
   const b = Buffer.from(signature);
   return a.length === b.length && timingSafeEqual(a, b);
 }
+
+/**
+ * Is this number able to receive a text?
+ *
+ * Twilio's send API returns 201 "queued" for a landline exactly as it does for a mobile — delivery
+ * fails later and asynchronously, so `sendSms` reporting ok is NOT evidence anyone will ever see the
+ * message. That is fine for a fire-and-forget notification and actively harmful for a one-time code,
+ * where the caller is on the phone waiting for something that will never arrive.
+ *
+ * Returns null when we genuinely don't know (Lookup unconfigured, rate-limited, or erroring). Callers
+ * must treat null as "proceed, but be ready to fall back" rather than as a landline — refusing to
+ * text on an inconclusive lookup would break onboarding for everyone during a Twilio blip.
+ */
+export async function canReceiveSms(raw?: string | null): Promise<boolean | null> {
+  const dest = normalizePhone(raw);
+  if (!dest || !accountSid || !authToken) return null;
+  try {
+    const res = await fetch(
+      `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(dest)}?Fields=line_type_intelligence`,
+      {
+        headers: { Authorization: "Basic " + Buffer.from(`${accountSid}:${authToken}`).toString("base64") },
+        signal: AbortSignal.timeout(4000), // a caller is waiting; don't hang the call on this
+      },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as { line_type_intelligence?: { type?: string } };
+    const type = data.line_type_intelligence?.type;
+    if (!type) return null;
+    // voip is included deliberately: plenty of small businesses run RingCentral/Grasshopper and
+    // those do receive SMS. Only the types that definitively cannot are excluded.
+    return !["landline", "fixedVoip"].includes(type);
+  } catch (err) {
+    console.error("[sms] lookup failed for line type:", err);
+    return null;
+  }
+}

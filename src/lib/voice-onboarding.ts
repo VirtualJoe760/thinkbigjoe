@@ -20,7 +20,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { randomInt } from "node:crypto";
 
 import { db, forgeSites, contacts, voiceOnboarding } from "@/db";
-import { sendSms, normalizePhone } from "@/lib/sms";
+import { canReceiveSms, sendSms, normalizePhone } from "@/lib/sms";
 import { sendNotificationEmail } from "@/lib/email";
 
 /** How long a code is good for. Short enough to be useless later, long enough for slow SMS. */
@@ -91,6 +91,7 @@ export async function targetByAccountNumber(accountNumber: string): Promise<Onbo
  */
 export async function onFileDestination(
   t: OnboardingTarget,
+  prefer: "sms" | "email" | null = null,
 ): Promise<{ channel: "sms" | "email"; to: string; spoken: string } | null> {
   const [c] = await db
     .select({ phone: contacts.phone, email: contacts.email })
@@ -105,20 +106,48 @@ export async function onFileDestination(
     .limit(1);
 
   const phone = normalizePhone(c?.phone) || normalizePhone(site?.phone);
+  const email = (c?.email || site?.email || "").trim();
+  const emailDest = email.includes("@")
+    ? {
+        channel: "email" as const,
+        to: email,
+        spoken: (() => {
+          const [user, domain] = email.split("@");
+          return `the email ${user.slice(0, 2)}${"•".repeat(Math.max(1, user.length - 2))}@${domain}`;
+        })(),
+      }
+    : null;
+
+  // The caller asked us to email it instead (their number is a desk phone, or the text never came).
+  // Still an on-file address — `prefer` only chooses BETWEEN destinations we already hold.
+  if (prefer === "email" && emailDest) return emailDest;
+
   if (phone) {
-    // Spoken form names only the last four: enough for the real owner to recognise which handset,
-    // useless to someone who guessed the account number and is fishing for the full number.
+    // Twilio accepts a send to a landline and reports success; delivery fails later, silently. For
+    // a one-time code that means the caller waits on the line for a text that will never arrive, so
+    // check the line type first and route to email when we know it can't receive.
+    const smsCapable = await canReceiveSms(phone);
+    if (smsCapable === false && emailDest) {
+      console.warn(`[voice-onboarding] site ${t.siteId}: ${phone.slice(-4)} is a landline — using email`);
+      return emailDest;
+    }
+    // smsCapable === null means Lookup couldn't tell us. Try SMS anyway; refusing on an
+    // inconclusive lookup would break onboarding for everyone during a Twilio blip.
     return { channel: "sms", to: phone, spoken: `the phone ending ${phone.slice(-4)}` };
   }
 
-  const email = (c?.email || site?.email || "").trim();
-  if (email && email.includes("@")) {
-    const [user, domain] = email.split("@");
-    const masked = `${user.slice(0, 2)}${"•".repeat(Math.max(1, user.length - 2))}@${domain}`;
-    return { channel: "email", to: email, spoken: `the email ${masked}` };
-  }
+  return emailDest;
+}
 
-  return null;
+/** Did the last challenge for this site go out by SMS and never get verified? */
+export async function lastChallengeWentUnansweredBySms(siteId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ channel: voiceOnboarding.channel, status: voiceOnboarding.status })
+    .from(voiceOnboarding)
+    .where(eq(voiceOnboarding.siteId, siteId))
+    .orderBy(desc(voiceOnboarding.createdAt))
+    .limit(1);
+  return row?.channel === "sms" && row.status !== "verified";
 }
 
 /** Challenges a single site may start per hour, before we stop sending. */
