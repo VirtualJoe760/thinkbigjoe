@@ -204,58 +204,124 @@ export type VerifyOutcome =
 /**
  * Check a spoken code.
  *
- * Deliberately NOT constant-time compared: the code is single-use, rate-limited to 5 attempts, and
- * expires in 10 minutes, so a timing oracle buys an attacker nothing. Attempts are counted BEFORE
- * the comparison so a crash mid-check can't be used to get free guesses.
+ * THE INCREMENT AND THE CAP HAPPEN IN ONE SQL STATEMENT, AND THAT IS LOad-BEARING.
+ *
+ * An earlier version did SELECT → `attempts + 1` in JS → UPDATE. Concurrent requests all read the
+ * same value and all wrote the same value, so N parallel guesses cost ONE attempt. Five batches of
+ * 200k pipelined requests then cover the whole 6-digit keyspace inside the 10-minute TTL while the
+ * counter reaches 5 — the one-time code, which is the entire authorization factor, defeated by
+ * concurrency alone without ever seeing it. Postgres serialises the row update, so `attempts =
+ * attempts + 1 ... WHERE attempts < MAX` makes every concurrent guess pay for itself.
+ *
+ * On success the session is bound to `callId`, so a verification earned on one call cannot
+ * authorize writes from another. See isVerifiedForCall.
  */
-export async function verifyChallenge(siteId: number, spoken: string): Promise<VerifyOutcome> {
+export async function verifyChallenge(
+  siteId: number,
+  spoken: string,
+  callId: string | null,
+): Promise<VerifyOutcome> {
   const digits = (spoken || "").replace(/\D/g, "");
 
-  const [row] = await db
-    .select()
-    .from(voiceOnboarding)
-    .where(and(eq(voiceOnboarding.siteId, siteId), eq(voiceOnboarding.status, "pending")))
-    .orderBy(desc(voiceOnboarding.createdAt))
-    .limit(1);
+  // Atomically claim one attempt. Zero rows back means: no pending challenge, it expired, or the
+  // cap is already spent — all indistinguishable to the caller by design.
+  const claimed = await db.execute(sql`
+    UPDATE voice_onboarding
+       SET attempts = attempts + 1,
+           status = CASE WHEN attempts + 1 >= ${MAX_ATTEMPTS} THEN 'locked' ELSE status END,
+           updated_at = now()
+     WHERE id = (
+       SELECT id FROM voice_onboarding
+        WHERE site_id = ${siteId} AND status = 'pending'
+        ORDER BY created_at DESC LIMIT 1
+     )
+       AND attempts < ${MAX_ATTEMPTS}
+       AND expires_at > now()
+    RETURNING id, code, attempts
+  `);
 
-  if (!row) return { ok: false, reason: "no_challenge" };
-
-  if (new Date(row.expiresAt).getTime() < Date.now()) {
-    await db.update(voiceOnboarding).set({ status: "expired" }).where(eq(voiceOnboarding.id, row.id));
-    return { ok: false, reason: "expired" };
+  const row = (claimed as unknown as { rows: Array<{ id: number; code: string; attempts: number }> }).rows?.[0];
+  if (!row) {
+    // Distinguish only for the SPOKEN copy — none of this changes what an attacker can learn,
+    // because reaching here always means "you get nothing".
+    const [latest] = await db
+      .select({ status: voiceOnboarding.status, expiresAt: voiceOnboarding.expiresAt })
+      .from(voiceOnboarding)
+      .where(eq(voiceOnboarding.siteId, siteId))
+      .orderBy(desc(voiceOnboarding.createdAt))
+      .limit(1);
+    if (!latest) return { ok: false, reason: "no_challenge" };
+    if (latest.status === "locked") return { ok: false, reason: "locked" };
+    if (latest.status === "pending" && new Date(latest.expiresAt).getTime() < Date.now()) {
+      return { ok: false, reason: "expired" };
+    }
+    return { ok: false, reason: "no_challenge" };
   }
-
-  const attempts = row.attempts + 1;
-  if (attempts > MAX_ATTEMPTS) {
-    await db.update(voiceOnboarding).set({ status: "locked" }).where(eq(voiceOnboarding.id, row.id));
-    return { ok: false, reason: "locked" };
-  }
-  await db.update(voiceOnboarding).set({ attempts }).where(eq(voiceOnboarding.id, row.id));
 
   if (digits !== row.code) {
-    if (attempts >= MAX_ATTEMPTS) {
-      await db.update(voiceOnboarding).set({ status: "locked" }).where(eq(voiceOnboarding.id, row.id));
-      return { ok: false, reason: "locked" };
-    }
-    return { ok: false, reason: "wrong", attemptsLeft: MAX_ATTEMPTS - attempts };
+    const left = MAX_ATTEMPTS - row.attempts;
+    return left <= 0 ? { ok: false, reason: "locked" } : { ok: false, reason: "wrong", attemptsLeft: left };
   }
 
   await db
     .update(voiceOnboarding)
-    .set({ status: "verified", verifiedAt: new Date().toISOString() })
+    .set({ status: "verified", verifiedAt: new Date().toISOString(), retellCallId: callId })
     .where(eq(voiceOnboarding.id, row.id));
   return { ok: true, siteId };
 }
 
-/** Is there a live verified session for this site? Every write path must check this first. */
-export async function isVerified(siteId: number): Promise<boolean> {
+/** A verified session only lives as long as a call plausibly does. */
+const SESSION_TTL_MS = 30 * 60_000;
+
+/**
+ * Is THIS CALL authorized to write config for this site?
+ *
+ * The binding to `callId` is the point. Keying on siteId alone meant any request naming a site that
+ * someone else had just verified would be authorized — and `site_id` arrives as an LLM-filled tool
+ * argument, so it is fully caller-controlled. Site ids are small sequential integers, so an attacker
+ * could sweep 1..2000 every minute and land inside any legitimate customer's verified window.
+ *
+ * The challenge row already carried retell_call_id and simply wasn't being read. It is now.
+ */
+export async function isVerifiedForCall(siteId: number, callId: string | null): Promise<boolean> {
+  if (!callId) return false; // no call identity, no authorization
   const [row] = await db
-    .select({ id: voiceOnboarding.id, verifiedAt: voiceOnboarding.verifiedAt })
+    .select({ verifiedAt: voiceOnboarding.verifiedAt })
     .from(voiceOnboarding)
-    .where(and(eq(voiceOnboarding.siteId, siteId), eq(voiceOnboarding.status, "verified")))
+    .where(
+      and(
+        eq(voiceOnboarding.siteId, siteId),
+        eq(voiceOnboarding.status, "verified"),
+        eq(voiceOnboarding.retellCallId, callId),
+      ),
+    )
     .orderBy(desc(voiceOnboarding.createdAt))
     .limit(1);
   if (!row?.verifiedAt) return false;
-  // A verified session is good for the length of a call, not forever.
-  return Date.now() - new Date(row.verifiedAt).getTime() < 60 * 60_000;
+  return Date.now() - new Date(row.verifiedAt).getTime() < SESSION_TTL_MS;
 }
+
+/**
+ * How many DISTINCT businesses has this one call already challenged?
+ *
+ * challengeThrottled() caps per SITE — i.e. per victim — which imposes no cost at all on sweeping
+ * DIFFERENT account numbers, since every account is its own bucket. Each eligible hit returns
+ * business_name + site_id and fires a real SMS, so an unthrottled sweep is both a customer-list
+ * oracle and owner-facing text-bombing on our bill. Counting rows already written by this call
+ * makes the sweep pay per discovery.
+ */
+export async function callChallengeCount(callId: string): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(distinct site_id)::int` })
+    .from(voiceOnboarding)
+    .where(
+      and(
+        eq(voiceOnboarding.retellCallId, callId),
+        sql`${voiceOnboarding.createdAt} > now() - interval '1 hour'`,
+      ),
+    );
+  return row?.n ?? 0;
+}
+
+/** Businesses one call may look up before we stop answering. Real setup needs exactly one. */
+export const MAX_SITES_PER_CALL = 2;

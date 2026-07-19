@@ -23,6 +23,10 @@ export async function POST(req: Request) {
     const args = parseRetellArgs(body);
     const siteId = Number(args.site_id);
     const code = String(args.code ?? "");
+    // The verified session is bound to this call, so a verification earned here cannot authorize
+    // a write from anywhere else. See isVerifiedForCall.
+    const call = (body as Record<string, unknown>)?.call as Record<string, unknown> | undefined;
+    const callId = typeof call?.call_id === "string" && call.call_id ? call.call_id : null;
 
     if (!Number.isFinite(siteId)) {
       return NextResponse.json({
@@ -31,7 +35,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const res = await verifyChallenge(siteId, code);
+    const res = await verifyChallenge(siteId, code, callId);
     if (res.ok) {
       return NextResponse.json({
         verified: true,

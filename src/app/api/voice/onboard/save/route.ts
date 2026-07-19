@@ -1,10 +1,10 @@
-import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { db, forgeSites } from "@/db";
+import { sql } from "drizzle-orm";
+import { db } from "@/db";
 import { normalizePhone } from "@/lib/sms";
 import { parseRetellArgs, voiceAuthed } from "@/lib/voice-booking";
-import { isVerified } from "@/lib/voice-onboarding";
+import { isVerifiedForCall } from "@/lib/voice-onboarding";
 
 export const dynamic = "force-dynamic";
 
@@ -40,29 +40,30 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const args = parseRetellArgs(body);
     const siteId = Number(args.site_id);
+    const call = (body as Record<string, unknown>)?.call as Record<string, unknown> | undefined;
+    const callId = typeof call?.call_id === "string" && call.call_id ? call.call_id : null;
 
     if (!Number.isFinite(siteId)) {
       return NextResponse.json({ saved: false, message: "Let me start you over from the top." });
     }
 
     // THE GATE. Identification is not authorization — see src/lib/voice-onboarding.ts.
-    if (!(await isVerified(siteId))) {
-      console.warn(`[voice/onboard/save] unverified write attempt for site ${siteId}`);
+    //
+    // Bound to the CALL, not just the site. `site_id` above is an LLM-filled tool argument and so
+    // is entirely caller-controlled; site ids are small sequential integers. Keyed on site alone,
+    // an attacker could sweep 1..2000 once a minute and land inside any real customer's verified
+    // window, rewriting the escalation number while that customer was still on the line.
+    if (!(await isVerifiedForCall(siteId, callId))) {
+      console.warn(
+        `[voice/onboard/save] unverified write attempt for site ${siteId} (call ${callId ?? "none"})`,
+      );
       return NextResponse.json({
         saved: false,
         message: "Before I can save any of that, I need to send you a code to confirm it's you.",
       });
     }
 
-    const [site] = await db
-      .select({ config: forgeSites.receptionistConfig })
-      .from(forgeSites)
-      .where(eq(forgeSites.id, siteId))
-      .limit(1);
-    if (!site) return NextResponse.json({ saved: false, message: "I couldn't find that account." });
-
-    const config: Record<string, unknown> =
-      site.config && typeof site.config === "object" ? { ...(site.config as object) } : {};
+    const config: Record<string, unknown> = {};
 
     put(config, "services", args.services);
     put(config, "greeting", args.greeting);
@@ -87,10 +88,21 @@ export async function POST(req: Request) {
     config.updatedAt = new Date().toISOString();
     config.capturedBy = "ivy-onboarding";
 
-    await db
-      .update(forgeSites)
-      .set({ receptionistConfig: config, updatedAt: new Date().toISOString() })
-      .where(eq(forgeSites.id, siteId));
+    // MERGE IN THE DATABASE, not in JS. Ivy saves incrementally, so several tool calls land close
+    // together; a read-modify-write of the whole jsonb blob lets a slower one overwrite a faster
+    // one's field with a stale copy. `||` merges right-into-left in a single statement, so each
+    // save only ever touches the keys it actually carries.
+    const patch = JSON.stringify(config);
+    const updated = await db.execute(sql`
+      UPDATE forge_sites
+         SET receptionist_config = coalesce(receptionist_config, '{}'::jsonb) || ${patch}::jsonb,
+             updated_at = now()
+       WHERE id = ${siteId}
+      RETURNING id
+    `);
+    if (!(updated as unknown as { rows: unknown[] }).rows?.length) {
+      return NextResponse.json({ saved: false, message: "I couldn't find that account." });
+    }
 
     if (rejected.length) {
       return NextResponse.json({

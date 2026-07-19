@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { parseRetellArgs, voiceAuthed } from "@/lib/voice-booking";
 import {
+  MAX_SITES_PER_CALL,
+  callChallengeCount,
   challengeThrottled,
   onFileDestination,
   planIncludesReceptionist,
@@ -56,6 +58,19 @@ export async function POST(req: Request) {
       console.warn(
         `[voice/onboard/start] site ${target.siteId} not on a voice plan (plan=${target.plan} paid=${target.oneTimePaid})`,
       );
+      return NextResponse.json({ found: false, message: DEAD_END });
+    }
+
+    // Per-CALL cap. challengeThrottled below is per-site — i.e. per victim — which imposes no cost
+    // on sweeping DIFFERENT account numbers, since every account is its own bucket. Each eligible
+    // hit leaks business_name + site_id and fires a real SMS, so an unthrottled sweep is both a
+    // customer-list oracle and owner-facing text-bombing on our bill.
+    if (!retellCallId) {
+      console.warn("[voice/onboard/start] refusing: no call_id on the request");
+      return NextResponse.json({ found: false, message: DEAD_END });
+    }
+    if ((await callChallengeCount(retellCallId)) >= MAX_SITES_PER_CALL) {
+      console.warn(`[voice/onboard/start] call ${retellCallId} has already challenged ${MAX_SITES_PER_CALL} sites`);
       return NextResponse.json({ found: false, message: DEAD_END });
     }
 
