@@ -672,3 +672,52 @@ export const newsletters = pgTable("newsletters", {
 			name: "newsletters_site_id_fkey"
 		}).onDelete("cascade"),
 ]);
+
+export const voiceLines = pgTable("voice_lines", {
+	id: serial().primaryKey().notNull(),
+	phoneNumber: text("phone_number").notNull(),
+	siteId: integer("site_id").notNull(),
+	status: text().default('provisioning').notNull(),
+	retellAgentId: text("retell_agent_id"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("voice_lines_site_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.siteId],
+			foreignColumns: [forgeSites.id],
+			name: "voice_lines_site_id_fkey"
+		}),
+	unique("voice_lines_phone_number_key").on(table.phoneNumber),
+]);
+
+export const calls = pgTable("calls", {
+	id: serial().primaryKey().notNull(),
+	siteId: integer("site_id").notNull(),
+	retellCallId: text("retell_call_id"),
+	fromNumber: text("from_number"),
+	toNumber: text("to_number"),
+	startedAt: timestamp("started_at", { withTimezone: true, mode: 'string' }),
+	endedAt: timestamp("ended_at", { withTimezone: true, mode: 'string' }),
+	durationSec: integer("duration_sec"),
+	callerName: text("caller_name"),
+	callbackNumber: text("callback_number"),
+	address: text(),
+	problem: text(),
+	urgency: text(),
+	isRealLead: boolean("is_real_lead"),
+	summary: text(),
+	transcript: text(),
+	disposition: text(),
+	recordingUrl: text("recording_url"),
+	notifiedAt: timestamp("notified_at", { withTimezone: true, mode: 'string' }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("calls_site_started_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops"), table.startedAt.desc().nullsFirst().op("int4_ops")),
+	foreignKey({
+			columns: [table.siteId],
+			foreignColumns: [forgeSites.id],
+			name: "calls_site_id_fkey"
+		}),
+	unique("calls_retell_call_id_key").on(table.retellCallId),
+]);
