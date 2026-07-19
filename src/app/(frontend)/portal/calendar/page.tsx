@@ -38,8 +38,11 @@ export default async function PortalCalendarPage({ searchParams }: { searchParam
     const token = await getValidAccessToken(conn!);
     if (token) {
       const now = Date.now();
+      // null = couldn't read the calendar. For a read-only view an empty calendar is an acceptable
+      // degradation (unlike booking, which must fail closed) — but log it so it isn't invisible.
       const raw = await listCalendarEvents(token, new Date(now - 45 * DAY).toISOString(), new Date(now + 120 * DAY).toISOString());
-      events = raw.map((e): CalEvent => ({
+      if (raw === null) console.error("[portal:calendar] calendar unreadable — showing empty");
+      events = (raw ?? []).map((e): CalEvent => ({
         id: `g-${e.id}`,
         kind: e.tbjBooking ? "appt" : "other", // website/AI bookings vs the customer's personal events
         title: e.summary, start: e.start, end: e.end, allDay: e.allDay,

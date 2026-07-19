@@ -109,7 +109,15 @@ export async function availableSlots(site: BookableSite, token: string): Promise
   const from = new Date(now);
   const to = new Date(now + SITE_ADVANCE_DAYS * 86400000);
 
-  const busy = (await listCalendarEvents(token, from.toISOString(), to.toISOString())).map((e) => ({
+  // null = we couldn't read the calendar (outage, expired token). Offering slots we can't verify
+  // would book customers over the owner's existing appointments, so offer nothing instead.
+  const events = await listCalendarEvents(token, from.toISOString(), to.toISOString());
+  if (events === null) {
+    console.error(`[site-booking] calendar unreadable for site ${site.id} — offering no slots`);
+    return [];
+  }
+
+  const busy = events.map((e) => ({
     start: new Date(e.start).getTime(),
     end: new Date(e.end).getTime(),
   }));
@@ -161,7 +169,14 @@ export async function bookForSite(
     return { ok: false, message: "That slot is too soon — please pick a later one." };
   }
   // Re-check against the live calendar: the slot list the customer saw may be stale.
-  const stillFree = !(await listCalendarEvents(token, start.toISOString(), end.toISOString())).some(
+  // A null read means we CANNOT confirm the slot is free — refuse rather than risk
+  // double-booking the owner on top of a real appointment.
+  const conflicts = await listCalendarEvents(token, start.toISOString(), end.toISOString());
+  if (conflicts === null) {
+    console.error(`[site-booking] calendar unreadable for site ${site.id} — refusing to book`);
+    return { ok: false, message: "We couldn't confirm that time just now — please try again in a moment." };
+  }
+  const stillFree = !conflicts.some(
     (e) => new Date(e.start).getTime() < end.getTime() && new Date(e.end).getTime() > start.getTime(),
   );
   if (!stillFree) return { ok: false, message: "That time was just taken — please pick another." };

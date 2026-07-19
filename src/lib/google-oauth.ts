@@ -198,15 +198,27 @@ export type ClientCalEvent = {
 // The private extended-property we stamp on every TBJ-created event so the client can filter them.
 export const TBJ_BOOKING_KEY = "tbjBooking";
 
-/** List a client's primary-calendar events (using their token). Returns [] on any error. */
-export async function listCalendarEvents(accessToken: string, timeMinISO: string, timeMaxISO: string): Promise<ClientCalEvent[]> {
+/**
+ * List a client's primary-calendar events (using their token).
+ *
+ * Returns **null when the calendar could not be read** — expired token, Google outage, rate limit —
+ * as distinct from `[]`, which means "read fine, genuinely nothing booked".
+ *
+ * That distinction is load-bearing. This previously returned `[]` on error, which the booking path
+ * read as "nothing is busy" and would happily double-book over an existing appointment during a
+ * Google outage. Callers deciding availability MUST treat null as busy and fail closed.
+ */
+export async function listCalendarEvents(accessToken: string, timeMinISO: string, timeMaxISO: string): Promise<ClientCalEvent[] | null> {
   try {
     const url =
       `https://www.googleapis.com/calendar/v3/calendars/primary/events` +
       `?singleEvents=true&orderBy=startTime&maxResults=150` +
       `&timeMin=${encodeURIComponent(timeMinISO)}&timeMax=${encodeURIComponent(timeMaxISO)}`;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.error(`[google-oauth] listCalendarEvents failed: ${res.status} ${res.statusText}`);
+      return null;
+    }
     const data = await res.json();
     return ((data.items || []) as any[])
       .filter((e) => e.status !== "cancelled" && (e.start?.dateTime || e.start?.date))
@@ -227,8 +239,9 @@ export async function listCalendarEvents(accessToken: string, timeMinISO: string
           /^(strategy call|call|booked strategy call)\b|thinkbigjoe|\btbj\b/i.test(e.summary || "") ||
           /thinkbigjoe|call room|claim code|booked from|booked by venus/i.test(e.description || ""),
       }));
-  } catch {
-    return [];
+  } catch (err) {
+    console.error("[google-oauth] listCalendarEvents threw:", err);
+    return null;
   }
 }
 
