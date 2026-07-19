@@ -691,6 +691,30 @@ export const voiceLines = pgTable("voice_lines", {
 	unique("voice_lines_phone_number_key").on(table.phoneNumber),
 ]);
 
+export const voiceOnboarding = pgTable("voice_onboarding", {
+	id: serial().primaryKey().notNull(),
+	siteId: integer("site_id").notNull(),
+	userId: text("user_id"),
+	code: text().notNull(),
+	sentTo: text("sent_to").notNull(),
+	channel: text().notNull(),
+	status: text().default('pending').notNull(),
+	attempts: integer().default(0).notNull(),
+	expiresAt: timestamp("expires_at", { withTimezone: true, mode: 'string' }).notNull(),
+	verifiedAt: timestamp("verified_at", { withTimezone: true, mode: 'string' }),
+	retellCallId: text("retell_call_id"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("voice_onboarding_live_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops")).where(sql`(status = 'pending'::text)`),
+	index("voice_onboarding_site_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops"), table.createdAt.desc().nullsFirst().op("int4_ops")),
+	foreignKey({
+			columns: [table.siteId],
+			foreignColumns: [forgeSites.id],
+			name: "voice_onboarding_site_id_fkey"
+		}),
+]);
+
 export const calls = pgTable("calls", {
 	id: serial().primaryKey().notNull(),
 	siteId: integer("site_id").notNull(),
