@@ -42,10 +42,16 @@ work and are kept as the gameplan; only the cowork/sentinel/runner **architectur
 
 ## Decisions locked in
 
+> ⚠️ **The ICP and pilot-vertical rows below are SUPERSEDED** by
+> [`BUSINESS_PLAN.md`](./BUSINESS_PLAN.md) (2026-07-18). The current target is **multi-location
+> service groups (2–25 locations)** sold an AI front office priced per location, plus agencies/MSPs
+> as a channel — *not* finance/insurance, and *not* single-location home services. The rows are kept
+> for context on how the Scout agent was originally specced. The remaining rows are still accurate.
+
 | Question | Answer |
 |---|---|
-| **ICP (who Scout targets)** | Two modes: (1) **business owners to pitch TBJ services** — insurance, mortgage, wealth, MSP, law firm owners/principals. (2) **job postings to apply to as a contractor** — Scout finds openings at companies that would hire someone with Joe's skill set. Both run from the same Scout agent, flagged by `scout_mode`. |
-| **Pilot vertical** | Finance & insurance first — most prospect data already exists, strongest AI ROI proof, local + nationwide |
+| **ICP (who Scout targets)** | ~~Two modes: (1) **business owners to pitch TBJ services** — insurance, mortgage, wealth, MSP, law firm owners/principals. (2) **job postings to apply to as a contractor**.~~ **See [`BUSINESS_PLAN.md` §4](./BUSINESS_PLAN.md).** |
+| **Pilot vertical** | ~~Finance & insurance first.~~ **See [`BUSINESS_PLAN.md` §4](./BUSINESS_PLAN.md)** — home-services roll-ups, property management, veterinary groups, multi-office law. |
 | **Email sending** | `joe@thinkbigjoe.com` via **Zoho Mail free tier** (IMAP + SMTP, custom domain, Apple Mail compatible). Marketing/outreach sends use the same domain initially; move to `mail.thinkbigjoe.com` subdomain once volume ramps past 50/day to protect root domain reputation. |
 | **Sending domain setup** | See **Email Setup** section below |
 | **Scout queue target** | Scout keeps running until there are **50 `pending_review` rows** in `scout_prospects`. When count drops below 50 (because Joe approved/skipped some), Scout auto-queues a new batch. |
