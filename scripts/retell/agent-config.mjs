@@ -30,7 +30,22 @@ Never read a code or account ID TO the caller — they always read it to you.
    - "Then go to 'Claim your site' and enter that claim code — that links the site to your account."
    - "Once it's claimed, it's yours to manage." (If it was a preview, claiming is what builds the full site — it shows up in their portal shortly.)
 4) PLANS & PRICING — do NOT quote prices or numbers on the call. Say: "All the plans are laid out in your account portal so you can compare them — a website plan, a website-plus-AI-voice plan, and our complete package. Pick what fits there." If asked what the tiers include: a hosted, maintained website; adding an AI voice receptionist that answers your phone and books jobs 24/7 (that's what I am); and a complete package that runs your whole front office with AI.
-5) SETTING UP THE AI RECEPTIONIST: it comes with the Website-plus-Voice plan they choose in the portal; Joe's team activates it for their business once they're on that plan. Questions? Offer to book Joe.
+5) SETTING UP THEIR AI RECEPTIONIST — YOU CAN DO THIS RIGHT NOW, ON THIS CALL. This is the best moment you get: they are hearing an AI receptionist work while you set theirs up. Lean into it warmly — "I can actually get yours set up right now if you've got five minutes."
+   a) ASK FOR THEIR ACCOUNT NUMBER (the 6-digit one from their portal, e.g. 100001) and call start_receptionist_setup. If it comes back found:false, do NOT speculate about why — no guessing about plans or accounts. Just say the line it gives you and offer to have someone follow up.
+   b) If found, it texts them a 6-digit code. Ask them to read it back and call verify_receptionist_code with it. If they fumble it, they get a few tries — stay relaxed about it, this happens.
+   c) ONCE VERIFIED, run the interview below. Save as you go with save_receptionist_answers — don't hold everything to the end, because if the call drops you'd lose all of it.
+
+   THE INTERVIEW — conversational, one question at a time, never a checklist read aloud:
+     • "What does your business actually do — and is there anything you DON'T do?" → services
+     • "How do you want me to answer the phone?" → greeting
+     • "What are your normal hours?" → hours
+     • "What counts as a real emergency for you?" → emergency_definition
+     • "When I take a message, what number should I text it to?" → notify_phone
+     • "And if it IS an emergency, what number should I put them through to?" → escalation_phone
+     • "What do people always ask that I should know the answer to?" → faqs
+     • "Anything I should never say or promise?" → do_not
+   PHONE NUMBERS: read both back digit by digit and get a yes before saving. A wrong number here means their emergency calls go nowhere. They are usually two DIFFERENT numbers — the office for messages, a mobile for emergencies — so ask separately, and don't assume the second is the same as the first.
+   WRAP UP: tell them it's saved as a draft, they can review it in their portal, and someone will confirm before it goes live. Do NOT tell them it is live — it isn\'t until their number is provisioned.
 6) CLOSE — read the caller, offer whichever fits (don't force one):
    - Book Joe (regular): "Want me to grab you time with Joe to walk through it?" → BOOKING, type "regular".
    - Or reassure DIY: "The portal's simple — once you claim it, you can edit your text, hours, and photos yourself, or email us and we'll handle changes."
@@ -195,6 +210,74 @@ export function buildTools(baseUrl, authHeader, transferTo = "+17602976966") {
       speak_after_execution: true,
       execution_message_description: "Let me check that code.",
       timeout_ms: 12000,
+    },
+    {
+      type: "custom",
+      name: "start_receptionist_setup",
+      description:
+        "Begin AI-receptionist setup for a paying customer, on the call. Pass the 6-digit ACCOUNT NUMBER they read out. Confirms they're on a plan that includes the receptionist and texts a 6-digit code to the number already on file. Returns found:true with their business name and site_id, or found:false with a line to read — when it's false, read that line and move on, never speculate about why.",
+      url: `${baseUrl}/api/voice/onboard/start`,
+      method: "POST",
+      headers: authHeader,
+      speak_during_execution: true,
+      speak_after_execution: true,
+      execution_message_description: "Let me pull up your account.",
+      timeout_ms: 15000,
+      parameters: {
+        type: "object",
+        properties: {
+          account_number: { type: "string", description: "The 6-digit account number the caller read out." },
+        },
+        required: ["account_number"],
+      },
+    },
+    {
+      type: "custom",
+      name: "verify_receptionist_code",
+      description:
+        "Check the 6-digit code the caller reads back from their text. Pass the site_id that start_receptionist_setup returned — never a site the caller names. Returns verified:true, or a line to read explaining what went wrong. Nothing can be saved until this passes.",
+      url: `${baseUrl}/api/voice/onboard/verify`,
+      method: "POST",
+      headers: authHeader,
+      speak_during_execution: false,
+      speak_after_execution: true,
+      timeout_ms: 12000,
+      parameters: {
+        type: "object",
+        properties: {
+          site_id: { type: "number", description: "site_id returned by start_receptionist_setup." },
+          code: { type: "string", description: "The 6-digit code the caller read back." },
+        },
+        required: ["site_id", "code"],
+      },
+    },
+    {
+      type: "custom",
+      name: "save_receptionist_answers",
+      description:
+        "Save what you've learned about their business. Call this AS YOU GO — after every couple of answers — so a dropped call doesn't lose the interview. Only send the fields you actually have; omitted fields keep their previous value. Saves a draft; it does not make anything live.",
+      url: `${baseUrl}/api/voice/onboard/save`,
+      method: "POST",
+      headers: authHeader,
+      speak_during_execution: false,
+      speak_after_execution: true,
+      timeout_ms: 15000,
+      parameters: {
+        type: "object",
+        properties: {
+          site_id: { type: "number", description: "site_id from start_receptionist_setup." },
+          services: { type: "string", description: "What they do, and what they don't do." },
+          greeting: { type: "string", description: "How to answer the phone." },
+          hours: { type: "string", description: "Normal business hours." },
+          service_area: { type: "string", description: "Where they work." },
+          emergency_definition: { type: "string", description: "What counts as an emergency for this business." },
+          notify_phone: { type: "string", description: "Number to TEXT messages to. Read it back before saving." },
+          escalation_phone: { type: "string", description: "Number to TRANSFER emergencies to. Usually different from notify_phone. Read it back before saving." },
+          faqs: { type: "string", description: "Common questions and their answers." },
+          do_not: { type: "string", description: "Things the receptionist must never say or promise." },
+        },
+        required: ["site_id"],
+      },
     },
     {
       type: "transfer_call",
