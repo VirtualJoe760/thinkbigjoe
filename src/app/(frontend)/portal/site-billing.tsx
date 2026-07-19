@@ -4,7 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 
 import { startCheckout, type CheckoutState } from "./actions";
 import {
-  PLANS, PLAN_KEYS, ONE_TIME_BUILD_AMOUNT, WEBSITE_FIRST_MONTH_CREDIT,
+  PLANS, PLAN_KEYS, ONE_TIME_BUILD_AMOUNT, WEBSITE_FIRST_MONTH_CREDIT, firstMonthCouponFor,
   type PlanKey, type BillingInterval,
 } from "@/lib/plans";
 
@@ -19,12 +19,18 @@ const COMING_SOON_PLUGINS = [
 ];
 
 /**
- * Guided activation for a claimed-but-unpaid site: buy the website ($300 one-time, which unlocks a
- * subscription + a free domain), pick the subscription tier ($99 first-month credit for owning a
- * website), preview the plugins to come, and see exactly what's due today → Stripe Checkout.
+ * Guided activation for a claimed-but-unpaid site: pay the one-time setup fee (which unlocks a
+ * subscription + a free domain), pick the subscription tier, preview the plugins to come, and see
+ * exactly what's due today → Stripe Checkout.
+ *
+ * Every dollar figure here reads from src/lib/plans.ts — including whether the legacy $99
+ * first-month credit applies — so the quote on screen can't drift from what Stripe charges.
  */
 export function SiteBilling({ siteId }: { siteId: number }) {
-  const [plan, setPlan] = useState<PlanKey>("website");
+  // Seed from PLAN_KEYS, never a hard-coded key: the old default was "website", a RETIRED tier that
+  // PLAN_KEYS no longer contains — so no radio rendered selected but the hidden input still
+  // submitted plan="website" for anyone who clicked straight through to checkout.
+  const [plan, setPlan] = useState<PlanKey>(PLAN_KEYS[0] ?? "answer");
   const [interval, setInterval] = useState<BillingInterval>("month");
   const [state, action, pending] = useActionState(startCheckout, initial);
 
@@ -36,7 +42,11 @@ export function SiteBilling({ siteId }: { siteId: number }) {
   const period = yearly ? "year" : "month";
   const priceOf = (k: PlanKey) => (yearly ? PLANS[k].annual : PLANS[k].monthly);
   const firstPeriod = priceOf(plan);
-  const credit = Math.min(WEBSITE_FIRST_MONTH_CREDIT, firstPeriod + ONE_TIME_BUILD_AMOUNT);
+  // Quote the credit ONLY when checkout will actually attach the coupon. The gate lives in
+  // plans.ts so the number on screen and the number Stripe charges can't diverge — quoting a
+  // discount Stripe won't apply is a customer-facing lie at the moment of payment.
+  const hasCredit = firstMonthCouponFor(plan) !== null;
+  const credit = hasCredit ? Math.min(WEBSITE_FIRST_MONTH_CREDIT, firstPeriod + ONE_TIME_BUILD_AMOUNT) : 0;
   const dueToday = ONE_TIME_BUILD_AMOUNT + firstPeriod - credit;
   const recurring = `$${priceOf(plan).toLocaleString()}/${yearly ? "yr" : "mo"}`;
   const money = (n: number) => `$${n.toLocaleString()}`;
@@ -101,10 +111,12 @@ export function SiteBilling({ siteId }: { siteId: number }) {
             );
           })}
         </div>
-        <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-emerald-700">
-          <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.7-9.3a1 1 0 00-1.4-1.4L9 10.6 7.7 9.3a1 1 0 00-1.4 1.4l2 2a1 1 0 001.4 0l4-4z" /></svg>
-          Because you&apos;re buying a website, your first {period} is {money(WEBSITE_FIRST_MONTH_CREDIT)} off.
-        </p>
+        {hasCredit && (
+          <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+            <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.7-9.3a1 1 0 00-1.4-1.4L9 10.6 7.7 9.3a1 1 0 00-1.4 1.4l2 2a1 1 0 001.4 0l4-4z" /></svg>
+            Because you&apos;re buying a website, your first {period} is {money(WEBSITE_FIRST_MONTH_CREDIT)} off.
+          </p>
+        )}
       </section>
 
       {/* Step 3 — plugins (coming soon) */}
@@ -129,7 +141,9 @@ export function SiteBilling({ siteId }: { siteId: number }) {
         <dl className="mt-3 space-y-1.5 text-sm">
           <div className="flex justify-between"><dt>Website build (one-time)</dt><dd className="font-medium">{money(ONE_TIME_BUILD_AMOUNT)}</dd></div>
           <div className="flex justify-between"><dt>{PLANS[plan].label} — first {period}</dt><dd className="font-medium">{money(firstPeriod)}</dd></div>
-          <div className="flex justify-between text-emerald-700"><dt>Website credit</dt><dd className="font-medium">−{money(credit)}</dd></div>
+          {hasCredit && (
+            <div className="flex justify-between text-emerald-700"><dt>Website credit</dt><dd className="font-medium">−{money(credit)}</dd></div>
+          )}
           <div className="mt-1 flex justify-between border-t border-line pt-2 text-base font-bold"><dt>Due today</dt><dd>{money(dueToday)}</dd></div>
           <div className="flex justify-between text-xs text-ink-soft"><dt>Then</dt><dd>{recurring}{yearly ? "" : ""} starting next {period}</dd></div>
         </dl>

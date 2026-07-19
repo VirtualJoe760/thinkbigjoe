@@ -11,7 +11,7 @@ import { isForgeTemplate } from "@/lib/forge-templates";
 import { notifyTelegram } from "@/lib/telegram";
 import { sendBookingConfirmationEmail, sendNotificationEmail } from "@/lib/email";
 import { stripe, ensureStripeCustomer } from "@/lib/stripe";
-import { buildPriceId, FIRST_MONTH_CREDIT_COUPON, isPlanKey, planPriceId, type BillingInterval } from "@/lib/plans";
+import { buildPriceId, firstMonthCouponFor, isSellablePlan, planPriceId, type BillingInterval } from "@/lib/plans";
 import { quoteDomain, domainsConfigured } from "@/lib/domains";
 import { fulfillDomain } from "@/lib/domain-fulfill";
 import {
@@ -496,7 +496,11 @@ export async function startCheckout(
   const siteId = Number(formData.get("siteId"));
   const plan = String(formData.get("plan") || "");
   const interval: BillingInterval = String(formData.get("interval")) === "year" ? "year" : "month";
-  if (!Number.isFinite(siteId) || !isPlanKey(plan)) {
+  // isSellablePlan, NOT isPlanKey: `plan` arrives from the form and is attacker-controlled, and
+  // isPlanKey still accepts the retired legacy keys (website/voice/complete) so that read paths
+  // (the webhook, portal display of existing subscribers) keep resolving them. A hand-crafted POST
+  // must not be able to BUY a tier we no longer sell.
+  if (!Number.isFinite(siteId) || !isSellablePlan(plan)) {
     return { ok: false, message: "Pick a plan to continue." };
   }
 
@@ -515,6 +519,16 @@ export async function startCheckout(
     return { ok: false, message: "Plans aren't configured yet — hang tight." };
   }
 
+  // The $99 first-month credit was earned by BUYING a website, so it only belongs on the legacy
+  // tiers whose price bundled one. On the current tiers it would be $99 off a $497 plan for
+  // nothing. Stripe rejects `discounts` together with `allow_promotion_codes`, and `discounts: []`
+  // still counts as present — so the key must be OMITTED entirely, not emptied. Spread one or the
+  // other in below.
+  const coupon = firstMonthCouponFor(plan);
+  const discountFields = coupon
+    ? { discounts: [{ coupon }] }
+    : { allow_promotion_codes: true };
+
   try {
     const customer = await ensureStripeCustomer(session.user.email, session.user.name);
     const checkout = await stripe.checkout.sessions.create({
@@ -522,13 +536,11 @@ export async function startCheckout(
       customer: customer.id,
       line_items: [
         { price, quantity: 1 },
-        { price: build, quantity: 1 }, // one-time $300 — added to the first invoice
+        { price: build, quantity: 1 }, // one-time setup fee — added to the first invoice
       ],
       success_url: `${SITE_URL}/portal?paid=1`,
       cancel_url: `${SITE_URL}/portal`,
-      // Buying a website earns a $99 credit toward the first month (all tiers). `discounts` and
-      // `allow_promotion_codes` are mutually exclusive in Checkout, so the automatic credit wins.
-      discounts: [{ coupon: FIRST_MONTH_CREDIT_COUPON }],
+      ...discountFields,
       metadata: { siteId: String(siteId), userId: session.user.id, plan, interval },
       subscription_data: {
         metadata: { siteId: String(siteId), plan, interval },
