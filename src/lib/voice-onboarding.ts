@@ -121,6 +121,31 @@ export async function onFileDestination(
   return null;
 }
 
+/** Challenges a single site may start per hour, before we stop sending. */
+const MAX_CHALLENGES_PER_HOUR = 3;
+
+/**
+ * Has this site already been sent too many codes recently?
+ *
+ * Without this, locking a challenge after 5 wrong guesses achieves little: the caller just starts
+ * a new one. The attacker still cannot READ any code (they all go to the owner), so this is not a
+ * takeover path — but an enumerated account number could be used to text its owner over and over,
+ * which is harassment and bills us per message. Throttle on the site, since that is the thing being
+ * targeted; a caller can trivially change their own call id.
+ */
+export async function challengeThrottled(siteId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(voiceOnboarding)
+    .where(
+      and(
+        eq(voiceOnboarding.siteId, siteId),
+        sql`${voiceOnboarding.createdAt} > now() - interval '1 hour'`,
+      ),
+    );
+  return (row?.n ?? 0) >= MAX_CHALLENGES_PER_HOUR;
+}
+
 /**
  * Issue a challenge. Any previous pending challenge for this site is superseded, so a second
  * attempt can never race the first (and the partial unique index enforces it at the DB level).

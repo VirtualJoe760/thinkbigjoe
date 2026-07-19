@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { parseRetellArgs, voiceAuthed } from "@/lib/voice-booking";
 import {
+  challengeThrottled,
   onFileDestination,
   planIncludesReceptionist,
   startChallenge,
@@ -55,6 +56,13 @@ export async function POST(req: Request) {
       console.warn(
         `[voice/onboard/start] site ${target.siteId} not on a voice plan (plan=${target.plan} paid=${target.oneTimePaid})`,
       );
+      return NextResponse.json({ found: false, message: DEAD_END });
+    }
+
+    // Same dead-end answer as every other failure: a throttled response would otherwise confirm
+    // that this account number is real and eligible, which is exactly what enumeration is after.
+    if (await challengeThrottled(target.siteId)) {
+      console.warn(`[voice/onboard/start] throttled — site ${target.siteId} has had 3 codes this hour`);
       return NextResponse.json({ found: false, message: DEAD_END });
     }
 
