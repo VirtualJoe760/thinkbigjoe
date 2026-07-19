@@ -8,6 +8,7 @@ import { db, forgeSites, rebuildRequests, activityLog, leads } from "@/db";
 import { auth } from "@/lib/auth";
 import { normalizeClaimCode, generateClaimCode } from "@/lib/claim-code";
 import { isForgeTemplate } from "@/lib/forge-templates";
+import { normalizePhone } from "@/lib/sms";
 import { notifyTelegram } from "@/lib/telegram";
 import { sendBookingConfirmationEmail, sendNotificationEmail } from "@/lib/email";
 import { stripe, ensureStripeCustomer } from "@/lib/stripe";
@@ -49,7 +50,20 @@ export async function saveReceptionistSetup(
   }
 
   const str = (k: string) => String(formData.get(k) || "").trim();
-  const config = {
+
+  // MERGE, don't replace. Ivy can now capture this config over the phone
+  // (docs/VOICE_ONBOARDING.md), and she collects structured fields this form has no inputs for —
+  // notifyPhone, escalationPhone, emergencyDefinition, serviceArea. Overwriting the whole object
+  // from the form would silently wipe them, so a customer who did the phone interview and then
+  // opened the portal to check it would destroy the routing numbers Ivy read back to them and
+  // land back on the ambiguous free-text `forwardTo` this all exists to replace.
+  const prior =
+    site.receptionistConfig && typeof site.receptionistConfig === "object"
+      ? (site.receptionistConfig as Record<string, unknown>)
+      : {};
+
+  const config: Record<string, unknown> = {
+    ...prior,
     services: str("services"),
     hours: str("hours"),
     greeting: str("greeting"),
@@ -59,6 +73,14 @@ export async function saveReceptionistSetup(
     doNot: str("doNot"),
     updatedAt: new Date().toISOString(),
   };
+
+  // The two structured numbers, when the form supplies them. Blank input means "leave what's
+  // there" rather than "clear it" — otherwise loading the form and pressing save with the fields
+  // empty would drop numbers captured on the call.
+  const notify = normalizePhone(str("notifyPhone"));
+  const escalation = normalizePhone(str("escalationPhone"));
+  if (notify) config.notifyPhone = notify;
+  if (escalation) config.escalationPhone = escalation;
   if (!config.services && !config.greeting) {
     return { ok: false, message: "Tell us at least what your business does and how to greet callers." };
   }

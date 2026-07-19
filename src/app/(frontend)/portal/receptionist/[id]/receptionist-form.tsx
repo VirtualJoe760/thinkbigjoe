@@ -7,6 +7,7 @@ import { saveReceptionistSetup, type ReceptionistState } from "../../actions";
 export type ReceptionistConfig = {
   services?: string; hours?: string; greeting?: string; booking?: string;
   forwardTo?: string; faqs?: string; doNot?: string;
+  notifyPhone?: string; escalationPhone?: string;
 };
 
 const initial: ReceptionistState = { ok: false, message: "" };
@@ -71,11 +72,30 @@ export function ReceptionistForm({
         defaultValue={config.booking}
         placeholder="e.g. Book estimates into my Google Calendar; anything urgent, text me right away."
       />
+      {/*
+        These two used to be ONE free-text box ("Where should it send messages / urgent calls?").
+        That was a real bug, not just clumsy UX: an owner who wrote "text the office at
+        480-555-0177, for emergencies call my cell 480-555-0143" had BOTH values resolve to the
+        first number found, so emergency transfers went to the office line nobody answers — the
+        exact line they bought this to cover. Two fields, so the two numbers stay two numbers.
+      */}
       <Field
-        label="Where should it send messages / urgent calls?" name="forwardTo" rows={1}
-        hint="A phone number or email for messages and anything the AI can't handle."
+        label="Text new messages to" name="notifyPhone" rows={1}
+        hint="The number we text when the AI takes a message. Usually the office or whoever picks up first."
+        defaultValue={config.notifyPhone}
+        placeholder="e.g. 480-555-0177"
+      />
+      <Field
+        label="Transfer emergencies to" name="escalationPhone" rows={1}
+        hint="Where we put a caller through when it's urgent. For most businesses this is a mobile, and it is NOT the same as the number above."
+        defaultValue={config.escalationPhone}
+        placeholder="e.g. 480-555-0143"
+      />
+      <Field
+        label="Anything else about how to reach you?" name="forwardTo" rows={1}
+        hint="Optional. An email for non-urgent messages, or anything the two numbers above don't cover."
         defaultValue={config.forwardTo}
-        placeholder="e.g. text 480-555-1234, or email owner@business.com"
+        placeholder="e.g. also email owner@business.com"
       />
       <Field
         label="Common questions & answers" name="faqs" rows={4}
