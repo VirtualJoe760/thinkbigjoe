@@ -284,8 +284,15 @@ export function buildPriceId(): string | null {
 // One allowance number, three consumers: the portal counter, the 80%/100% warnings, and the
 // monthly overage job. They must all call through here.
 
-/** Warn the customer at these fractions of their allowance. Never gates anything — see PlanDef. */
-export const MINUTES_WARN_THRESHOLDS = [0.8, 1] as const;
+/**
+ * Warn at these PERCENTAGES of allowance. Never gates anything — see PlanDef.
+ *
+ * Percent, not fraction, because the only consumer is sitesOverThreshold(pct), which compares
+ * against a 0-100 pctUsed. These were briefly [0.8, 1] — with that, `>= 0.8` matched every site
+ * with any usage whatsoever, so the "80% warning" would have fired for a customer who had used
+ * one minute of four hundred.
+ */
+export const MINUTES_WARN_THRESHOLDS = [80, 100] as const;
 
 /**
  * Stripe price id for metered voice overage, or null if unconfigured.
