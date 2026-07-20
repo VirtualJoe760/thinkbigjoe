@@ -1541,6 +1541,28 @@ const TBJ_PHONE_PRETTY = "760-262-0014";
 // spends real money on every call — an agent must not be able to trigger it autonomously.
 // Use `node scripts/retell/provision-line.mjs --site N --apply` by hand.
 
+async function toolListFlaggedCalls({ limit = 20 } = {}) {
+  const lim = Math.max(1, Math.min(100, Number(limit) || 20));
+  const { rows } = await query(
+    `SELECT c.id, c.site_id, f.business_name, c.started_at, c.caller_name, c.problem,
+            c.owner_note, c.owner_rated_at
+       FROM calls c JOIN forge_sites f ON f.id = c.site_id
+       WHERE c.owner_rating = 'bad'
+       ORDER BY c.owner_rated_at DESC NULLS LAST
+       LIMIT $1`,
+    [lim],
+  );
+  if (rows.length === 0) {
+    return { content: [{ type: "text", text: "No calls flagged by customers. The agent is doing its job." }] };
+  }
+  const lines = rows.map((r) => {
+    const when = r.owner_rated_at ? new Date(r.owner_rated_at).toLocaleString("en-US", { timeZone: "America/Phoenix" }) : "?";
+    return `#${r.id} · ${r.business_name} · flagged ${when}\n    call: ${r.caller_name || "(no name)"} — ${r.problem || "(no detail)"}` +
+      (r.owner_note ? `\n    they said: "${r.owner_note}"` : "\n    (no note left)");
+  });
+  return { content: [{ type: "text", text: `${rows.length} call(s) customers flagged as wrong — the signal to improve the agent:\n\n${lines.join("\n\n")}` }] };
+}
+
 async function toolListCalls({ site_id = null, limit = 20, only_real = false } = {}) {
   const lim = Math.max(1, Math.min(100, Number(limit) || 20));
   const where = [];
@@ -1675,7 +1697,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.26.0" },
+  { name: "tbj-mcp", version: "2.27.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -2200,6 +2222,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "list_flagged_calls",
+      description: "Calls a CUSTOMER marked as 'got it wrong' from their receptionist dashboard, newest first, with the note they left about what should have happened. This is the feedback loop: it's the real signal for improving the shared agent prompt or a customer's config. Read-only.",
+      inputSchema: {
+        type: "object",
+        properties: { limit: { type: "number", description: "How many (default 20, max 100)." } },
+        required: [],
+      },
+    },
+    {
       name: "list_calls",
       description: "Recent calls the AI receptionist answered FOR CUSTOMER BUSINESSES (not TBJ's own line). Shows caller, callback number, what they needed, urgency, and whether the owner was actually texted. Use this to check a customer is getting value, to spot emergencies that were missed, or to see what a line filtered out as spam. Read-only.",
       inputSchema: {
@@ -2282,6 +2313,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "save_design_report": return toolSaveDesignReport(args);
     case "list_design_reports": return toolListDesignReports(args);
     case "send_sms": return toolSendSms(args);
+    case "list_flagged_calls": return toolListFlaggedCalls(args);
     case "list_calls": return toolListCalls(args);
     case "get_call": return toolGetCall(args);
     case "set_voice_line_status": return toolSetVoiceLineStatus(args);

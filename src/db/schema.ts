@@ -736,7 +736,11 @@ export const calls = pgTable("calls", {
 	recordingUrl: text("recording_url"),
 	notifiedAt: timestamp("notified_at", { withTimezone: true, mode: 'string' }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	ownerRating: text("owner_rating"),
+	ownerNote: text("owner_note"),
+	ownerRatedAt: timestamp("owner_rated_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
+	index("calls_owner_rating_idx").using("btree", table.ownerRating.asc().nullsLast().op("text_ops")).where(sql`(owner_rating IS NOT NULL)`),
 	index("calls_site_started_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops"), table.startedAt.desc().nullsFirst().op("int4_ops")),
 	foreignKey({
 			columns: [table.siteId],
