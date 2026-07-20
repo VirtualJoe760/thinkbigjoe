@@ -1,14 +1,21 @@
 // ThinkBigJoe's productized plans — the single source of truth for what we sell, so checkout,
 // the portal, and the Stripe webhook all agree.
 //
-// 2026-07 pivot (docs/BUSINESS_PLAN.md): we no longer sell "a website". We sell an AI operations
-// system in three tiers — answer / respond / recover — and a website is a *delivery component*
-// bundled into every tier, not a product. The one-time fee is now a $250 SETUP fee, not a build fee.
+// 2026-07-19: RESTORED the original $99/$299/$999 ladder (website / voice / complete) as the
+// sellable tiers. The $497/$797/$1197 answer/respond/recover tiers priced us out of the volume
+// motion this market actually rewards; they were created in Stripe but never sold. They are now
+// LEGACY — resolvable, never offered.
 //
-// The old website/voice/complete keys are kept as LEGACY: real subscriptions and Stripe price IDs
-// still point at them, and planKeyForPrice() must keep resolving those price IDs or the webhook
-// would silently null out an existing customer's plan. They are excluded from PLAN_KEYS so no UI
-// can offer them to a new buyer.
+// Legacy keys are never deleted. Stripe prices are immutable and planKeyForPrice() must keep
+// resolving every price ID we ever attached to a subscription, or the webhook would read a live
+// customer as "no plan" and downgrade them. Legacy keys are excluded from PLAN_KEYS so no UI can
+// offer them to a new buyer. That cuts both ways now: answer/respond/recover are legacy going
+// forward, website/voice/complete are sellable again.
+//
+// VOICE ALLOWANCES live here too (`includedMinutes`), so the number the portal shows, the number
+// the 80%/100% warnings fire against, and the number billing subtracts before charging overage all
+// come from one place. If the allowance is ever duplicated somewhere else, one copy will drift and
+// a customer will be charged for minutes we told them were included.
 
 /** Individual agents/capabilities. Tiers are composed from these so portal copy can't drift
  *  from entitlements — the feature bullets ARE the entitlement list. */
@@ -59,13 +66,13 @@ export const AGENTS: Record<AgentKey, { label: string; blurb: string }> = {
 
 export type PlanKey =
   // sellable tiers
-  | "answer"
-  | "respond"
-  | "recover"
-  // legacy — existing subscribers only, never offered
   | "website"
   | "voice"
-  | "complete";
+  | "complete"
+  // legacy — existing subscribers only, never offered
+  | "answer"
+  | "respond"
+  | "recover";
 
 export type BillingInterval = "month" | "year";
 
@@ -92,77 +99,114 @@ type PlanDef = {
   legacy?: boolean;
   /** True only for plans whose price bundled a paid website — gates the $99 credit coupon. */
   bundlesPaidWebsite?: boolean;
+  /**
+   * Receptionist minutes included each month. 0 means the tier has NO receptionist at all —
+   * not "an allowance of zero". Callers must branch on planIncludesVoiceMinutes() rather than
+   * comparing against 0, or a $99 website customer (who can never place a call) gets rendered as
+   * permanently 100% over allowance and warned about minutes they don't have.
+   */
+  includedMinutes: number;
+  /**
+   * Dollars per minute charged beyond `includedMinutes`. ~2.8x the ~$0.18/min marginal Retell cost
+   * measured on the live account — priced as a deterrent so upgrading is always cheaper than
+   * overrunning, not as a profit centre.
+   *
+   * ⚠️ Overage BILLS. It NEVER throttles, gates, degrades or disconnects. This is the customer's
+   * business phone; a plumber whose line dies at minute 400 loses jobs and blames us, and the
+   * overage revenue would never cover that churn. Warn at 80%, warn again at 100%, keep answering.
+   * This is load-bearing beyond customer service: because service never depends on billing state,
+   * the overage job is allowed to be batched, late, retried and human-reviewed. Anything that makes
+   * call handling read billing state breaks that guarantee — don't.
+   */
+  overagePerMinute: number;
 };
 
 const DEFS: Record<PlanKey, PlanDef> = {
-  // ── Sellable tiers (docs/BUSINESS_PLAN.md, "The agent menu") ──────────────────
-  answer: {
-    label: "Answer",
-    blurb: "Every call answered, qualified and booked — day or night.",
-    monthly: 497,
-    annual: 4970, // 10 × monthly — two months free
-    priceEnv: "STRIPE_PRICE_ANSWER",
-    annualPriceEnv: "STRIPE_PRICE_ANSWER_ANNUAL",
-    agents: ["voice_receptionist", "portal", "website"],
-  },
-  respond: {
-    label: "Respond",
-    blurb: "Adds texting and chases the estimates nobody called back about.",
-    monthly: 797,
-    annual: 7970,
-    priceEnv: "STRIPE_PRICE_RESPOND",
-    annualPriceEnv: "STRIPE_PRICE_RESPOND_ANNUAL",
-    featurePrefix: ["Everything in Answer"],
-    agents: ["text_handling", "estimate_followup"],
-  },
-  recover: {
-    label: "Recover",
-    blurb: "Pulls revenue back out of the customers you already have.",
-    monthly: 1197,
-    annual: 11970,
-    priceEnv: "STRIPE_PRICE_RECOVER",
-    annualPriceEnv: "STRIPE_PRICE_RECOVER_ANNUAL",
-    featurePrefix: ["Everything in Respond"],
-    agents: ["seasonal_reminders", "reactivation", "review_requests"],
-  },
-
-  // ── LEGACY — NOT FOR SALE ─────────────────────────────────────────────────────
-  // Kept only so planKeyForPrice() still maps live Stripe price IDs and the webhook doesn't
-  // wipe an existing subscriber's plan. Do not add these to PLAN_KEYS.
+  // ── Sellable tiers — the restored $99/$299/$999 ladder ────────────────────────
+  // Margin at these allowances (redo this math before changing any number):
+  //   $299 / 400 min   → ~$72 COGS  → ~76% gross margin; break-even ~1,660 min (4x headroom)
+  //   $999 / 1,200 min → ~$216 COGS → ~78% gross margin
   website: {
-    label: "Website (legacy)",
-    blurb: "Legacy plan — no longer sold.",
+    label: "Website",
+    blurb: "Your site, hosted and maintained — edits handled for you.",
     monthly: 99,
     annual: 999,
     priceEnv: "STRIPE_PRICE_WEBSITE",
     annualPriceEnv: "STRIPE_PRICE_WEBSITE_ANNUAL",
     agents: ["website", "portal"],
-    legacy: true,
-    bundlesPaidWebsite: true,
+    // No receptionist on this tier, so no allowance and no overage rate — see planIncludesVoiceMinutes().
+    includedMinutes: 0,
+    overagePerMinute: 0,
   },
   voice: {
-    label: "Website + Voice (legacy)",
-    blurb: "Legacy plan — no longer sold.",
+    label: "Website + Voice",
+    blurb: "Adds the 24/7 AI receptionist — every call answered, qualified and booked.",
     monthly: 299,
     annual: 2999,
     priceEnv: "STRIPE_PRICE_VOICE",
     annualPriceEnv: "STRIPE_PRICE_VOICE_ANNUAL",
     featurePrefix: ["Everything in Website"],
     agents: ["voice_receptionist"],
-    legacy: true,
-    bundlesPaidWebsite: true,
+    includedMinutes: 400,
+    overagePerMinute: 0.5,
   },
   complete: {
-    label: "Complete (legacy)",
-    blurb: "Legacy plan — no longer sold.",
+    label: "Complete",
+    blurb: "Everything, plus custom agents working your customer list.",
     monthly: 999,
     annual: 9999,
     priceEnv: "STRIPE_PRICE_COMPLETE",
     annualPriceEnv: "STRIPE_PRICE_COMPLETE_ANNUAL",
     featurePrefix: ["Everything in Website + Voice"],
     agents: ["text_handling", "estimate_followup"],
+    includedMinutes: 1200,
+    overagePerMinute: 0.5,
+  },
+
+  // ── LEGACY — NOT FOR SALE ─────────────────────────────────────────────────────
+  // The $497/$797/$1197 tiers. Created in Stripe 2026-07-19 but never sold — kept only so
+  // planKeyForPrice() resolves their price IDs if one was somehow purchased, and because Stripe
+  // prices are immutable (deleting them is riskier than leaving them inert). Do not add to
+  // PLAN_KEYS. Allowances are recorded so that if a subscription DOES exist on one, the usage
+  // math still has a number to work with rather than reading undefined as 0 and billing the
+  // customer for every minute from the first.
+  answer: {
+    label: "Answer (legacy)",
+    blurb: "Legacy plan — no longer sold.",
+    monthly: 497,
+    annual: 4970,
+    priceEnv: "STRIPE_PRICE_ANSWER",
+    annualPriceEnv: "STRIPE_PRICE_ANSWER_ANNUAL",
+    agents: ["voice_receptionist", "portal", "website"],
     legacy: true,
-    bundlesPaidWebsite: true,
+    includedMinutes: 400,
+    overagePerMinute: 0.5,
+  },
+  respond: {
+    label: "Respond (legacy)",
+    blurb: "Legacy plan — no longer sold.",
+    monthly: 797,
+    annual: 7970,
+    priceEnv: "STRIPE_PRICE_RESPOND",
+    annualPriceEnv: "STRIPE_PRICE_RESPOND_ANNUAL",
+    featurePrefix: ["Everything in Answer"],
+    agents: ["text_handling", "estimate_followup"],
+    legacy: true,
+    includedMinutes: 800,
+    overagePerMinute: 0.5,
+  },
+  recover: {
+    label: "Recover (legacy)",
+    blurb: "Legacy plan — no longer sold.",
+    monthly: 1197,
+    annual: 11970,
+    priceEnv: "STRIPE_PRICE_RECOVER",
+    annualPriceEnv: "STRIPE_PRICE_RECOVER_ANNUAL",
+    featurePrefix: ["Everything in Respond"],
+    agents: ["seasonal_reminders", "reactivation", "review_requests"],
+    legacy: true,
+    includedMinutes: 1200,
+    overagePerMinute: 0.5,
   },
 };
 
@@ -236,14 +280,93 @@ export function buildPriceId(): string | null {
   return setupPriceId();
 }
 
+// ── Voice minutes: allowance, warnings, overage ────────────────────────────────
+// One allowance number, three consumers: the portal counter, the 80%/100% warnings, and the
+// monthly overage job. They must all call through here.
+
+/** Warn the customer at these fractions of their allowance. Never gates anything — see PlanDef. */
+export const MINUTES_WARN_THRESHOLDS = [0.8, 1] as const;
+
 /**
- * LEGACY OFFER — $99 off the first month, earned by buying a website.
+ * Stripe price id for metered voice overage, or null if unconfigured.
  *
- * ⚠️ BUG GUARD: this coupon must ONLY attach to a plan whose price actually bundled a paid
- * website (the legacy tiers) — otherwise it knocks $99 off a $497 Answer plan for nothing.
- * Callers MUST gate on firstMonthCouponFor(plan) and omit the `discounts` key entirely when it
- * returns null: Stripe rejects `discounts` alongside `allow_promotion_codes`, and an empty
- * `discounts: []` still counts as present. Same rule for the UI copy that quotes the credit —
+ * Nullable on purpose and with no fallback, exactly like setupPriceId(): there is no other price
+ * that means "$0.50 per voice minute", and quietly billing overage against some other price id
+ * would overcharge a customer with no trace. A caller that gets null must skip billing overage and
+ * surface that the plan isn't fully configured — never substitute a different price.
+ */
+export function overagePriceId(): string | null {
+  return process.env.STRIPE_PRICE_OVERAGE || null;
+}
+
+/** Minutes included on a plan. Safe on legacy/unknown keys. */
+export function includedMinutes(key: PlanKey): number {
+  return PLANS[key]?.includedMinutes ?? 0;
+}
+
+/**
+ * True if the plan has a receptionist and therefore a meaningful minutes allowance.
+ *
+ * Branch on THIS, never on `includedMinutes(k) === 0`. The website tier has no receptionist, so
+ * "0 of 0 minutes used" is not an over-limit state, not an error, and not something to warn about —
+ * it's a tier that simply has no minutes concept. Rendering it as 100% consumed would nag a $99
+ * customer about a product they never bought.
+ */
+export function planIncludesVoiceMinutes(key: PlanKey | null | undefined): boolean {
+  return !!key && isPlanKey(key) && PLANS[key].includedMinutes > 0;
+}
+
+/**
+ * Fraction of the allowance consumed, in [0, ∞). Returns null when the tier has no allowance,
+ * so callers can't divide by zero and can't render a meter that has no meaning. `null` means
+ * "don't show a usage meter at all" — it does NOT mean 0 and must not be defaulted to one.
+ */
+export function minutesUsedFraction(key: PlanKey | null | undefined, minutesUsed: number): number | null {
+  if (!planIncludesVoiceMinutes(key)) return null;
+  const allowance = PLANS[key as PlanKey].includedMinutes;
+  return Math.max(0, minutesUsed) / allowance;
+}
+
+/** Minutes billable beyond the allowance. 0 on tiers with no receptionist — they can't overrun. */
+export function overageMinutes(key: PlanKey | null | undefined, minutesUsed: number): number {
+  if (!planIncludesVoiceMinutes(key)) return 0;
+  return Math.max(0, Math.ceil(minutesUsed) - PLANS[key as PlanKey].includedMinutes);
+}
+
+/**
+ * What to charge for overage, in CENTS.
+ *
+ * Integer cents, not dollars: this number goes straight to Stripe's `amount`, and doing
+ * `minutes * 0.5` in floating point then converting invites a rounding error on a real invoice.
+ * Returns 0 for tiers with no receptionist, which is also the guard that stops the billing job
+ * from ever posting an overage line to a $99 website customer.
+ */
+export function overageCents(key: PlanKey | null | undefined, minutesUsed: number): number {
+  const over = overageMinutes(key, minutesUsed);
+  if (over <= 0) return 0;
+  return Math.round(over * PLANS[key as PlanKey].overagePerMinute * 100);
+}
+
+/**
+ * RETIRED OFFER — $99 off the first month, earned by buying a website.
+ *
+ * ⚠️ DELIBERATELY ATTACHED TO NOTHING. No plan sets `bundlesPaidWebsite` any more, so
+ * firstMonthCouponFor() always returns null and no checkout applies this coupon.
+ *
+ * This used to be gated on `bundlesPaidWebsite: true`, which website/voice/complete all carried
+ * back when they were legacy and unsellable — inert, because nobody could buy them. Restoring
+ * that ladder to sellable would have silently reactivated the discount for every new customer:
+ * $99 off a $99/mo website plan is a FREE first month, and $99 off Complete is real margin, on
+ * every sale, with nobody having decided to run a promotion. Turning it off is the conservative
+ * default; switching it back on is a pricing decision, not a refactor.
+ *
+ * The constants and the gate stay exported because consumers import them and the Stripe coupon
+ * still exists. To run this promotion again, set `bundlesPaidWebsite: true` on the intended
+ * tier(s) — the callers already handle it correctly.
+ *
+ * ⚠️ CALLER CONTRACT (unchanged): gate on firstMonthCouponFor(plan) and OMIT the `discounts` key
+ * entirely when it returns null. Stripe rejects `discounts` alongside `allow_promotion_codes`, and
+ * an empty `discounts: []` still counts as present. Same rule for UI copy that quotes the credit —
  * never advertise a discount Stripe won't apply.
  */
 export const WEBSITE_FIRST_MONTH_CREDIT = 99;
