@@ -19,20 +19,28 @@ export function Hero() {
       <div className="relative mx-auto max-w-6xl px-6 pt-24 pb-20 md:pt-32 md:pb-28">
         <div className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-xs font-semibold tracking-wide text-ink-soft uppercase">
           <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-          Websites · AI Receptionists · AI Agents · Full-Stack Builds
+          Plumbing · HVAC · Electrical · Roofing · Garage Door · Restoration
         </div>
 
+        {/*
+          Leads with the PHONE, not the website.
+          Formula borrowed from the best-converting page in the competitor teardown: job-verbs plus
+          "every", and no "AI" in the headline at all. The buyer isn't shopping for AI — he's losing
+          jobs to whoever picks up first. The mechanism belongs in the subhead.
+          The website stays in the offer because it costs us almost nothing and every voice-only
+          rival charges more for the phone alone; it just stops being the first thing we say.
+        */}
         <h1 className="mt-8 max-w-4xl text-5xl font-extrabold leading-[1.05] tracking-tight text-balance md:text-7xl">
-          A website that wins the click —
+          Answer every call.
           <br />
-          and an <span className="text-brand">AI</span> that runs your business.
+          Book every <span className="text-brand">job</span>.
         </h1>
 
         <p className="mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft md:text-xl">
-          ThinkBigJoe is an AI agency for established businesses. We build your
-          website, an AI receptionist that answers and books every call, and
-          custom agents that run the work — so you make more sales, run more
-          efficiently, and save time and money.
+          An AI receptionist for home service businesses. It picks up 24/7,
+          finds out what the job is, and texts you the details before you&apos;re
+          off the ladder — so the call you miss at 7pm doesn&apos;t become
+          someone else&apos;s job. Your website comes with it.
         </p>
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">

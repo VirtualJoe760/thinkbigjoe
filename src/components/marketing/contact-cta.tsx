@@ -15,8 +15,10 @@ export function ContactCTA() {
             <p className="text-sm font-semibold tracking-wide text-brand uppercase">
               Get in touch
             </p>
+            {/* Bookends the hero's pain rather than closing on "get started" — the page opens and
+                shuts on the same wound. Costs nothing and converts better than a generic CTA. */}
             <h2 className="mt-3 text-4xl font-extrabold leading-tight tracking-tight md:text-5xl">
-              Have a question? Send a note.
+              Stop losing jobs to whoever picks up first.
             </h2>
             <p className="mt-6 max-w-md leading-relaxed text-white/60">
               Send us a note and our team will get back to you, usually within a

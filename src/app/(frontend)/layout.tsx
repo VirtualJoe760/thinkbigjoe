@@ -12,16 +12,21 @@ const jost = Jost({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://thinkbigjoe.com"),
+  // The title tag IS the search query for this category. The competitor teardown found the pages
+  // that actually rank ("AI Phone Agent for Home Services | Retell AI", "HVAC AI Receptionist &
+  // Answering Service – Newo.ai") put the keyword in the title verbatim, while the sites that
+  // lead with a clever brand statement rank for nothing but their own name. "Agentic AI & MCP
+  // Development" describes a consultancy nobody is searching for.
   title: {
-    default: "ThinkBigJoe — Agentic AI & MCP Development",
+    default: "AI Receptionist for Home Services | ThinkBigJoe",
     template: "%s · ThinkBigJoe",
   },
   description:
-    "An AI consulting agency building agentic software and Model Context Protocol (MCP) solutions for businesses ready to think big.",
+    "An AI receptionist that answers every call 24/7 for plumbers, HVAC, electrical and roofing companies — qualifies the caller and texts you the job before you're off the ladder. Website included.",
   openGraph: {
-    title: "ThinkBigJoe — Agentic AI & MCP Development",
+    title: "AI Receptionist for Home Services | ThinkBigJoe",
     description:
-      "Agentic software and MCP solutions for businesses ready to think big.",
+      "Answer every call. Book every job. An AI receptionist for home service businesses, 24/7.",
     type: "website",
   },
   manifest: "/manifest.json",
