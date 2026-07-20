@@ -138,6 +138,30 @@ export default async function PortalUsagePage({
       }
     : null;
 
+  /**
+   * Would upgrading ACTUALLY be cheaper for them this month?
+   *
+   * The naive comparison — overage vs the price difference — is wrong, because the higher tier has
+   * its own finite allowance charged at the same $0.50/min. Someone 900 minutes into a 400-minute
+   * plan is still 100 minutes over on a 1,200-minute plan, and the pitch has to count that. At the
+   * real ladder the naive version is essentially never true in the customer's favour, so it would
+   * have been pitching upgrades that cost more than staying put.
+   *
+   * A small business owner will do this arithmetic himself. Getting caught inflating it is
+   * unrecoverable, so the bar is: only pitch when staying is genuinely more expensive.
+   */
+  const upgradeSaves =
+    upgrade && upgradeKey
+      ? (() => {
+          const rate = PLANS[upgradeKey].overagePerMinute;
+          const overOnNewTier = Math.max(0, usage.minutes - upgrade.minutes);
+          const costToUpgrade = upgrade.deltaMonthly * 100 + Math.round(overOnNewTier * rate * 100);
+          return costToUpgrade < overageDueCents
+            ? { savesCents: overageDueCents - costToUpgrade, costToUpgrade }
+            : null;
+        })()
+      : null;
+
   // No receptionist on this tier. Branching on planIncludesVoiceMinutes() rather than
   // `includedMinutes === 0` is required by plans.ts: a $99 website customer has no minutes
   // CONCEPT, and rendering them a 0-of-0 meter would read as "100% used" on a product they
@@ -304,14 +328,19 @@ export default async function PortalUsagePage({
       {/* Shown only when they're over AND the maths genuinely favours them. Pitching an upgrade to
           someone whose overage costs less than the price difference is a bad-faith upsell — a
           small business owner will do that arithmetic, and getting caught at it is unrecoverable. */}
-      {tone === "over" && upgrade && overageDueCents > upgrade.deltaMonthly * 100 && (
+      {/* Gate on real overage, not on the percentage. usageTone() flips to "over" at pctUsed >= 100,
+          but minutes are floored, so a customer at exactly 400/400 is "over" with 0 overage minutes
+          — this block used to render for them quoting $0.00 owed. */}
+      {overageMinutes > 0 && upgrade && upgradeSaves && (
         <section className="mt-6 rounded-2xl border border-line bg-surface p-5">
           <h2 className="font-bold tracking-tight">There&apos;s a cheaper way to do this</h2>
           <p className="mt-1 text-sm leading-relaxed text-ink-soft">
-            Moving up to <span className="font-semibold text-ink">{upgrade.label}</span> costs $
-            {upgrade.deltaMonthly.toLocaleString()} more a month and includes{" "}
-            {upgrade.minutes.toLocaleString()} minutes — less than the {usd(overageDueCents)} of
-            extra minutes you&apos;ve already used this month.
+            You&apos;ve used {usd(overageDueCents)} of extra minutes this month. Moving up to{" "}
+            <span className="font-semibold text-ink">{upgrade.label}</span> — $
+            {upgrade.deltaMonthly.toLocaleString()} more a month, with{" "}
+            {upgrade.minutes.toLocaleString()} minutes included — would have cost you{" "}
+            {usd(upgradeSaves.costToUpgrade)} instead. That&apos;s {usd(upgradeSaves.savesCents)}{" "}
+            less.
           </p>
           <Link
             href="/portal/billing"
