@@ -32,6 +32,7 @@ import { eq, sql } from "drizzle-orm";
 import { calls, db } from "@/db";
 import { normalizePhone } from "@/lib/sms";
 import { tenantByNumber } from "@/lib/voice-tenant";
+import { reportIncident } from "@/lib/monitor";
 
 export const dynamic = "force-dynamic";
 
@@ -212,6 +213,12 @@ export async function POST(req: Request) {
     // good. Telling Retell "delivered" when we wrote nothing is how a customer's call history
     // quietly disappears.
     console.error("[voice/webhook] upsert failed for %s:", retellCallId, err);
+    // A persist failure loses call history AND under-bills (minutes we never counted). Retell will
+    // retry on the 500, but a persistent DB problem needs a human — this is the alert that surfaces it.
+    void reportIncident("critical", "Call could not be persisted", {
+      dedupeKey: "voice-webhook-persist",
+      detail: err,
+    });
     return NextResponse.json({ ok: false }, { status: 500 });
   }
 

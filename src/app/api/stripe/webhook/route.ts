@@ -8,6 +8,7 @@ import { notifyTelegram } from "@/lib/telegram";
 import { fulfillDomain } from "@/lib/domain-fulfill";
 import { sendPlanEmail, sendAdminAlert } from "@/lib/email";
 import { PLANS, isPlanKey, planKeyForPrice, type PlanKey } from "@/lib/plans";
+import { reportIncident } from "@/lib/monitor";
 
 const planLabel = (p: string | null | undefined) => (isPlanKey(p) ? PLANS[p].label : p || "your plan");
 
@@ -218,6 +219,15 @@ export async function POST(req: Request) {
     }
   } catch (err) {
     console.error(`[stripe] handler error for ${event.type}:`, err);
+    // KNOWN GAP: this still returns 200, so Stripe won't retry. For checkout.session.completed that
+    // means a DB blip = money captured, nothing provisioned, and no automatic recovery. Fixing the
+    // retry semantics safely (500 on must-succeed events, 200 where a retry can't help) is its own
+    // change. What we can do here without risk is stop it being SILENT: alert so the sale can be
+    // reconciled by hand from the event id logged above.
+    void reportIncident("critical", `Stripe handler threw for ${event.type}`, {
+      dedupeKey: `stripe-${event.type}`,
+      detail: err,
+    });
     // Return 200 anyway so Stripe doesn't hammer retries on a transient DB blip;
     // the event id is logged above for manual replay if needed.
   }
