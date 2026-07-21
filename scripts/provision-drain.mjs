@@ -47,6 +47,7 @@ const LIMIT_ARG = (() => {
 })();
 
 const STALE_PROVISIONING_MIN = 15; // a row stuck 'provisioning' this long is from a crashed tick — reclaim it
+const WAITING_BACKOFF_MIN = 20; // a config-incomplete row steps aside this long so it can't starve ready ones
 const WARN_BANDS = [100, 90, 75]; // highest first
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -141,11 +142,19 @@ async function main() {
     }
 
     const perTick = LIMIT_ARG ? Math.min(remaining, LIMIT_ARG) : remaining;
+    // BACK-OFF so config-incomplete sites can't starve ready ones. A 'waiting' row keeps its
+    // status='queued' but carries a last_error and a fresh updated_at; excluding rows touched in the
+    // last WAITING_BACKOFF_MIN pushes them to the back of the line, so a newly-ready paid customer is
+    // never blocked behind an owner who hasn't finished setup. Fresh rows (last_error IS NULL) are
+    // always eligible; waiting rows simply retry every ~20 min.
     const { rows: queued } = await client.query(
-      "SELECT site_id FROM voice_provision_queue WHERE status='queued' ORDER BY queued_at ASC LIMIT $1",
-      [perTick],
+      `SELECT site_id FROM voice_provision_queue
+         WHERE status='queued'
+           AND (last_error IS NULL OR updated_at < now() - ($2 || ' minutes')::interval)
+         ORDER BY queued_at ASC LIMIT $1`,
+      [perTick, String(WAITING_BACKOFF_MIN)],
     );
-    if (queued.length === 0) { log(`nothing queued (budget ${remaining} left this week).`); return; }
+    if (queued.length === 0) { log(`nothing eligible this tick (${queuedTotal} queued, some may be backing off; budget ${remaining} left this week).`); return; }
 
     log(`${DRY ? "[dry] " : ""}draining ${queued.length} site(s); budget ${remaining} of ${budget} left this week.`);
 

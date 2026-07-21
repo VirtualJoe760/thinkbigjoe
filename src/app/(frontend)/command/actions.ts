@@ -124,21 +124,26 @@ export async function setWeeklyLineBudget(budget: number): Promise<{ ok: boolean
   return { ok: true, message: `Weekly line-budget set to ${clean}.` };
 }
 
-/** The single master kill switch: stop ALL automated money-spend at once — forge builds AND voice
- *  auto-provisioning AND auto-build-on-payment. Queues are preserved; nothing is dropped, everything
+/** The single master kill switch: stop ALL automated money-spend at once — forge builds, voice
+ *  auto-provisioning + auto-build-on-payment, AND the Apify lead-engine scraper. These are every
+ *  autonomous dollar-spender in the system; if one is added later it MUST be added here too, or this
+ *  button quietly lies on an incident. Queues/backlogs are preserved; nothing is dropped, everything
  *  just pauses until switched back on. This is the "oh no" button. */
 export async function masterKill(): Promise<{ ok: boolean; message: string }> {
   await assertAdmin();
   await db.update(forgeEngine).set({ enabled: false, updatedAt: now() }).where(eq(forgeEngine.id, 1));
   await db.update(autoProvision).set({ enabled: false, autoBuildEnabled: false, updatedAt: now() }).where(eq(autoProvision.id, 1));
+  // The lead engine spends real Apify dollars on its own launchd schedule — an emergency stop that
+  // left it running would be a false sense of safety. Stop it too.
+  await db.update(leadEngine).set({ enabled: false, updatedAt: now() }).where(eq(leadEngine.id, 1));
   await db.insert(activityLog).values({
     actor: "joe",
     eventType: "automation_master_kill",
-    summary: "MASTER KILL — all automated spend stopped (forge builds + voice auto-provision + auto-build). Queues preserved.",
-    metadata: { detail: { forge: false, autoProvision: false, autoBuild: false } },
+    summary: "MASTER KILL — all automated spend stopped (forge builds + voice auto-provision + auto-build + Apify lead engine). Queues preserved.",
+    metadata: { detail: { forge: false, autoProvision: false, autoBuild: false, leadEngine: false } },
   });
   revalidatePath("/command/engine");
-  return { ok: true, message: "All automation stopped. Queued work is preserved." };
+  return { ok: true, message: "All automation stopped (forge, voice, lead engine). Queued work is preserved." };
 }
 
 /** Clear stuck build state: re-queue any 'building' row that's been stuck too long (a crashed/hung

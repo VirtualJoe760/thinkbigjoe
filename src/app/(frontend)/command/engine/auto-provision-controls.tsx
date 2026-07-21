@@ -49,7 +49,7 @@ export function AutoProvisionControls({ status }: { status: AutoProvisionStatus 
     });
   };
   const doKill = () => {
-    if (!window.confirm("Stop ALL automated spend now — forge builds and voice auto-provisioning? Queued work is preserved and resumes when you switch things back on.")) return;
+    if (!window.confirm("Stop ALL automated spend now — forge builds, voice auto-provisioning, and the Apify lead engine? Queued work is preserved and resumes when you switch things back on.")) return;
     setS((c) => ({ ...c, enabled: false, autoBuildEnabled: false }));
     start(async () => {
       const r = await masterKill();
@@ -154,7 +154,7 @@ export function AutoProvisionControls({ status }: { status: AutoProvisionStatus 
       {/* Master kill */}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
         <p className="text-xs text-ink-soft">
-          Stops <span className="font-semibold text-ink">everything</span> — forge builds and voice provisioning. Queues are kept.
+          Stops <span className="font-semibold text-ink">everything</span> — forge builds, voice provisioning, and the lead engine. Queues are kept.
         </p>
         <div className="flex items-center gap-2">
           {killMsg && <span className="text-xs font-medium text-brand">{killMsg}</span>}

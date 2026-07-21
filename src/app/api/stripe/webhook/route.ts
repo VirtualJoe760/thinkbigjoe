@@ -55,7 +55,16 @@ async function enqueuePostPaymentAutomation(siteId: number, plan: string | null,
         const queued = await db
           .insert(voiceProvisionQueue)
           .values({ siteId })
-          .onConflictDoNothing({ target: voiceProvisionQueue.siteId })
+          .onConflictDoUpdate({
+            target: voiceProvisionQueue.siteId,
+            // Re-queue ONLY a terminal (done/failed) row. We reach here only with no active/provisioning
+            // line, so a re-subscribe after the line was released legitimately needs a fresh provision.
+            // A row still 'queued'/'provisioning' is in flight → setWhere is false → no update → returns
+            // [] → we skip the notify. That keeps a Stripe retry idempotent AND stops the old silent
+            // drop where a surviving 'done' row swallowed a real re-subscribe with no alert.
+            set: { status: "queued", queuedAt: sql`now()`, lastError: null, attempts: 0, updatedAt: sql`now()` },
+            setWhere: inArray(voiceProvisionQueue.status, ["done", "failed"]),
+          })
           .returning({ id: voiceProvisionQueue.id });
         if (queued.length > 0) {
           await db.insert(activityLog).values({
@@ -85,8 +94,9 @@ async function enqueuePostPaymentAutomation(siteId: number, plan: string | null,
           and(
             eq(forgeSites.id, siteId),
             // Pre-build only. Never re-queue an approved/building/built or already-live site — that
-            // would cost a redundant `claude -p` build on every Stripe retry.
-            notInArray(forgeSites.status, ["approved", "building", "built"]),
+            // would cost a redundant `claude -p` build on every Stripe retry — and never resurrect a
+            // deleted site.
+            notInArray(forgeSites.status, ["approved", "building", "built", "deleted"]),
             isNull(forgeSites.liveUrl),
           ),
         )
