@@ -273,11 +273,11 @@ export default async function PortalPage({
                   <div className="flex items-start justify-between gap-2">
                     <h3 className="text-xl font-bold tracking-tight">{site.businessName}</h3>
                     <span className="rounded-full bg-brand-tint px-2.5 py-1 text-xs font-semibold text-brand">
-                      Front of house
+                      Live
                     </span>
                   </div>
                   <p className="mt-2 text-sm text-ink-soft">
-                    The public site — edit it here like any client site. Portal &amp; Command are code.
+                    Your public website — edit it here like any client site.
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Link
