@@ -94,6 +94,52 @@
     if (_hasRamp === null) _hasRamp = getComputedStyle(document.documentElement).getPropertyValue("--brand-h").trim() !== "";
     return _hasRamp;
   }
+  // Non-ramp sites (Tailwind v4 inline theme) BAKE utility colors as literals at build time —
+  // `.bg-brand{background-color:#0047ff}` — so moving a CSS variable recolors nothing. The honest
+  // preview: scan the stylesheets ONCE for every rule painted in the site's original brand colors
+  // and re-point those exact declarations at our preview vars. Same-origin only (the internal-site
+  // proxy is same-origin by construction); template sites never need this.
+  var _origFlat = null, _valueRecolorDone = false;
+  function captureOrigFlat() {
+    if (_origFlat) return;
+    var cs = getComputedStyle(document.documentElement);
+    function grab(v) { var raw = cs.getPropertyValue(v).trim(); return raw ? toHex(raw) : null; }
+    _origFlat = { brand: grab("--brand"), dark: grab("--brand-dark"), tint: grab("--brand-tint") };
+  }
+  function ensureValueRecolor() {
+    if (_valueRecolorDone) return;
+    _valueRecolorDone = true;
+    var map = [];
+    if (_origFlat.brand) map.push([_origFlat.brand, "--brand"]);
+    if (_origFlat.dark) map.push([_origFlat.dark, "--brand-dark"]);
+    if (_origFlat.tint) map.push([_origFlat.tint, "--brand-tint"]);
+    if (!map.length) return;
+    var PROPS = ["background-color", "color", "border-color", "fill", "stroke"];
+    var out = [];
+    function walk(rules) {
+      for (var i = 0; i < rules.length; i++) {
+        var r = rules[i];
+        if (r.cssRules) { walk(r.cssRules); continue; }
+        if (!r.style || !r.selectorText) continue;
+        for (var p = 0; p < PROPS.length; p++) {
+          var v = r.style.getPropertyValue(PROPS[p]);
+          // Literal colors only — var()/gradient values can't false-match, and skipping them
+          // keeps the canvas rasterizer off the hot path.
+          if (!v || v.indexOf("var(") !== -1 || !(v.indexOf("#") !== -1 || /^(rgb|oklch|oklab|hsl)/.test(v.trim()))) continue;
+          var hx = toHex(v.trim());
+          for (var m = 0; m < map.length; m++) {
+            if (hx === map[m][0]) out.push(r.selectorText + "{" + PROPS[p] + ":var(" + map[m][1] + ") !important}");
+          }
+        }
+      }
+    }
+    for (var s = 0; s < document.styleSheets.length; s++) { try { walk(document.styleSheets[s].cssRules); } catch (e) { /* cross-origin sheet */ } }
+    if (!out.length) return;
+    var st = document.createElement("style");
+    st.id = "__tbj-color-preview";
+    st.textContent = out.join("\n");
+    document.head.appendChild(st);
+  }
   function applyTheme() {
     var ramp = hasTemplateRamp(); // MUST resolve before any setProperty below writes --brand-h
     var root = document.documentElement.style;
@@ -101,9 +147,11 @@
       var p = hexToOklch(theme.primary);
       if (p) { root.setProperty("--brand-h", String(p.h)); root.setProperty("--brand-c", Math.min(0.22, p.C).toFixed(3)); }
       if (!ramp) {
+        captureOrigFlat(); // MUST read the site's original colors before the inline overrides land
         root.setProperty("--brand", theme.primary);
         root.setProperty("--brand-dark", "color-mix(in oklab, " + theme.primary + " 78%, black)");
         root.setProperty("--brand-tint", "color-mix(in oklab, " + theme.primary + " 10%, white)");
+        ensureValueRecolor(); // re-point literal-baked utility rules at the vars above (once)
       }
     }
     if (theme.secondary) {
@@ -137,6 +185,8 @@
     ["--brand-h", "--brand-c", "--accent-h", "--font-heading-stack", "--font-sans-stack", "--brand", "--brand-dark", "--brand-tint", "--accent"].forEach(function (v) { root.removeProperty(v); });
     var fl = document.getElementById("__tbj-font"); if (fl) fl.remove();
     var fp = document.getElementById("__tbj-font-preview"); if (fp) fp.remove();
+    var cp = document.getElementById("__tbj-color-preview"); if (cp) cp.remove();
+    _valueRecolorDone = false;
     clearHexCache();
   }
   // The whole theme is ONE committed edit — drop any existing token edit (+ its Undo marker)
