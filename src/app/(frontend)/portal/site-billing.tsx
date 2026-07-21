@@ -68,7 +68,7 @@ export function SiteBilling({ siteId }: { siteId: number }) {
         <div className="mt-2 flex items-center justify-between rounded-xl border border-line bg-background px-4 py-3">
           <span>
             <span className="font-semibold">Setup fee</span>
-            <span className="block text-xs text-ink-soft">One-time — activates your subscription and a free domain. A website is separate; ask Ivy.</span>
+            <span className="block text-xs text-ink-soft">One-time — activates your subscription and a free domain.</span>
           </span>
           <span className="whitespace-nowrap font-bold">{money(ONE_TIME_BUILD_AMOUNT)}</span>
         </div>

@@ -1,4 +1,4 @@
-import { IVY_PHONE_E164, IVY_PHONE_PRETTY, IVY_PHONE_HREF } from "@/lib/contact";
+import { IVY_PHONE_PRETTY, IVY_PHONE_HREF } from "@/lib/contact";
 
 /**
  * "Call Ivy about X" — the one panel the portal uses everywhere setup used to be a form.
@@ -35,7 +35,7 @@ export function CallIvy({
           href={IVY_PHONE_HREF}
           className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-brand px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
         >
-          📞 Call {IVY_PHONE_PRETTY}
+          <span aria-hidden>📞</span> Call {IVY_PHONE_PRETTY}
         </a>
       </div>
     );
@@ -79,8 +79,6 @@ export function CallIvy({
         </a>
         .
       </p>
-      {/* Machine-readable number for anything that scrapes the page; users see the pretty one above. */}
-      <span className="sr-only">{IVY_PHONE_E164}</span>
     </section>
   );
 }

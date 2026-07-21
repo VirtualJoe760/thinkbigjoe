@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { cardClass } from "@/components/ui";
+import { IVY_PHONE_HREF, IVY_PHONE_PRETTY } from "@/lib/contact";
 
 export const metadata: Metadata = {
   title: "Connect your domain",
@@ -103,7 +104,7 @@ export default async function TransferPage() {
           <p className="text-sm font-semibold text-brand">Want us to handle it?</p>
           <p className="mt-1 text-sm text-ink-soft">
             Email <a href="mailto:josephsardella@gmail.com" className="font-medium text-brand hover:underline">josephsardella@gmail.com</a> or
-            call <a href="tel:+14807642121" className="font-medium text-brand hover:underline">(480) 764-2121</a> with your
+            call <a href={IVY_PHONE_HREF} className="font-medium text-brand hover:underline">{IVY_PHONE_PRETTY}</a> with your
             domain and we'll walk you through it.
           </p>
         </div>

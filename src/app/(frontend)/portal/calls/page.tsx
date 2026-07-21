@@ -243,7 +243,7 @@ export default async function PortalCallsPage({
                   {/* Deliberately describes the configured destination rather than promising a
                       delivered text. Whether a given message actually reached the owner is a
                       per-call fact, shown on each card from notified_at. */}
-                  <Link href={`/portal/receptionist?site=${site.id}`} className="font-semibold text-brand hover:underline">
+                  <Link href={`/portal/dashboard?site=${site.id}`} className="font-semibold text-brand hover:underline">
                     notification number
                   </Link>{" "}
                   straight away.
@@ -254,11 +254,11 @@ export default async function PortalCallsPage({
                 <p className="text-2xl" aria-hidden>📞</p>
                 <p className="mt-2 font-bold tracking-tight">Your receptionist isn&apos;t answering yet.</p>
                 <p className="mt-1 text-sm leading-relaxed text-ink-soft">
-                  Tell it about your business and we&apos;ll switch it on — then every missed call
-                  becomes a message here instead of a customer calling someone else.
+                  Call Ivy and we&apos;ll switch it on — then every missed call becomes a message here
+                  instead of a customer calling someone else.
                 </p>
                 <Link
-                  href={`/portal/receptionist?site=${site.id}`}
+                  href={`/portal/dashboard?site=${site.id}`}
                   className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-brand px-6 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
                 >
                   Set up my receptionist
@@ -274,7 +274,7 @@ export default async function PortalCallsPage({
                   key={call.id}
                   call={call}
                   timezone={tz}
-                  settingsHref={`/portal/receptionist?site=${site.id}`}
+                  settingsHref={`/portal/dashboard?site=${site.id}`}
                 />
               ))}
             </ul>

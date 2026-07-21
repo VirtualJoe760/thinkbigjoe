@@ -72,6 +72,8 @@ export default async function DashboardPage({
         >
           Claim your site
         </Link>
+        {/* An admin with no claimed site of their own still needs to review Ivy's line. */}
+        {admin && <IvyCalls />}
       </main>
     );
   }
@@ -239,7 +241,7 @@ export default async function DashboardPage({
               We reached you on <b>{notified} of {notifiable}</b> leads.{" "}
               <span className="text-red-600">
                 {notifiable - notified} message{notifiable - notified === 1 ? "" : "s"} we couldn&apos;t
-                text you — check the number on file in Settings.
+                text you — call Ivy to fix the number we send to.
               </span>
             </span>
           )}

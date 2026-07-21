@@ -50,8 +50,7 @@ export default async function BillingPage({
         <h1 className="mt-2 text-4xl font-extrabold tracking-tight">Choose the plan that fits.</h1>
         <p className="mt-3 max-w-2xl text-ink-soft">
           A monthly subscription, plus a one-time ${ONE_TIME_BUILD_AMOUNT} setup to get your
-          receptionist live. A website is a separate one-time build — just ask Ivy. Upgrade,
-          downgrade, or cancel anytime.
+          receptionist live. Upgrade, downgrade, or cancel anytime.
         </p>
 
         {changed && (
