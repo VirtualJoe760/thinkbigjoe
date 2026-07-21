@@ -1372,6 +1372,29 @@ async function toolForgeDigest() {
   }
 }
 
+// Read-only — answers "is money spend automatic, and who's waiting for a line?" Never audits (no
+// state change). The switch itself is human-only (flip it in /command/engine), by design.
+async function toolAutomationStatus() {
+  const ap = (await query("SELECT enabled, weekly_line_budget, auto_build_enabled FROM auto_provision WHERE id=1")).rows[0] || {};
+  const fe = (await query("SELECT enabled FROM forge_engine WHERE id=1")).rows[0] || {};
+  const spend = (await query("SELECT count(*)::int AS n FROM voice_lines WHERE created_at > now() - interval '7 days'")).rows[0]?.n ?? 0;
+  const qRows = (await query("SELECT status, count(*)::int AS n FROM voice_provision_queue GROUP BY status")).rows;
+  const byStatus = Object.fromEntries(qRows.map((r) => [r.status, r.n]));
+  const budget = ap.weekly_line_budget ?? 10;
+  const pct = budget > 0 ? Math.round((spend / budget) * 100) : 0;
+  const warn = pct >= 90 ? " ⚠️ OVER 90%" : pct >= 75 ? " ⚠️ 75%+" : "";
+  const text = [
+    `🤖 **Automation status**`,
+    ``,
+    `voice auto-provision: ${ap.enabled ? "AUTOMATIC (spending)" : "manual (queue-for-human)"} · auto-build-on-pay: ${ap.auto_build_enabled ? "on" : "OFF"}`,
+    `forge builds: ${fe.enabled ? "on" : "OFF"}`,
+    `line spend: ${spend}/${budget} numbers this week (${pct}%)${warn}`,
+    `voice queue: ${byStatus.queued ?? 0} queued · ${byStatus.failed ?? 0} failed · ${byStatus.done ?? 0} done`,
+  ];
+  if ((byStatus.failed ?? 0) > 0) text.push(``, `⚠️ ${byStatus.failed} site(s) failed to provision — a human needs to look.`);
+  return { content: [{ type: "text", text: text.join("\n") }] };
+}
+
 async function toolSetOutreachGoal({ daily_goal, enabled } = {}) {
   const sets = [];
   const vals = [];
@@ -1697,7 +1720,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.27.0" },
+  { name: "tbj-mcp", version: "2.28.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1976,6 +1999,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "forge_digest",
       description: "The forge ops digest — instantly answers 'where are we at with the forge, usage, and spend?'. Returns master + per-capability switch states (builds/edits/idle-templates), the weekly RUN-budget used vs remaining (with 75/90% warnings), build + edit queue depth, and throughput (built/edited/outreach/previews over 24h + 7d).",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "automation_status",
+      description: "The auto-provision pipeline state — answers 'is money spend automatic right now, and who's waiting for a voice line?'. Returns whether voice auto-provision + auto-build-on-payment + forge builds are on, phone-number spend vs the weekly cap (with 75/90% warnings), and the voice-provision queue (queued / failed / done). Read-only; the switches are flipped by a human in /command/engine.",
       inputSchema: { type: "object", properties: {} },
     },
     {
@@ -2288,6 +2316,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "list_forge_preview_outreach": return toolListForgePreviewOutreach(args);
     case "forge_funnel_stats": return toolForgeFunnelStats();
     case "forge_digest": return toolForgeDigest();
+    case "automation_status": return toolAutomationStatus();
     case "set_outreach_goal": return toolSetOutreachGoal(args);
     case "set_preview_budget": return toolSetPreviewBudget(args);
     case "list_expiring_previews": return toolListExpiringPreviews();
