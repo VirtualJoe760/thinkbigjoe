@@ -702,15 +702,38 @@
 
     // Token overrides are GLOBAL (on :root); the element snapshot can't undo them, so track the
     // originals and revert on discard. Shared by every tool.
+    //
+    // ALIAS PROPAGATION: on flat-token sites (TBJ's front of house), utilities consume the
+    // UNDERLYING var (--brand), while the editor's semantic system speaks --color-*. Tailwind's
+    // inline theme maps --color-foo: var(--foo), so when the page defines the stripped alias we
+    // move BOTH — otherwise "Everywhere it's used" previews nowhere except the clicked element.
     var appliedTokens = {};
-    function setTokenLive(v, val) {
+    function tokenAlias(v) {
+      if (v.indexOf("--color-") !== 0) return null;
+      var base = "--" + v.slice(8);
+      return getComputedStyle(document.documentElement).getPropertyValue(base).trim() !== "" ? base : null;
+    }
+    function setOneToken(v, val) {
       if (!(v in appliedTokens)) appliedTokens[v] = document.documentElement.style.getPropertyValue(v);
-      document.documentElement.style.setProperty(v, val); clearHexCache();
+      document.documentElement.style.setProperty(v, val);
+    }
+    function setTokenLive(v, val) {
+      setOneToken(v, val);
+      var a = tokenAlias(v); if (a) setOneToken(a, val);
+      clearHexCache();
+    }
+    function revertOneToken(v) {
+      if (v in appliedTokens) { var o = appliedTokens[v]; if (o) document.documentElement.style.setProperty(v, o); else document.documentElement.style.removeProperty(v); delete appliedTokens[v]; }
     }
     function revertToken(v) {
-      if (v in appliedTokens) { var o = appliedTokens[v]; if (o) document.documentElement.style.setProperty(v, o); else document.documentElement.style.removeProperty(v); delete appliedTokens[v]; clearHexCache(); }
+      revertOneToken(v);
+      var a = tokenAlias(v); if (a) revertOneToken(a);
+      clearHexCache();
     }
-    function revertAllTokens() { for (var v in appliedTokens) revertToken(v); }
+    function revertAllTokens() { for (var v in appliedTokens) revertOneToken(v); clearHexCache(); }
+    // Which tokens this element's colors resolved to — set by the Color tool, read at Approve so a
+    // "Just this" divergence from a shared brand color gets a heads-up before it's queued.
+    var colorTokRef = null, bgTokRef = null;
 
     // Intent-first: pick a tool tile, then only that tool's controls show. Tiles are per element type.
     var TOOLS = { text: ["✏️", "Text"], size: ["🅰", "Size"], color: ["🎨", "Color"], image: ["🖼", "Image"], request: ["💬", "Request"] };
@@ -811,6 +834,7 @@
             '<input id="__tbj-bg" type="color" value="' + bgHex + '" style="width:100%;height:34px;border:1px solid #e6e9ef;border-radius:6px;margin-top:4px;padding:0;">' + scopeCtl("__tbj-bs", bgTok);
         }
         body.innerHTML = html;
+        colorTokRef = colorTok; bgTokRef = bgTok;
         wireColor("__tbj-color", "__tbj-ch", "__tbj-cs", colorTok, "color", "color");
         wireColor("__tbj-bg", "__tbj-bh", "__tbj-bs", bgTok, "background-color", "background");
       },
@@ -873,6 +897,18 @@
     pop.querySelector("#__tbj-cancel").onclick = cancel;
     pop.querySelector("#__tbj-approve").onclick = function () {
       if (Object.keys(change).length === 0) { showTiles(); return; } // nothing changed → back to tiles
+      // "Just this" on an element whose color WAS a shared brand token = deliberately leaving the
+      // palette. Make sure that's what they meant — the all-buttons path lives in 🎨 Brand.
+      var diverges = (change.background && bgTokRef) || (change.color && colorTokRef);
+      if (diverges) {
+        var what = type === "button" ? "button" : "element";
+        if (!window.confirm(
+          "Heads up — you're changing the color of just THIS " + what + ", not your brand color.\n\n" +
+          "Every other " + what + " keeps the brand palette; this one will be on its own color from now on.\n\n" +
+          "• To change the color everywhere, cancel and use 🎨 Brand.\n" +
+          "• To keep this one-off color, press OK."
+        )) return;
+      }
       var tks = null;
       if (change.semantic) { tks = {}; for (var v in appliedTokens) tks[v] = appliedTokens[v]; }
       edits.push({ selector: selector, tag: el.nodeName.toLowerCase(), text: origText, changes: change });
@@ -1113,6 +1149,8 @@
       '<input id="__tbj-gfont" type="text" placeholder="Or any Google Font — e.g. Montserrat" style="flex:1;min-width:0;border:1px solid #e6e9ef;border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;box-sizing:border-box;">' +
       '<button id="__tbj-gfont-go" type="button" style="border:1px solid #e6e9ef;background:#fff;border-radius:999px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;flex:0 0 auto;">Try it</button></div>' +
       '<div id="__tbj-gfont-msg" style="font-size:11px;color:#9aa0ad;margin-top:4px;min-height:14px;">Browse thousands at fonts.google.com — type a name here to preview it.</div>' +
+      '<button id="__tbj-brand-std" type="button" style="width:100%;margin-top:12px;background:#fff;border:1px solid #e6e9ef;border-radius:999px;padding:8px;font-weight:600;font-size:12px;color:#5b616e;cursor:pointer;">↺ Reset one-off colors</button>' +
+      '<div style="font-size:10px;color:#9aa0ad;margin-top:3px;text-align:center;">Returns any individually-recolored buttons/text to the brand palette.</div>' +
       '<div style="display:flex;gap:8px;margin-top:14px;">' +
       '<button id="__tbj-brand-add" style="flex:1;background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:10px;font-weight:600;font-size:13px;cursor:pointer;">Approve changes</button>' +
       '<button id="__tbj-brand-cancel" style="background:#f5f7fb;border:0;border-radius:999px;padding:10px 14px;font-size:13px;cursor:pointer;">Cancel</button></div>' +
@@ -1166,6 +1204,15 @@
     gIn.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); tryGoogleFont(); } });
     pop.querySelector("#__tbj-x").onclick = discardBrand;
     pop.querySelector("#__tbj-brand-cancel").onclick = discardBrand;
+    // The undo for "Just this" divergences: queue a request that strips per-element color overrides
+    // so everything individually recolored returns to the palette. Applied by the forge like any edit.
+    pop.querySelector("#__tbj-brand-std").onclick = function () {
+      if (!window.confirm("Return every individually-recolored element (one-off button/text colors) to the standard brand palette? This queues the cleanup — it applies when you send your changes.")) return;
+      edits.push({ tag: "theme", text: "Standardize colors", changes: { note:
+        "Remove every per-element color override previously applied through the editor (custom button/text/background colors on individual elements) and return those elements to the standard brand palette tokens (primary / secondary / neutrals). Do NOT change the brand tokens themselves — only strip the one-off colors." } });
+      history.push({ theme: true }); // no live change; keeps Undo count consistent
+      closePanel(); renderBar();
+    };
     pop.querySelector("#__tbj-brand-reset").onclick = function () { resetTheme(); dropTokenEdit(); renderBar(); closePanel(); openBrandPanel(); };
     var revertBtn = pop.querySelector("#__tbj-brand-revert");
     if (revertBtn) revertBtn.onclick = function () {

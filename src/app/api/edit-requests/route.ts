@@ -73,6 +73,9 @@ export async function POST(req: Request) {
 
   const [site] = await db.select().from(forgeSites).where(eq(forgeSites.id, siteId)).limit(1);
   if (!site) return NextResponse.json({ ok: false, error: "site not found" }, { status: 404 });
+  // Internal sites (TBJ's own front of house) live in their own repo with the contract primitives
+  // in src/app/(frontend)/globals.css — several instruction lines below differ for them.
+  const internal = site.isInternal === true;
   const owns = site.claimedByUserId === session.user.id || isAdminEmail(session.user.email);
   if (!owns) return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
 
@@ -103,13 +106,20 @@ export async function POST(req: Request) {
     // Brand theme change — move the template's OWN design tokens so the whole OKLCH ramp
     // shifts (NOT per-element styles). These land in the site's `app/globals.css` :root.
     if (e.kind === "token") {
+      // Internal sites (TBJ's own front of house) keep their tokens at src/app/(frontend)/globals.css
+      // and derive colors from the contract primitives — pointing claude at app/globals.css or the
+      // TBJ-THEME block there would send it to a file that doesn't exist.
       if (c.clear) {
-        lines.push(`${i + 1}. **Revert brand to original** — remove the fenced \`/* TBJ-THEME-START */ … /* TBJ-THEME-END */\` block from \`app/globals.css\` (restores the template's default brand colors).`);
-        if (c.clearFont) lines.push(`   - Also un-wire the custom font: remove the added \`next/font\` import from \`app/layout.tsx\` and restore the template's default \`--font-heading-stack\` / \`--font-sans-stack\`.`);
+        if (internal) {
+          lines.push(`${i + 1}. **Revert brand to original** — restore the ORIGINAL contract primitives in \`src/app/(frontend)/globals.css\` \`:root\` (see git history: --brand-h: 263.5; --brand-c: 0.274) and remove any custom font wiring so \`--font-heading-stack\`/\`--font-sans-stack\` point back at the site's default family.`);
+        } else {
+          lines.push(`${i + 1}. **Revert brand to original** — remove the fenced \`/* TBJ-THEME-START */ … /* TBJ-THEME-END */\` block from \`app/globals.css\` (restores the template's default brand colors).`);
+        }
+        if (c.clearFont) lines.push(`   - Also un-wire the custom font: remove the added \`next/font\` import from \`${internal ? "src/app/(frontend)/layout.tsx" : "app/layout.tsx"}\` and restore the default \`--font-heading-stack\` / \`--font-sans-stack\`.`);
         lines.push(``);
         return;
       }
-      lines.push(`${i + 1}. **Brand theme change** — edit the design tokens in \`app/globals.css\` \`:root\` (do NOT restyle individual elements; move the tokens so it applies site-wide):`);
+      lines.push(`${i + 1}. **Brand theme change** — edit the design tokens in \`${internal ? "src/app/(frontend)/globals.css" : "app/globals.css"}\` \`:root\` (do NOT restyle individual elements; move the tokens so it applies site-wide)${internal ? " — this site derives its colors from the contract primitives, so set `--brand-h`/`--brand-c` (and `--accent-h`); NEVER replace the derived oklch tokens with hex literals" : ""}:`);
       if (c.brandH != null) lines.push(`   - Primary color → \`--brand-h: ${c.brandH};\`${c.brandC != null ? ` \`--brand-c: ${c.brandC};\`` : ""}  (picked ${c.primaryHex})`);
       if (c.accentH != null) lines.push(`   - Secondary / accent → \`--accent-h: ${c.accentH};\`  (picked ${c.secondaryHex})`);
       if (c.font) lines.push(`   - Font "${c.font}" → import via \`next/font/google\` in \`app/layout.tsx\` (Google families: \`${c.fontGoogle}\`), then point \`--font-heading-stack\` / \`--font-sans-stack\` at the next/font CSS variables (fallback stacks: \`${c.fontHeadingStack}\` / \`${c.fontSansStack}\`)`);
@@ -143,7 +153,15 @@ export async function POST(req: Request) {
     if (c.fontSize) lines.push(`   - Text size (this element only) → \`font-size: ${c.fontSize}\``);
     if (c.color) lines.push(`   - Text color (this element only) → ${c.color}`);
     if (c.background) lines.push(`   - Background (this element only) → ${c.background}`);
-    if (c.semantic) for (const [k, v] of Object.entries(c.semantic)) lines.push(`   - Brand token \`${k}: ${v};\` — recolors everywhere this token is used. **Applied automatically** to the fenced TBJ-THEME block in \`app/globals.css\`; no manual edit needed.`);
+    if (c.semantic) for (const [k, v] of Object.entries(c.semantic)) {
+      if (internal) {
+        // No TBJ-THEME block on internal sites and nothing bakes this automatically — claude MUST
+        // apply it, or a green-lit "recolor everywhere" edit silently evaporates.
+        lines.push(`   - Brand token \`${k}: ${v};\` — recolors everywhere this token is used. **APPLY IT MANUALLY** in \`src/app/(frontend)/globals.css\`: for brand colors move the contract primitives (\`--brand-h\`/\`--brand-c\`) so the derived tokens render ${v}; for flat neutrals (ink/surface/line) set the hex directly. Do not add per-element styles.`);
+      } else {
+        lines.push(`   - Brand token \`${k}: ${v};\` — recolors everywhere this token is used. **Applied automatically** to the fenced TBJ-THEME block in \`app/globals.css\`; no manual edit needed.`);
+      }
+    }
     if (c.image?.dataUrl) {
       imageCount++;
       if (c.replaceGraphic) lines.push(`   - Replace this icon/graphic with the uploaded image: ${c.image.name || "image"} (attached in data)`);
