@@ -96,6 +96,26 @@ section panels. Edits carry an Undo history and are POSTed as a batch.
 the forge's **`factory/edit-poll.mjs`** (cron, ~every 5 min) applies each batch to the site source and
 redeploys. Surfaces as the **"Customer edit queue"** on `/command/engine`.
 
+### Internal sites — TBJ's own front of house (2026-07-20)
+
+Every TBJ project is a Next app with three layers: **Front of house** (public) | **Portal**
+(authenticated) | **Command** (agent control). The editor edits the FOH — including **our own**.
+`forge_sites` rows with `is_internal = true` (TBJ itself, site 1395) surface as a slim **"Your
+company site"** card on `/portal` (Edit + View only — no plans/domains/templates; `chooseTemplate`
+hard-rejects internal sites so the forge never hunts for a `sites/thinkbigjoe` source).
+
+The portal side (site-proxy iframe + `editor.js` + `edit_requests`) is site-agnostic and needed no
+changes. The difference is all in **`edit-poll.mjs`**, which branches on `is_internal`:
+
+| Step | Customer site | Internal site |
+|---|---|---|
+| Source | `webdev-templates/sites/<slug>` | `~/code/<slug>` (its own repo) |
+| Pre-flight | — | **defers** (stays `requested`) unless the repo is on `main`, clean, and in sync with `origin/main` — a forge commit must never mix into WIP or publish unpushed work |
+| Fast-paths | `fastTheme` / `fastAsset` deterministic | **disabled** — different token names (`--brand`, not `--brand-h`) and no canonical asset paths; everything routes through `claude -p` |
+| Prompt | template prompt (`lib/constants.ts`, TEMPLATE.md) | **FOH-scoped prompt**: may only touch `src/app/(frontend)/` *excluding* `portal/` + `command/`, plus `public/` — never `src/app/api/`, `src/lib/`, `src/db/`. This scope line is the security boundary. |
+| Build | `pnpm --filter ./sites/<slug> build` | `pnpm run build` in the repo (its own merge gate) |
+| Deploy | push webdev-templates + `deploy-vercel.mjs` | `git push origin main` in its own repo → Vercel redeploys production |
+
 ### Known gaps (why we're redesigning)
 1. ~~**Per-element, not modular.**~~ **✅ Fixed (Phase 3).** `editor.js` now has a **🎨 Brand mode**
    that edits the tokens (Primary/Secondary/fonts) — "change primary everywhere," live-previewed. The

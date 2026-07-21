@@ -84,13 +84,32 @@ export default async function PortalPage({
     })
     .from(forgeSites)
     // Deleted sites are retired — never surface them (or their action buttons) in the portal.
-    // Internal sites (TBJ itself) are edited in code, not the portal — hide them from the site cards
-    // so the admin doesn't see "Request edits / Studio / rebuild" for a site we don't edit here.
+    // Internal sites (TBJ itself) get their own slim card below — Edit + View only, none of the
+    // customer billing/domain/receptionist chrome that makes no sense for our own front-of-house.
     .where(
       and(
         eq(forgeSites.claimedByUserId, user.id),
         ne(forgeSites.status, "deleted"),
         ne(forgeSites.isInternal, true),
+      ),
+    );
+
+  // Internal sites (our own front-of-house — TBJ itself). Editable in the same editor as customer
+  // sites (edit-poll routes them to their own repo instead of webdev-templates/sites/<slug>), but
+  // rendered as a slim card: no plans, domains, templates, or trial state — those are customer
+  // concepts. Only ever non-empty for the admin account that claimed the internal row.
+  const internalSites = await db
+    .select({
+      id: forgeSites.id,
+      businessName: forgeSites.businessName,
+      liveUrl: forgeSites.liveUrl,
+    })
+    .from(forgeSites)
+    .where(
+      and(
+        eq(forgeSites.claimedByUserId, user.id),
+        eq(forgeSites.isInternal, true),
+        ne(forgeSites.status, "deleted"),
       ),
     );
 
@@ -238,6 +257,47 @@ export default async function PortalPage({
                     {page.description}
                   </span>
                 </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {internalSites.length > 0 && (
+          <section className="mt-12">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-ink-soft">
+              Your company site
+            </h2>
+            <div className="mt-4 grid gap-6 md:grid-cols-2">
+              {internalSites.map((site) => (
+                <div key={site.id} className={cardClass({ tone: "surface", padding: "xl" })}>
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="text-xl font-bold tracking-tight">{site.businessName}</h3>
+                    <span className="rounded-full bg-brand-tint px-2.5 py-1 text-xs font-semibold text-brand">
+                      Front of house
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-ink-soft">
+                    The public site — edit it here like any client site. Portal &amp; Command are code.
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Link
+                      href={`/portal/edit/${site.id}`}
+                      className="inline-flex items-center justify-center rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-ink/90"
+                    >
+                      ✏️ Edit site
+                    </Link>
+                    {site.liveUrl && (
+                      <a
+                        href={site.liveUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center rounded-full border border-line bg-background px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+                      >
+                        View site →
+                      </a>
+                    )}
+                  </div>
+                </div>
               ))}
             </div>
           </section>

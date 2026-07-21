@@ -243,6 +243,13 @@ export async function chooseTemplate(
   if (!site || site.claimedByUserId !== session.user.id) {
     return { ok: false, message: "We couldn't find that site on your account." };
   }
+  // Internal sites (TBJ's own front-of-house) are bespoke Next apps, not template builds — flipping
+  // one to 'approved' would send the forge hunting for a sites/<slug> source that doesn't exist.
+  // Content edits go through the editor (edit-poll routes them to the site's own repo); design
+  // changes are code.
+  if (site.isInternal) {
+    return { ok: false, message: "This is our own site — it isn't template-built. Use the editor instead." };
+  }
   if (site.preferredTemplate === template && site.status !== "built") {
     return { ok: true, message: "That design is already being built." };
   }
