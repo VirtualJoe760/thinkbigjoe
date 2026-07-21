@@ -379,10 +379,10 @@ export default async function PortalPage({
                           View your site →
                         </a>
                         <Link
-                          href={`/portal/receptionist/${site.id}`}
+                          href={`/portal/dashboard?site=${site.id}`}
                           className="inline-flex items-center justify-center rounded-full border border-line bg-background px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
                         >
-                          🎙️ {site.receptionistStatus && site.receptionistStatus !== "none" ? "Receptionist setup" : "Set up AI receptionist"}
+                          🎙️ {site.receptionistStatus && site.receptionistStatus !== "none" ? "Your receptionist" : "Set up AI receptionist"}
                         </Link>
                         <Link
                           href="/portal/calendar"
@@ -509,7 +509,7 @@ export default async function PortalPage({
           </h2>
           <div className="mt-4 grid gap-6 md:grid-cols-2">
             <Link
-              href="/solutions"
+              href="/portal/agents"
               className={cardClass({ tone: "surface", padding: "xl", className: "group transition-colors hover:border-brand hover:bg-brand-tint" })}
             >
               <span className="text-2xl">🤖</span>
@@ -521,25 +521,25 @@ export default async function PortalPage({
                 solve problems, scale the work, and close more sales.
               </p>
               <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand">
-                Explore agentic solutions
+                Call Ivy to get started
                 <span aria-hidden>→</span>
               </span>
             </Link>
 
             <Link
-              href="/portal/receptionist"
+              href="/portal/dashboard"
               className={cardClass({ tone: "surface", padding: "xl", className: "group transition-colors hover:border-brand hover:bg-brand-tint" })}
             >
               <span className="text-2xl">🎙️</span>
               <h3 className="mt-2 text-xl font-bold tracking-tight group-hover:text-brand">
-                Set up the voice receptionist
+                Your voice receptionist
               </h3>
               <p className="mt-2 leading-relaxed text-ink-soft">
                 An AI receptionist that answers your phone, helps callers, and books
-                jobs around the clock — set it up in a few minutes.
+                jobs around the clock. See what it&apos;s handled — or call Ivy to set one up.
               </p>
               <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand">
-                Set up your receptionist
+                Open your receptionist
                 <span aria-hidden>→</span>
               </span>
             </Link>

@@ -7,6 +7,7 @@ import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { db, calls, forgeSites, voiceLines } from "@/db";
 import { auth } from "@/lib/auth";
 import { StatGrid, StatTile } from "@/components/ui";
+import { CallIvy } from "@/components/portal/call-ivy";
 import { CallFeedback } from "./call-feedback";
 
 export const dynamic = "force-dynamic";
@@ -81,6 +82,55 @@ export default async function DashboardPage({
     .orderBy(desc(voiceLines.createdAt))
     .limit(1);
   const isLive = line?.status === "active";
+  const hasLine = Boolean(line);
+
+  // The site switcher — shared by the setup screen and the dashboard below.
+  const siteSwitcher =
+    sites.length > 1 ? (
+      <div className="mt-5 flex flex-wrap gap-2">
+        {sites.map((sx) => {
+          const active = sx.id === site.id;
+          return (
+            <Link
+              key={sx.id}
+              href={`/portal/dashboard?site=${sx.id}`}
+              className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold transition-colors ${
+                active ? "border-brand bg-brand-tint text-brand" : "border-line bg-background text-ink-soft hover:bg-surface hover:text-ink"
+              }`}
+            >
+              {sx.businessName}
+            </Link>
+          );
+        })}
+      </div>
+    ) : null;
+
+  // NO receptionist provisioned yet → this is a SETUP screen, not a dashboard. Setup happens by
+  // calling Ivy now (the form is gone), so show that, and skip the value queries entirely — there
+  // are no calls to aggregate for a site with no line.
+  if (!hasLine) {
+    return (
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6">
+        {header}
+        <p className="mt-1 text-sm text-ink-soft">
+          <span className="font-semibold text-ink">{site.businessName}</span>&apos;s AI receptionist
+          isn&apos;t set up yet.
+        </p>
+        {siteSwitcher}
+        <div className="mt-6">
+          <CallIvy
+            heading="Set up your receptionist"
+            blurb={`Call Ivy and she'll get ${site.businessName}'s phone answered 24/7 — she asks about your services, hours, and where to send messages. About five minutes, and you're live.`}
+            steps={[
+              "Have your account ID handy — it's at the top of the portal.",
+              "Ivy texts a code to the number on file to confirm it's you.",
+              "Answer a few questions about your business, and she sets it up.",
+            ]}
+          />
+        </div>
+      </main>
+    );
+  }
 
   // THE VALUE STORY, aggregated in SQL in the SITE's timezone. "After hours" means after hours where
   // the plumber lives — not UTC, not Pacific. One row back, never the call rows.
@@ -132,7 +182,7 @@ export default async function DashboardPage({
   const recent = rowsOf(
     await db.execute(sql`
       SELECT id, started_at, caller_name, callback_number, urgency, problem, summary,
-             is_real_lead, notified_at, owner_rating
+             transcript, is_real_lead, notified_at, owner_rating
       FROM calls
       WHERE site_id = ${site.id}
       ORDER BY started_at DESC NULLS LAST, id DESC
@@ -149,24 +199,16 @@ export default async function DashboardPage({
         did this month. {isLive ? "It's live and answering." : "It'll fill in once your line goes live."}
       </p>
 
-      {sites.length > 1 && (
-        <div className="mt-5 flex flex-wrap gap-2">
-          {sites.map((sx) => {
-            const active = sx.id === site.id;
-            return (
-              <Link
-                key={sx.id}
-                href={`/portal/dashboard?site=${sx.id}`}
-                className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold transition-colors ${
-                  active ? "border-brand bg-brand-tint text-brand" : "border-line bg-background text-ink-soft hover:bg-surface hover:text-ink"
-                }`}
-              >
-                {sx.businessName}
-              </Link>
-            );
-          })}
-        </div>
-      )}
+      {siteSwitcher}
+
+      {/* Existing customer: setup is a call now, so changes are too. Sits above the numbers. */}
+      <div className="mt-5">
+        <CallIvy
+          compact
+          heading="Change your receptionist, or add another"
+          blurb="Call Ivy to update your greeting, hours, or where messages go — or to set up a line for another business."
+        />
+      </div>
 
       {/* The value row. After-hours leads with the accent because that's the argument for the product. */}
       <div className="mt-6">
@@ -260,6 +302,16 @@ export default async function DashboardPage({
                       <p className="mt-0.5 text-sm text-ink-soft">
                         {(c.problem as string) || (c.summary as string) || "No details taken."}
                       </p>
+                      {/* Transcript expands via native <details> — zero-JS, a big tap target, and it
+                          works before hydration. This is "what was actually said on the phone". */}
+                      {c.transcript ? (
+                        <details className="mt-2 text-sm">
+                          <summary className="cursor-pointer font-medium text-brand">Read transcript</summary>
+                          <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-background px-3 py-2 font-sans text-xs leading-relaxed text-ink-soft">
+                            {c.transcript as string}
+                          </pre>
+                        </details>
+                      ) : null}
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       <span className="text-xs text-ink-soft">{when}</span>
