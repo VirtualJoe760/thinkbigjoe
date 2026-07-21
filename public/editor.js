@@ -84,10 +84,36 @@
     link.href = "https://fonts.googleapis.com/css2?family=" + g + "&display=swap";
   }
   // Apply the current theme to the live page by moving the template's own tokens.
+  // Template sites derive everything from the OKLCH ramp (--brand-h/--brand-c); sites without that
+  // ramp (TBJ's own front of house) use flat tokens (--brand, --brand-dark, --brand-tint) — so when
+  // the ramp doesn't exist we drive the flat tokens directly, deriving the shades via color-mix.
+  // Memoized on FIRST call — applyTheme sets --brand-h inline as part of the preview, so a live
+  // check would misread our own preview as "this site has the ramp" from the second call on.
+  var _hasRamp = null;
+  function hasTemplateRamp() {
+    if (_hasRamp === null) _hasRamp = getComputedStyle(document.documentElement).getPropertyValue("--brand-h").trim() !== "";
+    return _hasRamp;
+  }
   function applyTheme() {
+    var ramp = hasTemplateRamp(); // MUST resolve before any setProperty below writes --brand-h
     var root = document.documentElement.style;
-    if (theme.primary) { var p = hexToOklch(theme.primary); if (p) { root.setProperty("--brand-h", String(p.h)); root.setProperty("--brand-c", Math.min(0.22, p.C).toFixed(3)); } }
-    if (theme.secondary) { var s = hexToOklch(theme.secondary); if (s) root.setProperty("--accent-h", String(s.h)); }
+    if (theme.primary) {
+      var p = hexToOklch(theme.primary);
+      if (p) { root.setProperty("--brand-h", String(p.h)); root.setProperty("--brand-c", Math.min(0.22, p.C).toFixed(3)); }
+      if (!ramp) {
+        root.setProperty("--brand", theme.primary);
+        root.setProperty("--brand-dark", "color-mix(in oklab, " + theme.primary + " 78%, black)");
+        root.setProperty("--brand-tint", "color-mix(in oklab, " + theme.primary + " 10%, white)");
+      }
+    }
+    if (theme.secondary) {
+      var s = hexToOklch(theme.secondary);
+      if (s) root.setProperty("--accent-h", String(s.h));
+      // Only touch a flat --accent if the site actually defines one.
+      if (!ramp && getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() !== "") {
+        root.setProperty("--accent", theme.secondary);
+      }
+    }
     var fontPick = null;
     if (theme.font) { fontPick = FONT_SETS.filter(function (x) { return x.id === theme.font; })[0] || null; }
     else if (theme.customFont) { fontPick = theme.customFont; }
@@ -108,7 +134,7 @@
   function resetTheme() {
     theme = { primary: null, secondary: null, font: null, customFont: null };
     var root = document.documentElement.style;
-    ["--brand-h", "--brand-c", "--accent-h", "--font-heading-stack", "--font-sans-stack"].forEach(function (v) { root.removeProperty(v); });
+    ["--brand-h", "--brand-c", "--accent-h", "--font-heading-stack", "--font-sans-stack", "--brand", "--brand-dark", "--brand-tint", "--accent"].forEach(function (v) { root.removeProperty(v); });
     var fl = document.getElementById("__tbj-font"); if (fl) fl.remove();
     var fp = document.getElementById("__tbj-font-preview"); if (fp) fp.remove();
     clearHexCache();
