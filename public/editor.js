@@ -88,8 +88,21 @@
     var root = document.documentElement.style;
     if (theme.primary) { var p = hexToOklch(theme.primary); if (p) { root.setProperty("--brand-h", String(p.h)); root.setProperty("--brand-c", Math.min(0.22, p.C).toFixed(3)); } }
     if (theme.secondary) { var s = hexToOklch(theme.secondary); if (s) root.setProperty("--accent-h", String(s.h)); }
-    if (theme.font) { var f = FONT_SETS.filter(function (x) { return x.id === theme.font; })[0]; if (f) { loadFont(f.g); root.setProperty("--font-heading-stack", f.head); root.setProperty("--font-sans-stack", f.body); } }
-    else if (theme.customFont) { loadFont(theme.customFont.g); root.setProperty("--font-heading-stack", theme.customFont.head); root.setProperty("--font-sans-stack", theme.customFont.body); }
+    var fontPick = null;
+    if (theme.font) { fontPick = FONT_SETS.filter(function (x) { return x.id === theme.font; })[0] || null; }
+    else if (theme.customFont) { fontPick = theme.customFont; }
+    if (fontPick) {
+      loadFont(fontPick.g);
+      root.setProperty("--font-heading-stack", fontPick.head);
+      root.setProperty("--font-sans-stack", fontPick.body);
+      // Belt AND suspenders: templates consume the two tokens above, but sites that don't (TBJ's
+      // own front of house, next/font-wired pages) would preview nothing. A preview-only style tag
+      // forces the pick everywhere; on template sites it resolves to the same values, so no drift.
+      var fs = document.getElementById("__tbj-font-preview");
+      if (!fs) { fs = document.createElement("style"); fs.id = "__tbj-font-preview"; document.head.appendChild(fs); }
+      fs.textContent = "body,p,li,a,button,input,textarea{font-family:" + fontPick.body + " !important}" +
+        "h1,h2,h3,h4,h5,h6{font-family:" + fontPick.head + " !important}";
+    }
     clearHexCache();
   }
   function resetTheme() {
@@ -97,6 +110,7 @@
     var root = document.documentElement.style;
     ["--brand-h", "--brand-c", "--accent-h", "--font-heading-stack", "--font-sans-stack"].forEach(function (v) { root.removeProperty(v); });
     var fl = document.getElementById("__tbj-font"); if (fl) fl.remove();
+    var fp = document.getElementById("__tbj-font-preview"); if (fp) fp.remove();
     clearHexCache();
   }
   // The whole theme is ONE committed edit — drop any existing token edit (+ its Undo marker)
