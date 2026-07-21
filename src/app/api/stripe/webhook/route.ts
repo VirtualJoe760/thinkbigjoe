@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, ne, sql, inArray, isNull, notInArray } from "drizzle-orm";
 import type Stripe from "stripe";
 
 import { stripe } from "@/lib/stripe";
-import { db, forgeSites, activityLog } from "@/db";
+import { db, forgeSites, activityLog, voiceLines, voiceProvisionQueue, autoProvision } from "@/db";
 import { notifyTelegram } from "@/lib/telegram";
 import { fulfillDomain } from "@/lib/domain-fulfill";
 import { sendPlanEmail, sendAdminAlert } from "@/lib/email";
-import { PLANS, isPlanKey, planKeyForPrice, type PlanKey } from "@/lib/plans";
+import { PLANS, isPlanKey, planIncludesVoiceMinutes, planKeyForPrice, type PlanKey } from "@/lib/plans";
 import { reportIncident } from "@/lib/monitor";
 
 const planLabel = (p: string | null | undefined) => (isPlanKey(p) ? PLANS[p].label : p || "your plan");
@@ -21,6 +21,93 @@ async function ownerEmailForSite(claimedByUserId: string | null): Promise<{ emai
   const rows = (Array.isArray(res) ? res : (res as { rows?: unknown[] }).rows ?? []) as Record<string, unknown>[];
   const r = rows[0];
   return r ? { email: String(r.email), name: r.name ? String(r.name) : null } : null;
+}
+
+/**
+ * Post-payment automation enqueue — switch-AGNOSTIC and idempotent.
+ *
+ * The VOICE queue is written WITHOUT reading auto_provision.enabled: the enqueue must always happen
+ * so a paused / over-cap / switched-off pipeline queues the customer for a human instead of dropping
+ * them (the pause-not-drop invariant — docs/AUTOMATION_PIPELINE.md). Only the drainer
+ * (scripts/provision-drain.mjs) reads the switch + cap and decides whether to actually buy a number.
+ *
+ * Two independent, retry-safe enqueues (Stripe has no event dedup, so both must no-op on replay):
+ *  • VOICE — for a voice/complete plan with no live line yet: insert a voice_provision_queue row.
+ *    unique(site_id) makes on-conflict-do-nothing the whole idempotency story.
+ *  • BUILD — only when auto_build_enabled is ON and the site is still pre-build: flip status to
+ *    'approved' so the forge poll picks it up. forge_engine still gates the real build spend, so
+ *    this only MOVES the trigger; the pre-build WHERE guard makes a retry a no-op.
+ *
+ * Non-throwing on purpose: a failure here must never bubble into the handler's catch-all (which
+ * returns 200 and would strand the whole sale). It alerts instead, so a missed enqueue is visible.
+ */
+async function enqueuePostPaymentAutomation(siteId: number, plan: string | null, bizName: string) {
+  try {
+    // ── VOICE ──────────────────────────────────────────────────────────────────────────────────
+    if (isPlanKey(plan) && planIncludesVoiceMinutes(plan)) {
+      // A live/pending line already exists → this is a re-purchase or a Stripe retry; never re-queue.
+      const live = await db
+        .select({ id: voiceLines.id })
+        .from(voiceLines)
+        .where(and(eq(voiceLines.siteId, siteId), inArray(voiceLines.status, ["active", "provisioning"])))
+        .limit(1);
+      if (live.length === 0) {
+        const queued = await db
+          .insert(voiceProvisionQueue)
+          .values({ siteId })
+          .onConflictDoNothing({ target: voiceProvisionQueue.siteId })
+          .returning({ id: voiceProvisionQueue.id });
+        if (queued.length > 0) {
+          await db.insert(activityLog).values({
+            actor: "stripe",
+            eventType: "voice_provision_queued",
+            summary: `${bizName} queued for voice provisioning (${plan})`,
+            metadata: { auto: true, target: String(siteId), detail: { plan } },
+          });
+          notifyTelegram(
+            `📞 <b>Voice line queued</b>\n${bizName} — auto-provisions if the switch is on and under cap; otherwise run <code>provision-line --site ${siteId} --apply</code>.`,
+          ).catch(() => {});
+        }
+      }
+    }
+
+    // ── BUILD (opt-in; default OFF) ──────────────────────────────────────────────────────────────
+    const [cfg] = await db
+      .select({ autoBuild: autoProvision.autoBuildEnabled })
+      .from(autoProvision)
+      .where(eq(autoProvision.id, 1))
+      .limit(1);
+    if (cfg?.autoBuild) {
+      const approved = await db
+        .update(forgeSites)
+        .set({ status: "approved", approvedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+        .where(
+          and(
+            eq(forgeSites.id, siteId),
+            // Pre-build only. Never re-queue an approved/building/built or already-live site — that
+            // would cost a redundant `claude -p` build on every Stripe retry.
+            notInArray(forgeSites.status, ["approved", "building", "built"]),
+            isNull(forgeSites.liveUrl),
+          ),
+        )
+        .returning({ id: forgeSites.id });
+      if (approved.length > 0) {
+        await db.insert(activityLog).values({
+          actor: "stripe",
+          eventType: "site_paid_build_queued",
+          summary: `${bizName} auto-queued for build on payment`,
+          metadata: { auto: true, target: String(siteId) },
+        });
+      }
+    }
+  } catch (err) {
+    // A paid customer who wasn't queued is a real problem, but it must not strand the whole handler.
+    console.error("[stripe] post-payment automation enqueue failed for site %d:", siteId, err);
+    void reportIncident("critical", "Post-payment automation enqueue failed", {
+      dedupeKey: `provision-enqueue-${siteId}`,
+      detail: err,
+    });
+  }
 }
 
 // Stripe needs the raw request body to verify the signature.
@@ -147,6 +234,10 @@ export async function POST(req: Request) {
           ctaUrl: `${process.env.NEXT_PUBLIC_SITE_URL || "https://thinkbigjoe.com"}/command`,
           ctaLabel: "Open command",
         }).catch((err) => console.error("[stripe] admin sale alert failed:", err));
+
+        // Queue voice provisioning (and, if opted in, the site build). Self-contained + non-throwing
+        // so it can't strand the sale; the drainer decides whether to actually spend. See the helper.
+        await enqueuePostPaymentAutomation(siteId, plan, bizName);
         break;
       }
 

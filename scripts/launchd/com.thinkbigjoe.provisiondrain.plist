@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Drain poller for auto-provision-voice-on-payment (scripts/provision-drain.mjs).
+
+  launchd plists are NOT auto-loaded from the repo — this is the REFERENCE COPY. To install/update:
+    cp scripts/launchd/com.thinkbigjoe.provisiondrain.plist ~/Library/LaunchAgents/
+    launchctl unload ~/Library/LaunchAgents/com.thinkbigjoe.provisiondrain.plist 2>/dev/null
+    launchctl load  ~/Library/LaunchAgents/com.thinkbigjoe.provisiondrain.plist
+
+  SAFE TO RUN even before flipping the switch: provision-drain.mjs no-ops while auto_provision.enabled
+  is false (the default), so this poller spends nothing until you turn "money spend automatic" on in
+  /command/engine. Ticks every 5 minutes; logs to /tmp/provision-drain.log.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.thinkbigjoe.provisiondrain</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>/Users/macdaddyjoe/code/thinkbigjoe/scripts/provision-drain.mjs</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macdaddyjoe/code/thinkbigjoe</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/macdaddyjoe/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macdaddyjoe</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/provision-drain.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/provision-drain.log</string>
+</dict>
+</plist>
