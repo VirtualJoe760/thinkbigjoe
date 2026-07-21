@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export function Hero() {
   return (
-    <section className="relative overflow-hidden">
+    <section id="home" className="relative overflow-hidden">
       {/* subtle grid backdrop */}
       <div
         aria-hidden
