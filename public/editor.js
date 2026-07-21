@@ -117,31 +117,31 @@
   // CSS-layer resets (Tailwind v4 preflight) can outrank presentation attributes in the cascade,
   // which silently zeroes every shape. Inline style always wins. (SVG2 geometry-as-CSS.)
   function svgW(inner) { return '<svg viewBox="0 0 72 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="display:block;width:100%;height:auto;background:#f8fafd;border-radius:6px;">' + inner + "</svg>"; }
-  function tb(x, y, w, h, f, rx) { return '<rect style="x:' + x + "px;y:" + y + "px;width:" + w + "px;height:" + h + "px;rx:" + (rx == null ? 2 : rx) + "px;fill:" + (f || "#b6c0d2") + ';"/>'; }
+  function tb(x, y, w, h, f, rx) { return '<rect style="x:' + x + "px;y:" + y + "px;width:" + w + "px;height:" + h + "px;rx:" + (rx == null ? 2 : rx) + "px;fill:" + (f || "#9aa8c0") + ';"/>'; }
   function ts(x, y, w, h, s, rx) { return '<rect style="x:' + x + "px;y:" + y + "px;width:" + w + "px;height:" + h + "px;rx:" + (rx == null ? 3 : rx) + "px;fill:none;stroke:" + s + ';stroke-width:1;"/>'; }
-  function tl(x, y, w, f) { return tb(x, y, w, 3, f || "#a7b2c8", 1.5); }
-  function tc(x, y, r, f) { return '<circle style="cx:' + x + "px;cy:" + y + "px;r:" + r + "px;fill:" + (f || "#a7b2c8") + ';"/>'; }
+  function tl(x, y, w, f) { return tb(x, y, w, 3, f || "#8e9cb8", 1.5); }
+  function tc(x, y, r, f) { return '<circle style="cx:' + x + "px;cy:" + y + "px;r:" + r + "px;fill:" + (f || "#8e9cb8") + ';"/>'; }
   var TACC = "#2f6bff", TDK = "#3a3d46";
   var THUMBS = {
-    "hero.split": svgW(tl(6, 12, 24, TDK) + tl(6, 18, 20) + tl(6, 24, 16) + tb(6, 31, 14, 6, TACC, 3) + tb(38, 8, 28, 32, "#a7b2c8", 3)),
+    "hero.split": svgW(tl(6, 12, 24, TDK) + tl(6, 18, 20) + tl(6, 24, 16) + tb(6, 31, 14, 6, TACC, 3) + tb(38, 8, 28, 32, "#8e9cb8", 3)),
     "hero.fullBleed": svgW(tb(2, 4, 68, 40, "#aeb8cc", 3) + tl(20, 17, 32, "#ffffff") + tl(26, 23, 20, "#e8ecf4") + tb(28, 30, 16, 6, TACC, 3)),
     "hero.centered": svgW(tl(22, 12, 28, TDK) + tl(26, 18, 20) + tl(29, 24, 14) + tb(28, 31, 16, 6, TACC, 3)),
     "hero.minimal": svgW(tl(6, 18, 36, TDK) + tl(6, 25, 26)),
-    "nav.standard": svgW(tb(2, 4, 68, 12, "#dde4ef", 3) + tc(9, 10, 3, TACC) + tl(40, 8, 8) + tl(50, 8, 8) + tl(60, 8, 8)),
-    "nav.centered": svgW(tb(2, 4, 68, 12, "#dde4ef", 3) + tc(9, 10, 3, TACC) + tl(26, 8, 8) + tl(36, 8, 8) + tl(46, 8, 8)),
-    "nav.floating": svgW(tb(8, 7, 56, 11, "#ffffff", 5.5) + ts(8, 7, 56, 11, "#a7b2c8", 5.5) + tc(15, 12.5, 2.5, TACC) + tl(42, 11, 6) + tl(50, 11, 6)),
+    "nav.standard": svgW(tb(2, 4, 68, 12, "#ccd6e6", 3) + tc(9, 10, 3, TACC) + tl(40, 8, 8) + tl(50, 8, 8) + tl(60, 8, 8)),
+    "nav.centered": svgW(tb(2, 4, 68, 12, "#ccd6e6", 3) + tc(9, 10, 3, TACC) + tl(26, 8, 8) + tl(36, 8, 8) + tl(46, 8, 8)),
+    "nav.floating": svgW(tb(8, 7, 56, 11, "#ffffff", 5.5) + ts(8, 7, 56, 11, "#8e9cb8", 5.5) + tc(15, 12.5, 2.5, TACC) + tl(42, 11, 6) + tl(50, 11, 6)),
     "stats.band": svgW(tb(2, 14, 68, 20, TDK, 3) + tl(10, 22, 12, "#ffffff") + tl(30, 22, 12, "#ffffff") + tl(50, 22, 12, "#ffffff")),
     "stats.inline": svgW(tl(10, 22, 12, TDK) + tl(30, 22, 12, TDK) + tl(50, 22, 12, TDK)),
-    "services.cards": svgW(tb(4, 10, 20, 28, "#ffffff", 3) + ts(4, 10, 20, 28, "#b6c0d2") + tl(7, 26, 14) + tb(26, 10, 20, 28, "#ffffff", 3) + ts(26, 10, 20, 28, "#b6c0d2") + tl(29, 26, 14) + tb(48, 10, 20, 28, "#ffffff", 3) + ts(48, 10, 20, 28, "#b6c0d2") + tl(51, 26, 14)),
-    "services.list": svgW(tb(6, 8, 60, 9, "#dde4ef", 3) + tb(6, 20, 60, 9, "#dde4ef", 3) + tb(6, 32, 60, 9, "#dde4ef", 3)),
-    "services.alternating": svgW(tb(6, 7, 26, 15, "#a7b2c8", 3) + tl(38, 11, 22) + tl(38, 16, 16) + tl(6, 30, 22) + tl(6, 35, 16) + tb(40, 26, 26, 15, "#a7b2c8", 3)),
-    "swap.testimonials": svgW(tb(6, 10, 28, 26, "#ffffff", 3) + ts(6, 10, 28, 26, "#b6c0d2") + tc(12, 17, 3) + tl(9, 25, 20) + tl(9, 30, 14) + tb(38, 10, 28, 26, "#ffffff", 3) + ts(38, 10, 28, 26, "#b6c0d2") + tc(44, 17, 3) + tl(41, 25, 20) + tl(41, 30, 14)),
-    "swap.gallery": svgW(tb(5, 6, 19, 16, "#a7b2c8", 2) + tb(26, 6, 19, 16, "#a7b2c8", 2) + tb(47, 6, 19, 16, "#a7b2c8", 2) + tb(5, 25, 19, 16, "#a7b2c8", 2) + tb(26, 25, 19, 16, "#a7b2c8", 2) + tb(47, 25, 19, 16, "#a7b2c8", 2)),
-    "swap.faq": svgW(tb(6, 6, 60, 8, "#dde4ef", 2) + tl(10, 8.5, 30, TDK) + tb(6, 16, 60, 8, "#dde4ef", 2) + tl(10, 18.5, 24, TDK) + tb(6, 26, 60, 8, "#dde4ef", 2) + tl(10, 28.5, 34, TDK) + tb(6, 36, 60, 8, "#dde4ef", 2) + tl(10, 38.5, 20, TDK)),
+    "services.cards": svgW(tb(4, 10, 20, 28, "#ffffff", 3) + ts(4, 10, 20, 28, "#9aa8c0") + tl(7, 26, 14) + tb(26, 10, 20, 28, "#ffffff", 3) + ts(26, 10, 20, 28, "#9aa8c0") + tl(29, 26, 14) + tb(48, 10, 20, 28, "#ffffff", 3) + ts(48, 10, 20, 28, "#9aa8c0") + tl(51, 26, 14)),
+    "services.list": svgW(tb(6, 8, 60, 9, "#ccd6e6", 3) + tb(6, 20, 60, 9, "#ccd6e6", 3) + tb(6, 32, 60, 9, "#ccd6e6", 3)),
+    "services.alternating": svgW(tb(6, 7, 26, 15, "#8e9cb8", 3) + tl(38, 11, 22) + tl(38, 16, 16) + tl(6, 30, 22) + tl(6, 35, 16) + tb(40, 26, 26, 15, "#8e9cb8", 3)),
+    "swap.testimonials": svgW(tb(6, 10, 28, 26, "#ffffff", 3) + ts(6, 10, 28, 26, "#9aa8c0") + tc(12, 17, 3) + tl(9, 25, 20) + tl(9, 30, 14) + tb(38, 10, 28, 26, "#ffffff", 3) + ts(38, 10, 28, 26, "#9aa8c0") + tc(44, 17, 3) + tl(41, 25, 20) + tl(41, 30, 14)),
+    "swap.gallery": svgW(tb(5, 6, 19, 16, "#8e9cb8", 2) + tb(26, 6, 19, 16, "#8e9cb8", 2) + tb(47, 6, 19, 16, "#8e9cb8", 2) + tb(5, 25, 19, 16, "#8e9cb8", 2) + tb(26, 25, 19, 16, "#8e9cb8", 2) + tb(47, 25, 19, 16, "#8e9cb8", 2)),
+    "swap.faq": svgW(tb(6, 6, 60, 8, "#ccd6e6", 2) + tl(10, 8.5, 30, TDK) + tb(6, 16, 60, 8, "#ccd6e6", 2) + tl(10, 18.5, 24, TDK) + tb(6, 26, 60, 8, "#ccd6e6", 2) + tl(10, 28.5, 34, TDK) + tb(6, 36, 60, 8, "#ccd6e6", 2) + tl(10, 38.5, 20, TDK)),
     "swap.cta": svgW(tb(2, 12, 68, 24, TACC, 4) + tl(20, 19, 32, "#ffffff") + tb(27, 26, 18, 6, "#ffffff", 3)),
-    "swap.beforeAfter": svgW(tb(4, 8, 30, 32, "#a7b2c8", 3) + tb(38, 8, 30, 32, "#8f9bb3", 3) + tb(35, 6, 2, 36, TACC, 1)),
-    "swap.guarantee": svgW(tc(16, 18, 7, TACC) + tc(36, 18, 7, "#a7b2c8") + tc(56, 18, 7, "#a7b2c8") + tl(9, 32, 14) + tl(29, 32, 14) + tl(49, 32, 14)),
-    "swap.pricing": svgW(tb(5, 8, 19, 32, "#ffffff", 3) + ts(5, 8, 19, 32, "#b6c0d2") + tb(26, 5, 19, 38, "#ffffff", 3) + ts(26, 5, 19, 38, TACC) + tb(47, 8, 19, 32, "#ffffff", 3) + ts(47, 8, 19, 32, "#b6c0d2")),
+    "swap.beforeAfter": svgW(tb(4, 8, 30, 32, "#8e9cb8", 3) + tb(38, 8, 30, 32, "#8f9bb3", 3) + tb(35, 6, 2, 36, TACC, 1)),
+    "swap.guarantee": svgW(tc(16, 18, 7, TACC) + tc(36, 18, 7, "#8e9cb8") + tc(56, 18, 7, "#8e9cb8") + tl(9, 32, 14) + tl(29, 32, 14) + tl(49, 32, 14)),
+    "swap.pricing": svgW(tb(5, 8, 19, 32, "#ffffff", 3) + ts(5, 8, 19, 32, "#9aa8c0") + tb(26, 5, 19, 38, "#ffffff", 3) + ts(26, 5, 19, 38, TACC) + tb(47, 8, 19, 32, "#ffffff", 3) + ts(47, 8, 19, 32, "#9aa8c0")),
   };
 
   // Layout options per section kind — [variant, friendly label, thumb key]. Variants match the
@@ -217,16 +217,63 @@
     "services.list": function (sec) { var g = findGrid(sec); if (!g) return; g.style.display = "grid"; g.style.gridTemplateColumns = "1fr"; g.style.gap = "14px"; eachEl(g.children, function (c) { c.style.display = "flex"; c.style.alignItems = "center"; c.style.gap = "16px"; c.style.textAlign = "left"; }); },
     "services.alternating": function (sec) { var g = findGrid(sec); if (!g) return; g.style.display = "grid"; g.style.gridTemplateColumns = "1fr"; g.style.gap = "18px"; eachEl(g.children, function (c, i) { c.style.display = "flex"; c.style.gap = "18px"; c.style.alignItems = "center"; c.style.flexDirection = i % 2 ? "row-reverse" : "row"; c.style.textAlign = "left"; }); },
   };
-  // In-place SWAP preview: the section becomes a clearly-marked plan — big wireframe of the target
-  // kind + their own headline — dashed so it never reads as the finished thing.
+  // In-place SWAP preview: the section becomes a FULL-SCALE skeleton of the target kind — real
+  // layout shapes (cards, avatars, bars, grids) built from plain divs, so "what goes here" is
+  // unmistakable. Dashed frame + label keep it honest: a plan, not the finished thing.
+  var SK = { block: "#dfe5f0", bar: "#c6cfe0", dark: "#aab6cc", acc: "#2f6bff", card: "#ffffff", line: "#e6e9ef" };
+  function skDiv(css, inner) { return '<div style="' + css + '">' + (inner || "") + "</div>"; }
+  function skBar(w, h, c, extra) { return skDiv("width:" + w + ";height:" + (h || 12) + "px;border-radius:6px;background:" + (c || SK.bar) + ";" + (extra || "")); }
+  function skCircle(d, c) { return skDiv("width:" + d + "px;height:" + d + "px;border-radius:50%;background:" + (c || SK.dark) + ";flex:0 0 auto;"); }
+  function skCard(inner, extra) { return skDiv("flex:1 1 220px;background:" + SK.card + ";border:1px solid " + SK.line + ";border-radius:14px;padding:20px;box-shadow:0 2px 10px rgba(10,10,11,.04);" + (extra || ""), inner); }
+  var SKELETONS = {
+    testimonials: function () {
+      var card = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">' + skCircle(38) + '<div style="flex:1;">' + skBar("60%", 10, SK.dark) + '<div style="height:6px;"></div>' + skBar("40%", 8) + "</div></div>" + skBar("100%", 9) + '<div style="height:7px;"></div>' + skBar("92%", 9) + '<div style="height:7px;"></div>' + skBar("70%", 9);
+      return skDiv("display:flex;gap:18px;flex-wrap:wrap;", skCard(card) + skCard(card) + skCard(card));
+    },
+    gallery: function () {
+      var cell = skDiv("aspect-ratio:4/3;border-radius:12px;background:" + SK.bar + ";");
+      return skDiv("display:grid;grid-template-columns:repeat(3,1fr);gap:14px;", cell + skDiv("aspect-ratio:4/3;border-radius:12px;background:" + SK.dark + ";") + cell + skDiv("aspect-ratio:4/3;border-radius:12px;background:" + SK.dark + ";") + cell + skDiv("aspect-ratio:4/3;border-radius:12px;background:" + SK.bar + ";"));
+    },
+    "before-after": function () {
+      return skDiv("display:flex;gap:4px;align-items:stretch;",
+        skDiv("flex:1;aspect-ratio:4/3;border-radius:14px 4px 4px 14px;background:" + SK.bar + ";display:flex;align-items:flex-end;padding:12px;", skBar("70px", 20, "rgba(255,255,255,.85)")) +
+        skDiv("width:4px;border-radius:2px;background:" + SK.acc + ";") +
+        skDiv("flex:1;aspect-ratio:4/3;border-radius:4px 14px 14px 4px;background:" + SK.dark + ";display:flex;align-items:flex-end;padding:12px;", skBar("60px", 20, "rgba(255,255,255,.85)")));
+    },
+    faq: function () {
+      var row = skDiv("display:flex;align-items:center;gap:14px;background:" + SK.card + ";border:1px solid " + SK.line + ";border-radius:12px;padding:16px 18px;margin-bottom:10px;", skBar("55%", 11, SK.dark) + '<div style="flex:1;"></div>' + skDiv("width:22px;height:22px;border-radius:50%;background:" + SK.block + ";display:flex;align-items:center;justify-content:center;color:#5b616e;font-weight:700;font-size:14px;flex:0 0 auto;", "+"));
+      return row + row + row + row;
+    },
+    stats: function () {
+      var cell = skDiv("text-align:center;flex:1;", skBar("58%", 26, "rgba(255,255,255,.9)", "margin:0 auto;") + '<div style="height:8px;"></div>' + skBar("70%", 8, "rgba(255,255,255,.45)", "margin:0 auto;"));
+      return skDiv("background:#12131a;border-radius:16px;padding:34px 22px;display:flex;gap:18px;", cell + cell + cell);
+    },
+    guarantee: function () {
+      var b = skDiv("text-align:center;flex:1;min-width:120px;", skDiv("width:52px;height:52px;border-radius:50%;background:" + SK.block + ";border:2px solid " + SK.acc + ";margin:0 auto;") + '<div style="height:10px;"></div>' + skBar("70%", 9, SK.dark, "margin:0 auto;") + '<div style="height:6px;"></div>' + skBar("50%", 7, SK.bar, "margin:0 auto;"));
+      return skDiv("display:flex;gap:18px;flex-wrap:wrap;", b + b + b);
+    },
+    cta: function () {
+      return skDiv("background:" + SK.acc + ";border-radius:16px;padding:40px 24px;text-align:center;", skBar("46%", 20, "rgba(255,255,255,.92)", "margin:0 auto;") + '<div style="height:10px;"></div>' + skBar("30%", 10, "rgba(255,255,255,.55)", "margin:0 auto;") + '<div style="height:16px;"></div>' + skDiv("display:inline-block;width:150px;height:38px;border-radius:999px;background:#ffffff;"));
+    },
+    pricing: function () {
+      function col(hot) {
+        return skDiv("flex:1 1 180px;background:" + SK.card + ";border:2px solid " + (hot ? SK.acc : SK.line) + ";border-radius:14px;padding:20px;" + (hot ? "transform:scale(1.03);" : ""),
+          skBar("50%", 10, SK.dark) + '<div style="height:10px;"></div>' + skBar("40%", 22, hot ? SK.acc : SK.dark) + '<div style="height:14px;"></div>' + skBar("100%", 7) + '<div style="height:6px;"></div>' + skBar("90%", 7) + '<div style="height:6px;"></div>' + skBar("80%", 7) + '<div style="height:14px;"></div>' + skDiv("height:34px;border-radius:999px;background:" + (hot ? SK.acc : SK.block) + ";"));
+      }
+      return skDiv("display:flex;gap:16px;flex-wrap:wrap;align-items:center;", col(false) + col(true) + col(false));
+    },
+  };
   function swapSkeleton(sec, swap, headline) {
     function eschtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+    var body = SKELETONS[swap[0]] ? SKELETONS[swap[0]]() : '<div style="max-width:320px;margin:0 auto;">' + (THUMBS[swap[2]] || "") + "</div>";
     sec.innerHTML =
-      '<div style="max-width:880px;margin:0 auto;padding:44px 20px;">' +
-      '<div style="border:2px dashed rgba(47,107,255,.5);border-radius:16px;background:rgba(47,107,255,.04);padding:26px 22px;text-align:center;">' +
-      '<div style="max-width:320px;margin:0 auto;">' + (THUMBS[swap[2]] || "") + "</div>" +
-      (headline ? '<div style="font-weight:700;font-size:18px;margin-top:14px;color:#0a0a0b;">' + eschtml(headline) + "</div>" : "") +
-      '<div style="font-size:13px;color:#5b616e;margin-top:6px;">Preview — becomes a real <b>' + swap[1] + "</b> section, keeping your copy, when you send your changes.</div>" +
+      '<div style="max-width:1000px;margin:0 auto;padding:36px 20px;">' +
+      '<div style="border:2px dashed rgba(47,107,255,.5);border-radius:18px;background:rgba(47,107,255,.03);padding:22px;">' +
+      '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:16px;">' +
+      '<span style="background:' + SK.acc + ';color:#fff;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:999px;padding:4px 12px;">Preview — ' + swap[1] + "</span></div>" +
+      (headline ? '<div style="font-weight:800;font-size:24px;text-align:center;color:#0a0a0b;margin-bottom:18px;">' + eschtml(headline) + "</div>" : "") +
+      body +
+      '<div style="font-size:12px;color:#5b616e;margin-top:16px;text-align:center;">This becomes a real <b>' + swap[1] + "</b> section — keeping your copy — when you send your changes.</div>" +
       "</div></div>";
   }
 
@@ -778,6 +825,15 @@
     pop.innerHTML = h;
     document.documentElement.appendChild(pop);
     placePanel(pop, sec, mobile);
+    if (!mobile) {
+      // Sections are full-width, so a popover positioned "by the element" lands ON the thing being
+      // previewed. Dock to the right edge instead — devtools-style — so the try-on stays visible.
+      pop.style.left = "auto";
+      pop.style.right = "16px";
+      pop.style.top = "50%";
+      pop.style.transform = "translateY(-50%)";
+      pop.style.maxHeight = "88vh";
+    }
 
     function markCards(cls, activeBtn) {
       Array.prototype.forEach.call(pop.querySelectorAll("." + cls), function (b) {
