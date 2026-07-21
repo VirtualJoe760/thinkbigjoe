@@ -129,6 +129,14 @@ Every TBJ project is a Next app with three layers: **Front of house** (public) |
 company site"** card on `/portal` (Edit + View only — no plans/domains/templates; `chooseTemplate`
 hard-rejects internal sites so the forge never hunts for a `sites/thinkbigjoe` source).
 
+**TBJ's FOH speaks the forge token contract (2026-07-21).** `src/app/(frontend)/globals.css`
+defines `--brand-h` / `--brand-c` / `--accent-h` and `--font-heading-stack` / `--font-sans-stack`;
+`--brand` / `--brand-dark` / `--brand-tint` DERIVE via `oklch` (values chosen to render the original
+palette pixel-exactly). Never replace the derived colors with hex literals — that's what re-locks
+the site out of the editor. The Brand panel therefore works natively here, same as on any template.
+(editor.js still carries flat-token + literal-recolor preview fallbacks for sites that DON'T speak
+the contract.)
+
 The portal side (site-proxy iframe + `editor.js` + `edit_requests`) is site-agnostic and needed no
 changes. The difference is all in **`edit-poll.mjs`**, which branches on `is_internal`:
 
@@ -136,7 +144,7 @@ changes. The difference is all in **`edit-poll.mjs`**, which branches on `is_int
 |---|---|---|
 | Source | `webdev-templates/sites/<slug>` | `~/code/<slug>` (its own repo) |
 | Pre-flight | — | **defers** (stays `requested`) unless the repo is on `main`, clean, and in sync with `origin/main` — a forge commit must never mix into WIP or publish unpushed work |
-| Fast-paths | `fastTheme` / `fastAsset` deterministic | **disabled** — different token names (`--brand`, not `--brand-h`) and no canonical asset paths; everything routes through `claude -p` |
+| Fast-paths | `fastTheme` / `fastAsset` deterministic | **disabled** — the globals path differs (`src/app/(frontend)/globals.css`, not `app/globals.css`) and there are no canonical asset paths; everything routes through `claude -p`, whose internal prompt teaches the contract |
 | Prompt | template prompt (`lib/constants.ts`, TEMPLATE.md) | **FOH-scoped prompt**: may only touch `src/app/(frontend)/` *excluding* `portal/` + `command/`, plus `public/` — never `src/app/api/`, `src/lib/`, `src/db/`. This scope line is the security boundary. |
 | Build | `pnpm --filter ./sites/<slug> build` | `pnpm run build` in the repo (its own merge gate) |
 | Deploy | push webdev-templates + `deploy-vercel.mjs` | `git push origin main` in its own repo → Vercel redeploys production |
