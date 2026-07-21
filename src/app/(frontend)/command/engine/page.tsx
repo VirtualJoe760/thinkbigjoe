@@ -4,9 +4,11 @@ import { desc, sql } from "drizzle-orm";
 import { db, activityLog, designReports } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { getForgeDigest } from "@/lib/forge-stats";
+import { getAutoProvisionStatus } from "@/lib/auto-provision";
 import { cardClass } from "@/components/ui";
 import { ClearBuildCache } from "./clear-cache";
 import { EngineControls } from "./engine-controls";
+import { AutoProvisionControls } from "./auto-provision-controls";
 import { ActivityChart } from "./activity-chart";
 import { TemplateDesigner } from "./template-designer";
 import { TemplateManager } from "./template-manager";
@@ -71,6 +73,7 @@ export default async function EnginePage() {
 
   const digest = await getForgeDigest();
   const { config, buildQueue, editQueue, throughput, budget } = digest;
+  const autoProvisionStatus = await getAutoProvisionStatus();
 
   // Preview-engine progress — how much of the contactable prospect pool has a preview.
   const pvRes = await db.execute(sql`SELECT
@@ -254,8 +257,9 @@ export default async function EnginePage() {
         </section>
 
         {/* Controls */}
-        <div className="mt-4">
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <EngineControls config={config} />
+          <AutoProvisionControls status={autoProvisionStatus} />
         </div>
 
         {/* Build queue */}

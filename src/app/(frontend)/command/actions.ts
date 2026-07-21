@@ -5,7 +5,7 @@ import { eq, inArray } from "drizzle-orm";
 
 import { and, sql } from "drizzle-orm";
 
-import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine, jobRequests, outreachEngine, previewEngine, forgeEngine, forgeReplies, designReports, contactOverrides } from "@/db";
+import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine, jobRequests, outreachEngine, previewEngine, forgeEngine, forgeReplies, designReports, contactOverrides, autoProvision } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
 import { sendForgeOutreachEmail, sendReplyEmail, sendBookingConfirmationEmail } from "@/lib/email";
 import { notifyTelegram } from "@/lib/telegram";
@@ -81,6 +81,64 @@ export async function setWeeklyRunBudget(budget: number): Promise<{ ok: boolean;
   await db.update(forgeEngine).set({ weeklyRunBudget: clean, lastWarnPct: 0, updatedAt: now() }).where(eq(forgeEngine.id, 1));
   revalidatePath("/command/engine");
   return { ok: true, message: `Weekly run-budget set to ${clean}.` };
+}
+
+// ── Auto-provision (money-spend-automatic) controls ──────────────────────────────────────────────
+// These flip the auto_provision (id=1) row that scripts/provision-drain.mjs reads each tick. The
+// enqueue path never reads them, so pausing/turning off never drops a queued customer.
+
+/** THE money switch. OFF (default) = provisioning is manual (queue-for-human). ON = the drainer
+ *  buys numbers automatically for queued voice customers, bounded by the weekly line budget. */
+export async function toggleAutoProvision(enabled: boolean) {
+  await assertAdmin();
+  await db.update(autoProvision).set({ enabled, updatedAt: now() }).where(eq(autoProvision.id, 1));
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "auto_provision_toggled",
+    summary: `Auto-provision voice ${enabled ? "turned ON — money spend is now AUTOMATIC" : "turned OFF — money spend is manual"}`,
+    metadata: { detail: { enabled } },
+  });
+  revalidatePath("/command/engine");
+}
+
+/** Opt-in: also auto-approve the site build on payment (forge_engine still gates the build spend). */
+export async function toggleAutoBuild(enabled: boolean) {
+  await assertAdmin();
+  await db.update(autoProvision).set({ autoBuildEnabled: enabled, updatedAt: now() }).where(eq(autoProvision.id, 1));
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "auto_provision_toggled",
+    summary: `Auto-build on payment ${enabled ? "turned ON" : "turned OFF"}`,
+    metadata: { detail: { autoBuildEnabled: enabled } },
+  });
+  revalidatePath("/command/engine");
+}
+
+/** Set the weekly line budget — the cap on phone numbers bought per 7 days. Resets the warn-band
+ *  marker so the 75/90/100% warnings re-arm against the new cap (mirrors setWeeklyRunBudget). */
+export async function setWeeklyLineBudget(budget: number): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  const clean = Math.max(1, Math.min(500, Math.round(Number(budget) || 0)));
+  await db.update(autoProvision).set({ weeklyLineBudget: clean, lastWarnPct: 0, updatedAt: now() }).where(eq(autoProvision.id, 1));
+  revalidatePath("/command/engine");
+  return { ok: true, message: `Weekly line-budget set to ${clean}.` };
+}
+
+/** The single master kill switch: stop ALL automated money-spend at once — forge builds AND voice
+ *  auto-provisioning AND auto-build-on-payment. Queues are preserved; nothing is dropped, everything
+ *  just pauses until switched back on. This is the "oh no" button. */
+export async function masterKill(): Promise<{ ok: boolean; message: string }> {
+  await assertAdmin();
+  await db.update(forgeEngine).set({ enabled: false, updatedAt: now() }).where(eq(forgeEngine.id, 1));
+  await db.update(autoProvision).set({ enabled: false, autoBuildEnabled: false, updatedAt: now() }).where(eq(autoProvision.id, 1));
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "automation_master_kill",
+    summary: "MASTER KILL — all automated spend stopped (forge builds + voice auto-provision + auto-build). Queues preserved.",
+    metadata: { detail: { forge: false, autoProvision: false, autoBuild: false } },
+  });
+  revalidatePath("/command/engine");
+  return { ok: true, message: "All automation stopped. Queued work is preserved." };
 }
 
 /** Clear stuck build state: re-queue any 'building' row that's been stuck too long (a crashed/hung
