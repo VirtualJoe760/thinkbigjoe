@@ -53,7 +53,9 @@
     { id: "manrope", name: "Minimal", head: "'Manrope', ui-sans-serif, sans-serif", body: "'Manrope', ui-sans-serif, sans-serif", g: "Manrope:wght@400;600;800" },
   ];
   // The live theme being previewed (null = untouched). Sent as one token edit.
-  var theme = { primary: null, secondary: null, font: null };
+  // font = a curated FONT_SETS id; customFont = any Google Font the user typed in ({name, g, head, body}).
+  // Mutually exclusive — picking one clears the other.
+  var theme = { primary: null, secondary: null, font: null, customFont: null };
   // The site's saved theme (Phase 4) — the proxy already applied it to the page; used to pre-fill
   // the Brand panel on reopen + to know whether a "Revert to original" is offered.
   var CFG_THEME = (CFG && CFG.theme) || null;
@@ -87,10 +89,11 @@
     if (theme.primary) { var p = hexToOklch(theme.primary); if (p) { root.setProperty("--brand-h", String(p.h)); root.setProperty("--brand-c", Math.min(0.22, p.C).toFixed(3)); } }
     if (theme.secondary) { var s = hexToOklch(theme.secondary); if (s) root.setProperty("--accent-h", String(s.h)); }
     if (theme.font) { var f = FONT_SETS.filter(function (x) { return x.id === theme.font; })[0]; if (f) { loadFont(f.g); root.setProperty("--font-heading-stack", f.head); root.setProperty("--font-sans-stack", f.body); } }
+    else if (theme.customFont) { loadFont(theme.customFont.g); root.setProperty("--font-heading-stack", theme.customFont.head); root.setProperty("--font-sans-stack", theme.customFont.body); }
     clearHexCache();
   }
   function resetTheme() {
-    theme = { primary: null, secondary: null, font: null };
+    theme = { primary: null, secondary: null, font: null, customFont: null };
     var root = document.documentElement.style;
     ["--brand-h", "--brand-c", "--accent-h", "--font-heading-stack", "--font-sans-stack"].forEach(function (v) { root.removeProperty(v); });
     var fl = document.getElementById("__tbj-font"); if (fl) fl.remove();
@@ -1012,6 +1015,10 @@
       '<input id="__tbj-sec" type="color" value="' + secHex + '" style="' + swatchCss + '">' +
       '<label style="' + lblCss + '">Font</label>' +
       '<div id="__tbj-fonts" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">' + fontsHtml + "</div>" +
+      '<div style="display:flex;gap:6px;margin-top:8px;">' +
+      '<input id="__tbj-gfont" type="text" placeholder="Or any Google Font — e.g. Montserrat" style="flex:1;min-width:0;border:1px solid #e6e9ef;border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;box-sizing:border-box;">' +
+      '<button id="__tbj-gfont-go" type="button" style="border:1px solid #e6e9ef;background:#fff;border-radius:999px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;flex:0 0 auto;">Try it</button></div>' +
+      '<div id="__tbj-gfont-msg" style="font-size:11px;color:#9aa0ad;margin-top:4px;min-height:14px;">Browse thousands at fonts.google.com — type a name here to preview it.</div>' +
       '<div style="display:flex;gap:8px;margin-top:14px;">' +
       '<button id="__tbj-brand-add" style="flex:1;background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:10px;font-weight:600;font-size:13px;cursor:pointer;">Approve changes</button>' +
       '<button id="__tbj-brand-cancel" style="background:#f5f7fb;border:0;border-radius:999px;padding:10px 14px;font-size:13px;cursor:pointer;">Cancel</button></div>' +
@@ -1026,12 +1033,43 @@
     pop.querySelector("#__tbj-sec").addEventListener("input", function (e) { theme.secondary = e.target.value; applyTheme(); });
     Array.prototype.forEach.call(pop.querySelectorAll(".__tbj-f"), function (btn) {
       btn.onclick = function () {
-        theme.font = btn.getAttribute("data-f"); applyTheme();
+        theme.font = btn.getAttribute("data-f"); theme.customFont = null; applyTheme();
+        var gm = pop.querySelector("#__tbj-gfont-msg"); if (gm) { gm.textContent = ""; gm.style.color = "#9aa0ad"; }
         Array.prototype.forEach.call(pop.querySelectorAll(".__tbj-f"), function (b) {
           var on = b === btn; b.style.borderColor = on ? "#2f6bff" : "#e6e9ef"; b.style.background = on ? "#2f6bff" : "#fff"; b.style.color = on ? "#fff" : "#0a0a0b";
         });
       };
     });
+
+    // "Or any Google Font" — the escape hatch past the curated pairings. We validate the name by
+    // fetching the css2 stylesheet (Google 400s on unknown families), then preview it exactly like
+    // a curated pick. The forge wires whatever we send via next/font, so any real family works.
+    var gIn = pop.querySelector("#__tbj-gfont"), gGo = pop.querySelector("#__tbj-gfont-go"), gMsg = pop.querySelector("#__tbj-gfont-msg");
+    function tryGoogleFont() {
+      var name = (gIn.value || "").replace(/[^A-Za-z0-9 ]/g, "").trim().replace(/\s+/g, " ");
+      if (!name) { gIn.focus(); return; }
+      // Google lists families Title-Cased ("montserrat" → "Montserrat").
+      name = name.split(" ").map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(" ");
+      var g = name.replace(/ /g, "+") + ":wght@400;600;800";
+      gMsg.textContent = "Checking Google Fonts…"; gMsg.style.color = "#9aa0ad";
+      fetch("https://fonts.googleapis.com/css2?family=" + g + "&display=swap")
+        .then(function (r) { if (!r.ok) throw new Error("not found"); })
+        .then(function () {
+          var stack = "'" + name + "', ui-sans-serif, system-ui, sans-serif";
+          theme.customFont = { name: name, g: g, head: stack, body: stack };
+          theme.font = null;
+          Array.prototype.forEach.call(pop.querySelectorAll(".__tbj-f"), function (b) { b.style.borderColor = "#e6e9ef"; b.style.background = "#fff"; b.style.color = "#0a0a0b"; });
+          applyTheme();
+          gMsg.textContent = "✓ Previewing " + name + " — applied everywhere. Approve to keep it.";
+          gMsg.style.color = "#1a7f37";
+        })
+        .catch(function () {
+          gMsg.textContent = "Couldn’t find “" + name + "” on Google Fonts — check the spelling at fonts.google.com.";
+          gMsg.style.color = "#c0392b";
+        });
+    }
+    gGo.onclick = tryGoogleFont;
+    gIn.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); tryGoogleFont(); } });
     pop.querySelector("#__tbj-x").onclick = discardBrand;
     pop.querySelector("#__tbj-brand-cancel").onclick = discardBrand;
     pop.querySelector("#__tbj-brand-reset").onclick = function () { resetTheme(); dropTokenEdit(); renderBar(); closePanel(); openBrandPanel(); };
@@ -1051,8 +1089,9 @@
       closePanel(); renderBar();
     };
     pop.querySelector("#__tbj-brand-add").onclick = function () {
-      if (!theme.primary && !theme.secondary && !theme.font) { closePanel(); return; }
+      if (!theme.primary && !theme.secondary && !theme.font && !theme.customFont) { closePanel(); return; }
       var f = FONT_SETS.filter(function (x) { return x.id === theme.font; })[0];
+      var cf = !f ? theme.customFont : null; // curated pick wins if both somehow set
       var pO = theme.primary ? hexToOklch(theme.primary) : null;
       var sO = theme.secondary ? hexToOklch(theme.secondary) : null;
       dropTokenEdit();   // one token edit = the current full theme (replace, don't stack)
@@ -1062,11 +1101,11 @@
         brandC: pO ? Number(Math.min(0.22, pO.C).toFixed(3)) : undefined,
         secondaryHex: theme.secondary || undefined,
         accentH: sO ? sO.h : undefined,
-        font: f ? f.name : undefined,
-        fontId: f ? f.id : undefined,              // stable id (rename-proof pre-fill)
-        fontGoogle: f ? f.g : undefined,           // the family spec the forge imports via next/font
-        fontHeadingStack: f ? f.head : undefined,  // fallback CSS stack
-        fontSansStack: f ? f.body : undefined,
+        font: f ? f.name : cf ? cf.name : undefined,
+        fontId: f ? f.id : undefined,              // stable id (curated only; custom fonts have none)
+        fontGoogle: f ? f.g : cf ? cf.g : undefined,           // the family spec the forge imports via next/font
+        fontHeadingStack: f ? f.head : cf ? cf.head : undefined,  // fallback CSS stack
+        fontSansStack: f ? f.body : cf ? cf.body : undefined,
       } });
       history.push({ theme: true });   // keep Undo consistent (undo resets the theme preview)
       closePanel(); renderBar();
