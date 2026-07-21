@@ -1,6 +1,8 @@
 # Automation Pipeline — ad to customer-for-life, on rails
 
-> **Status**: PLAN. Nothing here is built yet; it's the map for wiring pieces that mostly exist.
+> **Status**: PHASES 2–4 BUILT (2026-07-20). The keystone (auto-provision voice on payment) ships
+> behind an OFF-by-default switch; Phase 1 (website optional / call-Ivy flows) shipped with the
+> portal redesign. What remains is operational, not code — see "What's live now" below.
 > **Written**: 2026-07-20 · **Owner**: Joseph Sardella
 > Companion to [`BUSINESS_PLAN.md`](./BUSINESS_PLAN.md) (who/what/why),
 > [`VOICE_TENANCY_SPEC.md`](./VOICE_TENANCY_SPEC.md) and [`VOICE_ONBOARDING.md`](./VOICE_ONBOARDING.md)
@@ -143,6 +145,29 @@ master kill switch. This is where "manual vs automatic" becomes a set of toggles
 existing `/command/engine` pattern.
 
 ---
+
+## What's live now (2026-07-20)
+
+Phases 2–4 shipped as one full-stack change (UI + schedule + the switch). What each layer is:
+
+| Layer | Where | Notes |
+|---|---|---|
+| **The switch + cap** | `auto_provision` table (id=1), mirrors `forge_engine` | `enabled` default **OFF** (money spend manual). `weekly_line_budget` (default 10) caps numbers/7d. `auto_build_enabled` opt-in. |
+| **Enqueue (switch-agnostic)** | `src/app/api/stripe/webhook/route.ts` → `enqueuePostPaymentAutomation()` | On a voice-plan `checkout.session.completed`: insert `voice_provision_queue` (idempotent via `unique(site_id)`). Never reads the switch — pausing never drops the customer. |
+| **Drain (the enforcement)** | `scripts/provision-drain.mjs` + launchd `com.thinkbigjoe.provisiondrain` (5-min tick) | Reads the switch + cap; over cap PAUSES, never drops. Shells out to the untouched `provision-line.mjs --apply` — the money-spending path is unchanged, only *what calls it*. Warns 75/90/100%. |
+| **Cockpit** | `/command/engine` → `AutoProvisionControls` | Master Manual/Automatic switch, line-budget + spend gauge, queued/failed counts, auto-build toggle, and a single **Stop all automation** master kill (forge + provisioning). |
+| **MCP** | `automation_status` (read-only, tbj-mcp v2.28.0) | "Is money spend automatic, and who's waiting for a line?" |
+| **Read path** | `src/lib/auto-provision.ts` → `getAutoProvisionStatus()` | Derived spend (voice_lines in the last 7d), mirrors `getForgeDigest`. |
+
+**What flipping it on takes (operational, not code):** set `VOICE_WEBHOOK_KEY` in Vercel, then in
+`/command/engine` flip **Auto-provision → Automatic** and set the cap. The drain poller is already
+installed and inert until then. Until you flip it, every paid voice customer queues and pings
+Telegram, and you run `node scripts/retell/provision-line.mjs --site N --apply` by hand.
+
+**Deferred (goal b of Phase 4):** serving Ivy's *sales* dynamic-variables from `/api/voice/inbound`.
+It needs her live static prompt reworked to consume `{{variables}}` — an outward-facing change to the
+live phone line — so it stays a deliberate TODO. Phase-4 *persistence* (her calls now save under the
+internal TBJ site) shipped; see `scripts/db/2026-07-20-ivy-tenant.sql`.
 
 ## The abuse question, closed
 

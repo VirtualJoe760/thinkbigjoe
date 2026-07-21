@@ -107,6 +107,10 @@ forge_sites.status = 'discovered'   ──▶  Joe reviews in /command/prospects
         ▼
 status = 'approved'                 ──▶  queued for the forge (see Queue architecture below)
         │  forge-poll claims it, forge-build.sh runs claude -p, builds, deploys
+        │  NOTE: 'approved' is also set by the Stripe webhook on payment when
+        │  auto_provision.auto_build_enabled is ON (opt-in, default OFF) — a pre-build
+        │  guard keeps it idempotent. Same queue, same forge_engine budget gate.
+        │  See AUTOMATION_PIPELINE.md.
         ▼
 status = 'built'                    ──▶  /command/prospects → Built (review, NOT yet a lead)
         │  Joe reviews the live site. Tools available on the card:
