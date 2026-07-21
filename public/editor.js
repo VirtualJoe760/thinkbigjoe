@@ -402,6 +402,15 @@
       }
       // A block whose only content is an icon → a decorative graphic.
       if ((tag === "DIV" || tag === "SPAN" || tag === "FIGURE" || tag === "PICTURE") && el.querySelector && el.querySelector("svg") && !(el.innerText || "").trim()) return el;
+      // A block that carries its OWN text — a badge/pill/eyebrow built as a <div> (text as a direct
+      // text node, e.g. the industries strip above a hero h1). Direct text nodes only: a wrapper
+      // whose text all lives in child elements has none of its own, so we keep walking and select
+      // the child instead of the container.
+      if (tag === "DIV" || tag === "FIGCAPTION" || tag === "DD" || tag === "DT") {
+        var direct = "";
+        for (var di = 0; di < el.childNodes.length; di++) { var dn = el.childNodes[di]; if (dn.nodeType === 3) direct += dn.textContent; }
+        if (direct.trim()) return el;
+      }
       el = el.parentElement;
     }
     return null;
