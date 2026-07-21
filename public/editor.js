@@ -460,6 +460,7 @@
     reflowT = setTimeout(function () {
       var p = document.getElementById("__tbj-pop");
       if (!p || !selectedEl) return;
+      if (p.getAttribute("data-tbj-moved")) return; // user placed it — leave it where they put it
       var mobile = isMobile();
       p.style.cssText = panelCss(mobile);
       placePanel(p, selectedEl, mobile);
@@ -534,6 +535,44 @@
     }
   }
 
+  // Drag-to-move (desktop): grab the panel by its header row and put it wherever it's not in the
+  // way. Mobile keeps the fixed bottom sheet. Once moved, the resize reflow leaves it alone.
+  function makeDraggable(pop, mobile) {
+    if (mobile) return;
+    var head = pop.firstElementChild;
+    if (!head) return;
+    head.style.cursor = "grab";
+    head.title = "Drag to move";
+    head.addEventListener("pointerdown", function (e) {
+      // Buttons/inputs in the header (like ✕) keep working normally.
+      if (e.target.closest && e.target.closest("button,input,textarea,select,a")) return;
+      e.preventDefault();
+      var rect = pop.getBoundingClientRect();
+      // Convert whatever positioning the panel used (right-dock, transform) into plain left/top.
+      pop.style.left = rect.left + "px"; pop.style.top = rect.top + "px";
+      pop.style.right = "auto"; pop.style.bottom = "auto"; pop.style.transform = "none";
+      pop.setAttribute("data-tbj-moved", "1");
+      var sx = e.clientX, sy = e.clientY, bl = rect.left, bt = rect.top, w = rect.width;
+      head.style.cursor = "grabbing";
+      try { head.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
+      function onMove(ev) {
+        var nl = Math.min(Math.max(bl + ev.clientX - sx, 8), window.innerWidth - w - 8);
+        var nt = Math.min(Math.max(bt + ev.clientY - sy, 8), window.innerHeight - 48);
+        pop.style.left = nl + "px"; pop.style.top = nt + "px";
+      }
+      function onUp(ev) {
+        head.style.cursor = "grab";
+        try { head.releasePointerCapture(ev.pointerId); } catch (err) { /* ignore */ }
+        head.removeEventListener("pointermove", onMove);
+        head.removeEventListener("pointerup", onUp);
+        head.removeEventListener("pointercancel", onUp);
+      }
+      head.addEventListener("pointermove", onMove);
+      head.addEventListener("pointerup", onUp);
+      head.addEventListener("pointercancel", onUp);
+    });
+  }
+
   function openPanel(el) {
     closePanel();
     selectedEl = el;
@@ -588,6 +627,7 @@
 
     document.documentElement.appendChild(pop);
     placePanel(pop, el, mobile);
+    makeDraggable(pop, mobile);
     var body = pop.querySelector("#__tbj-body");
     var title = pop.querySelector("#__tbj-title");
 
@@ -834,6 +874,7 @@
       pop.style.transform = "translateY(-50%)";
       pop.style.maxHeight = "88vh";
     }
+    makeDraggable(pop, mobile);
 
     function markCards(cls, activeBtn) {
       Array.prototype.forEach.call(pop.querySelectorAll("." + cls), function (b) {
@@ -967,6 +1008,7 @@
       "</div>";
     document.documentElement.appendChild(pop);
     if (mobile) { bar.style.display = "none"; } else positionPanelCenter(pop);
+    makeDraggable(pop, mobile);
 
     pop.querySelector("#__tbj-prim").addEventListener("input", function (e) { theme.primary = e.target.value; applyTheme(); });
     pop.querySelector("#__tbj-sec").addEventListener("input", function (e) { theme.secondary = e.target.value; applyTheme(); });
