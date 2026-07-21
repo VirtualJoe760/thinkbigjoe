@@ -620,7 +620,10 @@
     var tools = (type === "image" || type === "graphic") ? ["image", "request"]
       : (type === "button") ? ["text", "color", "size", "request"]
       : ["text", "size", "color", "request"];
-    var typeLabel = type === "graphic" ? "graphic" : type === "image" ? "image" : type === "button" ? "button" : el.nodeName.toLowerCase();
+    // Tag names only where they read like English (h1, p, a…). A badge/pill <div> says "text",
+    // not "EDIT DIV" — nobody edits a "div".
+    var typeLabel = type === "graphic" ? "graphic" : type === "image" ? "image" : type === "button" ? "button"
+      : TEXT_TAGS.test(el.nodeName) ? el.nodeName.toLowerCase() : "text";
 
     pop.innerHTML = handleHtml(mobile) +
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">' +
