@@ -503,7 +503,7 @@ export async function startDomainCheckout(
 export type CheckoutState = { ok: boolean; message: string; url?: string };
 
 /**
- * Start Stripe Checkout for a claimed site: the $300 one-time build fee + the
+ * Start Stripe Checkout for a claimed site: the one-time setup fee (SETUP_FEE_AMOUNT) + the
  * chosen monthly plan, billed together on the first invoice (subscription mode).
  * Returns the hosted Checkout URL for the client to redirect to.
  */

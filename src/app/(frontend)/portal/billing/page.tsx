@@ -49,8 +49,9 @@ export default async function BillingPage({
         <p className="text-sm font-semibold tracking-wide text-brand uppercase">Plans &amp; billing</p>
         <h1 className="mt-2 text-4xl font-extrabold tracking-tight">Choose the plan that fits.</h1>
         <p className="mt-3 max-w-2xl text-ink-soft">
-          Every plan is a one-time ${ONE_TIME_BUILD_AMOUNT} build plus a monthly subscription. Upgrade,
-          downgrade, or cancel anytime — changes take effect immediately.
+          A monthly subscription, plus a one-time ${ONE_TIME_BUILD_AMOUNT} setup to get your
+          receptionist live. A website is a separate one-time build — just ask Ivy. Upgrade,
+          downgrade, or cancel anytime.
         </p>
 
         {changed && (
@@ -191,7 +192,7 @@ export default async function BillingPage({
                         Save ${annualSavings(k).toLocaleString()}/yr ·{" "}
                       </span>
                     )}
-                    + ${ONE_TIME_BUILD_AMOUNT} one-time build
+                    + ${ONE_TIME_BUILD_AMOUNT} one-time setup
                   </p>
                   <ul className="mt-5 space-y-2.5">
                     {p.features.map((f) => (

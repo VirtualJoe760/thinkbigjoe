@@ -59,16 +59,16 @@ export function SiteBilling({ siteId }: { siteId: number }) {
       <input type="hidden" name="plan" value={plan} />
       <input type="hidden" name="interval" value={interval} />
 
-      {/* Step 1 — the website */}
+      {/* Step 1 — one-time setup (NOT a website — that's a separate call-Ivy purchase now) */}
       <section>
         <div className="flex items-center gap-2">
           <span className={stepNum}>1</span>
-          <h3 className="text-sm font-bold">Your website</h3>
+          <h3 className="text-sm font-bold">One-time setup</h3>
         </div>
         <div className="mt-2 flex items-center justify-between rounded-xl border border-line bg-background px-4 py-3">
           <span>
-            <span className="font-semibold">Website build</span>
-            <span className="block text-xs text-ink-soft">One-time. Unlocks your subscription, a free domain &amp; going live.</span>
+            <span className="font-semibold">Setup fee</span>
+            <span className="block text-xs text-ink-soft">One-time — activates your subscription and a free domain. A website is separate; ask Ivy.</span>
           </span>
           <span className="whitespace-nowrap font-bold">{money(ONE_TIME_BUILD_AMOUNT)}</span>
         </div>
@@ -114,7 +114,7 @@ export function SiteBilling({ siteId }: { siteId: number }) {
         {hasCredit && (
           <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-emerald-700">
             <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.7-9.3a1 1 0 00-1.4-1.4L9 10.6 7.7 9.3a1 1 0 00-1.4 1.4l2 2a1 1 0 001.4 0l4-4z" /></svg>
-            Because you&apos;re buying a website, your first {period} is {money(WEBSITE_FIRST_MONTH_CREDIT)} off.
+            Your first {period} is {money(WEBSITE_FIRST_MONTH_CREDIT)} off.
           </p>
         )}
       </section>
@@ -139,7 +139,7 @@ export function SiteBilling({ siteId }: { siteId: number }) {
       <section className="rounded-2xl border border-line bg-surface p-4">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-soft">Order summary</h3>
         <dl className="mt-3 space-y-1.5 text-sm">
-          <div className="flex justify-between"><dt>Website build (one-time)</dt><dd className="font-medium">{money(ONE_TIME_BUILD_AMOUNT)}</dd></div>
+          <div className="flex justify-between"><dt>Setup (one-time)</dt><dd className="font-medium">{money(ONE_TIME_BUILD_AMOUNT)}</dd></div>
           <div className="flex justify-between"><dt>{PLANS[plan].label} — first {period}</dt><dd className="font-medium">{money(firstPeriod)}</dd></div>
           {hasCredit && (
             <div className="flex justify-between text-emerald-700"><dt>Website credit</dt><dd className="font-medium">−{money(credit)}</dd></div>
