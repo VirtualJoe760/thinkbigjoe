@@ -119,18 +119,22 @@
     function walk(rules) {
       for (var i = 0; i < rules.length; i++) {
         var r = rules[i];
-        if (r.cssRules) { walk(r.cssRules); continue; }
-        if (!r.style || !r.selectorText) continue;
-        for (var p = 0; p < PROPS.length; p++) {
-          var v = r.style.getPropertyValue(PROPS[p]);
-          // Literal colors only — var()/gradient values can't false-match, and skipping them
-          // keeps the canvas rasterizer off the hot path.
-          if (!v || v.indexOf("var(") !== -1 || !(v.indexOf("#") !== -1 || /^(rgb|oklch|oklab|hsl)/.test(v.trim()))) continue;
-          var hx = toHex(v.trim());
-          for (var m = 0; m < map.length; m++) {
-            if (hx === map[m][0]) out.push(r.selectorText + "{" + PROPS[p] + ":var(" + map[m][1] + ") !important}");
+        // Check the rule's OWN declarations first, THEN recurse. Modern Chrome gives every
+        // CSSStyleRule a cssRules list (CSS nesting), so "has cssRules → it's just a container"
+        // silently skips every real rule.
+        if (r.style && r.selectorText) {
+          for (var p = 0; p < PROPS.length; p++) {
+            var v = r.style.getPropertyValue(PROPS[p]);
+            // Literal colors only — var()/gradient values can't false-match, and skipping them
+            // keeps the canvas rasterizer off the hot path.
+            if (!v || v.indexOf("var(") !== -1 || !(v.indexOf("#") !== -1 || /^(rgb|oklch|oklab|hsl)/.test(v.trim()))) continue;
+            var hx = toHex(v.trim());
+            for (var m = 0; m < map.length; m++) {
+              if (hx === map[m][0]) out.push(r.selectorText + "{" + PROPS[p] + ":var(" + map[m][1] + ") !important}");
+            }
           }
         }
+        if (r.cssRules && r.cssRules.length) walk(r.cssRules);
       }
     }
     for (var s = 0; s < document.styleSheets.length; s++) { try { walk(document.styleSheets[s].cssRules); } catch (e) { /* cross-origin sheet */ } }
