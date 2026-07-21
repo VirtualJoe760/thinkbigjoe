@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { prospects, outreach, followUps, conversations, meetingBriefs, agentTasks, leads, forgeSites, newsletterContacts, contacts, newsletters, newsletterSends, voiceLines, voiceOnboarding, calls } from "./schema";
+import { prospects, outreach, followUps, conversations, meetingBriefs, agentTasks, leads, forgeSites, newsletterContacts, contacts, newsletters, newsletterSends, voiceLines, voiceOnboarding, calls, voiceProvisionQueue } from "./schema";
 
 export const outreachRelations = relations(outreach, ({one}) => ({
 	prospect: one(prospects, {
@@ -67,6 +67,7 @@ export const forgeSitesRelations = relations(forgeSites, ({many}) => ({
 	voiceLines: many(voiceLines),
 	voiceOnboardings: many(voiceOnboarding),
 	calls: many(calls),
+	voiceProvisionQueues: many(voiceProvisionQueue),
 }));
 
 export const contactsRelations = relations(contacts, ({one}) => ({
@@ -112,6 +113,13 @@ export const voiceOnboardingRelations = relations(voiceOnboarding, ({one}) => ({
 export const callsRelations = relations(calls, ({one}) => ({
 	forgeSite: one(forgeSites, {
 		fields: [calls.siteId],
+		references: [forgeSites.id]
+	}),
+}));
+
+export const voiceProvisionQueueRelations = relations(voiceProvisionQueue, ({one}) => ({
+	forgeSite: one(forgeSites, {
+		fields: [voiceProvisionQueue.siteId],
 		references: [forgeSites.id]
 	}),
 }));

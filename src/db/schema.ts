@@ -749,3 +749,31 @@ export const calls = pgTable("calls", {
 		}),
 	unique("calls_retell_call_id_key").on(table.retellCallId),
 ]);
+
+export const autoProvision = pgTable("auto_provision", {
+	id: serial().primaryKey().notNull(),
+	enabled: boolean().default(false).notNull(),
+	weeklyLineBudget: integer("weekly_line_budget").default(10).notNull(),
+	autoBuildEnabled: boolean("auto_build_enabled").default(false).notNull(),
+	lastWarnPct: integer("last_warn_pct").default(0).notNull(),
+	lastWarnWeek: text("last_warn_week"),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+});
+
+export const voiceProvisionQueue = pgTable("voice_provision_queue", {
+	id: serial().primaryKey().notNull(),
+	siteId: integer("site_id").notNull(),
+	status: text().default('queued').notNull(),
+	queuedAt: timestamp("queued_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	attempts: integer().default(0).notNull(),
+	lastError: text("last_error"),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("voice_provision_queue_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+	foreignKey({
+			columns: [table.siteId],
+			foreignColumns: [forgeSites.id],
+			name: "voice_provision_queue_site_id_fkey"
+		}),
+	unique("voice_provision_queue_site_id_key").on(table.siteId),
+]);
