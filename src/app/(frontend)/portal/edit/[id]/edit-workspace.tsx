@@ -30,7 +30,12 @@ export function EditWorkspace({
   const [tab, setTab] = useState<Tab>(initialTab);
 
   return (
-    <div className="flex h-screen flex-col">
+    // FULL-SCREEN TAKEOVER, not a page section. The portal layout renders its navbar above every
+    // /portal page; with h-screen below it the page ran ~50px past the viewport, which cut off the
+    // editor's bottom toolbar (Elements/Sections/Brand) and made the tab bar "stick" weirdly on
+    // scroll. fixed inset-0 pins the workspace to exactly the window — no parent scroll, toolbar
+    // always visible — and this header's "Done" is the way out.
+    <div className="fixed inset-0 z-50 flex flex-col bg-background">
       <header className="flex items-center justify-between gap-3 border-b border-line bg-background px-5 py-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold tracking-wide text-brand uppercase">Live edit mode</p>
