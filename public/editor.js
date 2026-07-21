@@ -114,30 +114,30 @@
 
   // ---- wireframe thumbnails (tiny inline SVGs, no external assets) ------
   function svgW(inner) { return '<svg viewBox="0 0 72 48" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="display:block;background:#f8fafd;border-radius:6px;">' + inner + "</svg>"; }
-  function tb(x, y, w, h, f, rx) { return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="' + (f || "#dfe4ee") + '" rx="' + (rx == null ? 2 : rx) + '"/>'; }
-  function tl(x, y, w, f) { return tb(x, y, w, 3, f || "#c7cedd", 1.5); }
-  function tc(x, y, r, f) { return '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + (f || "#c7cedd") + '"/>'; }
+  function tb(x, y, w, h, f, rx) { return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="' + (f || "#b6c0d2") + '" rx="' + (rx == null ? 2 : rx) + '"/>'; }
+  function tl(x, y, w, f) { return tb(x, y, w, 3, f || "#a7b2c8", 1.5); }
+  function tc(x, y, r, f) { return '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + (f || "#a7b2c8") + '"/>'; }
   var TACC = "#2f6bff", TDK = "#3a3d46";
   var THUMBS = {
-    "hero.split": svgW(tl(6, 12, 24, TDK) + tl(6, 18, 20) + tl(6, 24, 16) + tb(6, 31, 14, 6, TACC, 3) + tb(38, 8, 28, 32, "#c7cedd", 3)),
+    "hero.split": svgW(tl(6, 12, 24, TDK) + tl(6, 18, 20) + tl(6, 24, 16) + tb(6, 31, 14, 6, TACC, 3) + tb(38, 8, 28, 32, "#a7b2c8", 3)),
     "hero.fullBleed": svgW(tb(2, 4, 68, 40, "#aeb8cc", 3) + tl(20, 17, 32, "#ffffff") + tl(26, 23, 20, "#e8ecf4") + tb(28, 30, 16, 6, TACC, 3)),
     "hero.centered": svgW(tl(22, 12, 28, TDK) + tl(26, 18, 20) + tl(29, 24, 14) + tb(28, 31, 16, 6, TACC, 3)),
     "hero.minimal": svgW(tl(6, 18, 36, TDK) + tl(6, 25, 26)),
-    "nav.standard": svgW(tb(2, 4, 68, 12, "#eef1f7", 3) + tc(9, 10, 3, TACC) + tl(40, 8, 8) + tl(50, 8, 8) + tl(60, 8, 8)),
-    "nav.centered": svgW(tb(2, 4, 68, 12, "#eef1f7", 3) + tc(9, 10, 3, TACC) + tl(26, 8, 8) + tl(36, 8, 8) + tl(46, 8, 8)),
-    "nav.floating": svgW(tb(8, 7, 56, 11, "#ffffff", 5.5) + '<rect x="8" y="7" width="56" height="11" fill="none" rx="5.5" stroke="#c7cedd"/>' + tc(15, 12.5, 2.5, TACC) + tl(42, 11, 6) + tl(50, 11, 6)),
+    "nav.standard": svgW(tb(2, 4, 68, 12, "#dde4ef", 3) + tc(9, 10, 3, TACC) + tl(40, 8, 8) + tl(50, 8, 8) + tl(60, 8, 8)),
+    "nav.centered": svgW(tb(2, 4, 68, 12, "#dde4ef", 3) + tc(9, 10, 3, TACC) + tl(26, 8, 8) + tl(36, 8, 8) + tl(46, 8, 8)),
+    "nav.floating": svgW(tb(8, 7, 56, 11, "#ffffff", 5.5) + '<rect x="8" y="7" width="56" height="11" fill="none" rx="5.5" stroke="#a7b2c8"/>' + tc(15, 12.5, 2.5, TACC) + tl(42, 11, 6) + tl(50, 11, 6)),
     "stats.band": svgW(tb(2, 14, 68, 20, TDK, 3) + tl(10, 22, 12, "#ffffff") + tl(30, 22, 12, "#ffffff") + tl(50, 22, 12, "#ffffff")),
     "stats.inline": svgW(tl(10, 22, 12, TDK) + tl(30, 22, 12, TDK) + tl(50, 22, 12, TDK)),
-    "services.cards": svgW(tb(4, 10, 20, 28, "#ffffff", 3) + '<rect x="4" y="10" width="20" height="28" fill="none" rx="3" stroke="#dfe4ee"/>' + tl(7, 26, 14) + tb(26, 10, 20, 28, "#ffffff", 3) + '<rect x="26" y="10" width="20" height="28" fill="none" rx="3" stroke="#dfe4ee"/>' + tl(29, 26, 14) + tb(48, 10, 20, 28, "#ffffff", 3) + '<rect x="48" y="10" width="20" height="28" fill="none" rx="3" stroke="#dfe4ee"/>' + tl(51, 26, 14)),
-    "services.list": svgW(tb(6, 8, 60, 9, "#eef1f7", 3) + tb(6, 20, 60, 9, "#eef1f7", 3) + tb(6, 32, 60, 9, "#eef1f7", 3)),
-    "services.alternating": svgW(tb(6, 7, 26, 15, "#c7cedd", 3) + tl(38, 11, 22) + tl(38, 16, 16) + tl(6, 30, 22) + tl(6, 35, 16) + tb(40, 26, 26, 15, "#c7cedd", 3)),
-    "swap.testimonials": svgW(tb(6, 10, 28, 26, "#ffffff", 3) + '<rect x="6" y="10" width="28" height="26" fill="none" rx="3" stroke="#dfe4ee"/>' + tc(12, 17, 3) + tl(9, 25, 20) + tl(9, 30, 14) + tb(38, 10, 28, 26, "#ffffff", 3) + '<rect x="38" y="10" width="28" height="26" fill="none" rx="3" stroke="#dfe4ee"/>' + tc(44, 17, 3) + tl(41, 25, 20) + tl(41, 30, 14)),
-    "swap.gallery": svgW(tb(5, 6, 19, 16, "#c7cedd", 2) + tb(26, 6, 19, 16, "#c7cedd", 2) + tb(47, 6, 19, 16, "#c7cedd", 2) + tb(5, 25, 19, 16, "#c7cedd", 2) + tb(26, 25, 19, 16, "#c7cedd", 2) + tb(47, 25, 19, 16, "#c7cedd", 2)),
-    "swap.faq": svgW(tb(6, 6, 60, 8, "#eef1f7", 2) + tl(10, 8.5, 30, TDK) + tb(6, 16, 60, 8, "#eef1f7", 2) + tl(10, 18.5, 24, TDK) + tb(6, 26, 60, 8, "#eef1f7", 2) + tl(10, 28.5, 34, TDK) + tb(6, 36, 60, 8, "#eef1f7", 2) + tl(10, 38.5, 20, TDK)),
+    "services.cards": svgW(tb(4, 10, 20, 28, "#ffffff", 3) + '<rect x="4" y="10" width="20" height="28" fill="none" rx="3" stroke="#b6c0d2"/>' + tl(7, 26, 14) + tb(26, 10, 20, 28, "#ffffff", 3) + '<rect x="26" y="10" width="20" height="28" fill="none" rx="3" stroke="#b6c0d2"/>' + tl(29, 26, 14) + tb(48, 10, 20, 28, "#ffffff", 3) + '<rect x="48" y="10" width="20" height="28" fill="none" rx="3" stroke="#b6c0d2"/>' + tl(51, 26, 14)),
+    "services.list": svgW(tb(6, 8, 60, 9, "#dde4ef", 3) + tb(6, 20, 60, 9, "#dde4ef", 3) + tb(6, 32, 60, 9, "#dde4ef", 3)),
+    "services.alternating": svgW(tb(6, 7, 26, 15, "#a7b2c8", 3) + tl(38, 11, 22) + tl(38, 16, 16) + tl(6, 30, 22) + tl(6, 35, 16) + tb(40, 26, 26, 15, "#a7b2c8", 3)),
+    "swap.testimonials": svgW(tb(6, 10, 28, 26, "#ffffff", 3) + '<rect x="6" y="10" width="28" height="26" fill="none" rx="3" stroke="#b6c0d2"/>' + tc(12, 17, 3) + tl(9, 25, 20) + tl(9, 30, 14) + tb(38, 10, 28, 26, "#ffffff", 3) + '<rect x="38" y="10" width="28" height="26" fill="none" rx="3" stroke="#b6c0d2"/>' + tc(44, 17, 3) + tl(41, 25, 20) + tl(41, 30, 14)),
+    "swap.gallery": svgW(tb(5, 6, 19, 16, "#a7b2c8", 2) + tb(26, 6, 19, 16, "#a7b2c8", 2) + tb(47, 6, 19, 16, "#a7b2c8", 2) + tb(5, 25, 19, 16, "#a7b2c8", 2) + tb(26, 25, 19, 16, "#a7b2c8", 2) + tb(47, 25, 19, 16, "#a7b2c8", 2)),
+    "swap.faq": svgW(tb(6, 6, 60, 8, "#dde4ef", 2) + tl(10, 8.5, 30, TDK) + tb(6, 16, 60, 8, "#dde4ef", 2) + tl(10, 18.5, 24, TDK) + tb(6, 26, 60, 8, "#dde4ef", 2) + tl(10, 28.5, 34, TDK) + tb(6, 36, 60, 8, "#dde4ef", 2) + tl(10, 38.5, 20, TDK)),
     "swap.cta": svgW(tb(2, 12, 68, 24, TACC, 4) + tl(20, 19, 32, "#ffffff") + tb(27, 26, 18, 6, "#ffffff", 3)),
-    "swap.beforeAfter": svgW(tb(4, 8, 30, 32, "#c7cedd", 3) + tb(38, 8, 30, 32, "#8f9bb3", 3) + tb(35, 6, 2, 36, TACC, 1)),
-    "swap.guarantee": svgW(tc(16, 18, 7, TACC) + tc(36, 18, 7, "#c7cedd") + tc(56, 18, 7, "#c7cedd") + tl(9, 32, 14) + tl(29, 32, 14) + tl(49, 32, 14)),
-    "swap.pricing": svgW(tb(5, 8, 19, 32, "#ffffff", 3) + '<rect x="5" y="8" width="19" height="32" fill="none" rx="3" stroke="#dfe4ee"/>' + tb(26, 5, 19, 38, "#ffffff", 3) + '<rect x="26" y="5" width="19" height="38" fill="none" rx="3" stroke="' + TACC + '"/>' + tb(47, 8, 19, 32, "#ffffff", 3) + '<rect x="47" y="8" width="19" height="32" fill="none" rx="3" stroke="#dfe4ee"/>'),
+    "swap.beforeAfter": svgW(tb(4, 8, 30, 32, "#a7b2c8", 3) + tb(38, 8, 30, 32, "#8f9bb3", 3) + tb(35, 6, 2, 36, TACC, 1)),
+    "swap.guarantee": svgW(tc(16, 18, 7, TACC) + tc(36, 18, 7, "#a7b2c8") + tc(56, 18, 7, "#a7b2c8") + tl(9, 32, 14) + tl(29, 32, 14) + tl(49, 32, 14)),
+    "swap.pricing": svgW(tb(5, 8, 19, 32, "#ffffff", 3) + '<rect x="5" y="8" width="19" height="32" fill="none" rx="3" stroke="#b6c0d2"/>' + tb(26, 5, 19, 38, "#ffffff", 3) + '<rect x="26" y="5" width="19" height="38" fill="none" rx="3" stroke="' + TACC + '"/>' + tb(47, 8, 19, 32, "#ffffff", 3) + '<rect x="47" y="8" width="19" height="32" fill="none" rx="3" stroke="#b6c0d2"/>'),
   };
 
   // Layout options per section kind — [variant, friendly label, thumb key]. Variants match the
