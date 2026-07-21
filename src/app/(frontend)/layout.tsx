@@ -1,13 +1,13 @@
 import type { Metadata, Viewport } from "next";
-import { Jost } from "next/font/google";
+import { Roboto } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
-const jost = Jost({
-  variable: "--font-jost",
+const roboto = Roboto({
+  variable: "--font-roboto",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
+  weight: ["400", "600", "800"],
 });
 
 export const metadata: Metadata = {
@@ -54,7 +54,7 @@ export default function FrontendLayout({
     // root element itself (e.g. a microformats/reader extension adding `hentry`)
     // before React hydrates — the flag only covers one level, so <html> needs its
     // own (the one on <body> below doesn't reach it).
-    <html lang="en" className={`${jost.variable} h-full antialiased`} suppressHydrationWarning>
+    <html lang="en" className={`${roboto.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
       </head>

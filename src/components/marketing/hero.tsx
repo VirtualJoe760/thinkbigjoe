@@ -16,7 +16,7 @@ export function Hero() {
         }}
       />
 
-      <div className="relative mx-auto max-w-6xl px-6 pt-24 pb-20 md:pt-32 md:pb-28">
+      <div className="relative mx-auto flex max-w-6xl flex-col items-center px-6 pt-24 pb-20 text-center md:pt-32 md:pb-28">
         <div className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-xs font-semibold tracking-wide text-ink-soft uppercase">
           <span className="h-1.5 w-1.5 rounded-full bg-brand" />
           Plumbing · HVAC · Electrical · Roofing · Garage Door · Restoration
@@ -31,9 +31,7 @@ export function Hero() {
           rival charges more for the phone alone; it just stops being the first thing we say.
         */}
         <h1 className="mt-8 max-w-4xl text-5xl font-extrabold leading-[1.05] tracking-tight text-balance md:text-7xl">
-          Answer every call.
-          <br />
-          Book every <span className="text-brand">job</span>.
+          Answer, qualify, and book every <span className="text-brand">job</span>
         </h1>
 
         <p className="mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft md:text-xl">
@@ -43,12 +41,12 @@ export function Hero() {
           someone else&apos;s job. Your website comes with it.
         </p>
 
-        <div className="mt-10 flex flex-col gap-3 sm:flex-row">
+        <div className="mt-10 flex flex-col justify-center gap-3 sm:flex-row">
           <Link
             href="/login"
             className="inline-flex items-center justify-center rounded-full bg-brand px-7 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-dark"
           >
-            Create your account
+            Talk to an Ai Agent
           </Link>
           <Link
             href="/portal/claim"
@@ -66,7 +64,7 @@ export function Hero() {
           .
         </p>
 
-        <dl className="mt-16 grid max-w-2xl grid-cols-3 gap-8 border-t border-line pt-8">
+        <dl className="mt-16 grid max-w-2xl grid-cols-3 gap-8 border-t border-line pt-8 text-center">
           {[
             { k: "24/7", v: "AI receptionist answers & books every call" },
             { k: "More sales", v: "Custom systems that fill your pipeline" },

@@ -10,19 +10,39 @@ export function ContactCTA() {
   return (
     <section id="contact" className="border-t border-line bg-ink text-white">
       <div className="mx-auto max-w-6xl px-6 py-24 md:py-32">
-        <div className="grid gap-12 lg:grid-cols-2 lg:gap-20">
-          <div>
-            <p className="text-sm font-semibold tracking-wide text-brand uppercase">
-              Get in touch
-            </p>
-            {/* Bookends the hero's pain rather than closing on "get started" — the page opens and
-                shuts on the same wound. Costs nothing and converts better than a generic CTA. */}
-            <h2 className="mt-3 text-4xl font-extrabold leading-tight tracking-tight md:text-5xl">
-              Stop losing jobs to whoever picks up first.
-            </h2>
-            <p className="mt-6 max-w-md leading-relaxed text-white/60">
-              Send us a note and our team will get back to you, usually within a
-              day. Or email us directly at{" "}
+        {/* Phone is the hero of this section — the fastest path to a booked job is a live call
+            with the AI receptionist, so the number leads and the form is the fallback. */}
+        <div className="flex flex-col items-center text-center">
+          <p className="text-sm font-semibold tracking-wide text-brand uppercase">
+            Get in touch
+          </p>
+          <h2 className="mt-3 max-w-3xl text-4xl font-extrabold leading-tight tracking-tight md:text-5xl">
+            Got questions? Let&apos;s talk Ai.
+          </h2>
+          <p className="mt-6 max-w-xl leading-relaxed text-white/60">
+            Call our AI receptionist any time — it answers 24/7 and can walk you
+            through getting set up.
+          </p>
+
+          <a
+            href={CONTACT_PHONE_HREF}
+            className="mt-10 inline-flex items-center gap-3 rounded-full bg-brand px-8 py-5 text-2xl font-extrabold tracking-tight text-white transition-colors hover:bg-brand-dark md:px-12 md:py-6 md:text-4xl"
+          >
+            <svg viewBox="0 0 24 24" className="h-7 w-7 md:h-9 md:w-9" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012 4.2 2 2 0 014 2h3a2 2 0 012 1.7c.1.9.4 1.8.7 2.7a2 2 0 01-.5 2.1L8.1 9.9a16 16 0 006 6l1.4-1.1a2 2 0 012.1-.5c.9.3 1.8.6 2.7.7a2 2 0 011.7 2z" />
+            </svg>
+            {CONTACT_PHONE}
+          </a>
+          <p className="mt-4 text-sm text-white/50">Answers 24/7 · No wait</p>
+        </div>
+
+        {/* Secondary: prefer to write? The contact form → emails Joe + captures as a lead. */}
+        <div className="mx-auto mt-16 max-w-xl border-t border-white/10 pt-12">
+          <div className="text-center">
+            <p className="text-sm font-semibold text-white">Prefer to write?</p>
+            <p className="mt-1 text-sm text-white/60">
+              Send a note and our team gets back to you, usually within a day — or
+              email{" "}
               <a
                 href={`mailto:${CONTACT_EMAIL}`}
                 className="font-medium text-white underline decoration-white/30 underline-offset-4 hover:decoration-white"
@@ -31,36 +51,9 @@ export function ContactCTA() {
               </a>
               .
             </p>
-            <p className="mt-4 max-w-md leading-relaxed text-white/60">
-              Prefer to talk? Call{" "}
-              <a
-                href={CONTACT_PHONE_HREF}
-                className="font-medium text-white underline decoration-white/30 underline-offset-4 hover:decoration-white"
-              >
-                {CONTACT_PHONE}
-              </a>{" "}
-              — our AI receptionist answers 24/7 and can walk you through getting
-              set up.
-            </p>
-
-            <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5">
-              <p className="text-sm font-semibold">Ready to get started?</p>
-              <p className="mt-1 text-sm text-white/60">
-                Create your free account to claim your site — then book a strategy
-                call from your portal and we map the highest-leverage AI for your
-                business.
-              </p>
-              <Link
-                href="/login"
-                className="mt-4 inline-flex items-center justify-center rounded-full border border-white/20 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10"
-              >
-                Create your account →
-              </Link>
-            </div>
           </div>
 
-          {/* Contact message → emails Joe + captures as a lead (no booking flow) */}
-          <div>
+          <div className="mt-6">
             <ContactStatus />
             <form className="space-y-4" action="/api/contact" method="post">
               {/* Honeypot — hidden from humans, bots fill it */}

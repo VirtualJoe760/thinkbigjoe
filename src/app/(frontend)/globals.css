@@ -11,13 +11,13 @@
      The site rebrands from these primitives, exactly like a forge template:
      the editor's Brand panel moves --brand-h / --brand-c / --accent-h and the
      --font-*-stack vars, and every brand color + font below re-derives.
-     Values chosen so the derived colors render the ORIGINAL palette exactly:
-     brand #0047ff · dark #0035c4 · tint #e9f0ff (verified OKLCH roundtrips). */
-  --brand-h: 263.5; /* electric blue */
-  --brand-c: 0.274;
+     Values chosen so the derived colors render the brand palette:
+     brand #7443d8 (violet) · dark + tint re-derive via oklch. */
+  --brand-h: 292.6; /* violet (#7443d8) */
+  --brand-c: 0.214;
   --accent-h: 70; /* contract completeness — nothing consumes it here yet */
-  --font-sans-stack: var(--font-jost), ui-sans-serif, system-ui, sans-serif;
-  --font-heading-stack: var(--font-jost), ui-sans-serif, system-ui, sans-serif;
+  --font-sans-stack: var(--font-roboto), 'Roboto', ui-sans-serif, system-ui, sans-serif;
+  --font-heading-stack: var(--font-roboto), 'Roboto', ui-sans-serif, system-ui, sans-serif;
 
   --background: #ffffff;
   --surface: #f5f7fb; /* soft tint for alternating sections */
