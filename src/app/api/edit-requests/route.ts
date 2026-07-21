@@ -17,6 +17,11 @@ type EditChanges = {
   image?: { name?: string; dataUrl?: string };
   replaceGraphic?: boolean;
   variant?: string;
+  /** Section edits: delete the section entirely (one-tap Remove in the editor). */
+  remove?: boolean;
+  /** Section edits: replace with a different section kind (id + friendly label from the editor's swap row). */
+  swapTo?: string;
+  swapLabel?: string;
   note?: string;
   // Brand-theme (token) change — moves the template's design tokens.
   primaryHex?: string;
@@ -124,6 +129,8 @@ export async function POST(req: Request) {
     // Section / layout change (forge swaps a @webdev/ui variant prop or builds it).
     if (e.section || e.tag === "section") {
       lines.push(`${i + 1}. **Section: ${e.text || e.section}**`);
+      if (c.remove) lines.push(`   - **REMOVE this section entirely** — delete it from the page (and its import if now unused). Keep every other section intact.`);
+      if (c.swapTo) lines.push(`   - **Replace this section with a "${c.swapLabel || c.swapTo}" section** — build it with the closest matching @webdev/ui section component, reusing this section's existing copy/images wherever they fit. Remove the old section it replaces.`);
       if (c.variant) lines.push(`   - Switch layout to variant **"${c.variant}"** (the @webdev/ui \`variant\` prop in app/page.tsx)`);
       const snote = c.note || e.note;
       if (snote) lines.push(`   - Requested change: ${snote}`);

@@ -106,29 +106,124 @@
 
   var TEXT_TAGS = /^(H1|H2|H3|H4|H5|H6|P|SPAN|A|BUTTON|LI|BLOCKQUOTE|LABEL|STRONG|EM|SMALL|DD|DT|FIGCAPTION)$/;
 
-  // Section mode: swap whole sections / component layouts (forge @webdev/ui variants).
+  // Section mode: GUIDED section editing. Clicking a section offers visual layout options (with a
+  // live in-place try-on of their own copy), a "swap for a different kind of section" row, a
+  // one-tap Remove, and only then the free-text escape hatch. Thumbnails are inline SVG wireframes —
+  // "split"/"fullBleed" mean nothing to a plumber; a picture does.
   var mode = "element";
-  var SECTIONS = {
-    home: { label: "Hero", variants: ["split", "fullBleed", "centered", "minimal"] },
-    stats: { label: "Stats band", variants: ["band", "inline"] },
-    services: { label: "Services", variants: ["cards", "list", "alternating"] },
-    about: { label: "About", variants: [] },
-    gallery: { label: "Gallery", variants: [] },
-    pricing: { label: "Pricing", variants: [] },
-    testimonials: { label: "Testimonials", variants: [] },
-    faq: { label: "FAQ", variants: [] },
-    cta: { label: "Call-to-action", variants: [] },
-    contact: { label: "Contact", variants: [] },
+
+  // ---- wireframe thumbnails (tiny inline SVGs, no external assets) ------
+  function svgW(inner) { return '<svg viewBox="0 0 72 48" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="display:block;background:#f8fafd;border-radius:6px;">' + inner + "</svg>"; }
+  function tb(x, y, w, h, f, rx) { return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="' + (f || "#dfe4ee") + '" rx="' + (rx == null ? 2 : rx) + '"/>'; }
+  function tl(x, y, w, f) { return tb(x, y, w, 3, f || "#c7cedd", 1.5); }
+  function tc(x, y, r, f) { return '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + (f || "#c7cedd") + '"/>'; }
+  var TACC = "#2f6bff", TDK = "#3a3d46";
+  var THUMBS = {
+    "hero.split": svgW(tl(6, 12, 24, TDK) + tl(6, 18, 20) + tl(6, 24, 16) + tb(6, 31, 14, 6, TACC, 3) + tb(38, 8, 28, 32, "#c7cedd", 3)),
+    "hero.fullBleed": svgW(tb(2, 4, 68, 40, "#aeb8cc", 3) + tl(20, 17, 32, "#ffffff") + tl(26, 23, 20, "#e8ecf4") + tb(28, 30, 16, 6, TACC, 3)),
+    "hero.centered": svgW(tl(22, 12, 28, TDK) + tl(26, 18, 20) + tl(29, 24, 14) + tb(28, 31, 16, 6, TACC, 3)),
+    "hero.minimal": svgW(tl(6, 18, 36, TDK) + tl(6, 25, 26)),
+    "nav.standard": svgW(tb(2, 4, 68, 12, "#eef1f7", 3) + tc(9, 10, 3, TACC) + tl(40, 8, 8) + tl(50, 8, 8) + tl(60, 8, 8)),
+    "nav.centered": svgW(tb(2, 4, 68, 12, "#eef1f7", 3) + tc(9, 10, 3, TACC) + tl(26, 8, 8) + tl(36, 8, 8) + tl(46, 8, 8)),
+    "nav.floating": svgW(tb(8, 7, 56, 11, "#ffffff", 5.5) + '<rect x="8" y="7" width="56" height="11" fill="none" rx="5.5" stroke="#c7cedd"/>' + tc(15, 12.5, 2.5, TACC) + tl(42, 11, 6) + tl(50, 11, 6)),
+    "stats.band": svgW(tb(2, 14, 68, 20, TDK, 3) + tl(10, 22, 12, "#ffffff") + tl(30, 22, 12, "#ffffff") + tl(50, 22, 12, "#ffffff")),
+    "stats.inline": svgW(tl(10, 22, 12, TDK) + tl(30, 22, 12, TDK) + tl(50, 22, 12, TDK)),
+    "services.cards": svgW(tb(4, 10, 20, 28, "#ffffff", 3) + '<rect x="4" y="10" width="20" height="28" fill="none" rx="3" stroke="#dfe4ee"/>' + tl(7, 26, 14) + tb(26, 10, 20, 28, "#ffffff", 3) + '<rect x="26" y="10" width="20" height="28" fill="none" rx="3" stroke="#dfe4ee"/>' + tl(29, 26, 14) + tb(48, 10, 20, 28, "#ffffff", 3) + '<rect x="48" y="10" width="20" height="28" fill="none" rx="3" stroke="#dfe4ee"/>' + tl(51, 26, 14)),
+    "services.list": svgW(tb(6, 8, 60, 9, "#eef1f7", 3) + tb(6, 20, 60, 9, "#eef1f7", 3) + tb(6, 32, 60, 9, "#eef1f7", 3)),
+    "services.alternating": svgW(tb(6, 7, 26, 15, "#c7cedd", 3) + tl(38, 11, 22) + tl(38, 16, 16) + tl(6, 30, 22) + tl(6, 35, 16) + tb(40, 26, 26, 15, "#c7cedd", 3)),
+    "swap.testimonials": svgW(tb(6, 10, 28, 26, "#ffffff", 3) + '<rect x="6" y="10" width="28" height="26" fill="none" rx="3" stroke="#dfe4ee"/>' + tc(12, 17, 3) + tl(9, 25, 20) + tl(9, 30, 14) + tb(38, 10, 28, 26, "#ffffff", 3) + '<rect x="38" y="10" width="28" height="26" fill="none" rx="3" stroke="#dfe4ee"/>' + tc(44, 17, 3) + tl(41, 25, 20) + tl(41, 30, 14)),
+    "swap.gallery": svgW(tb(5, 6, 19, 16, "#c7cedd", 2) + tb(26, 6, 19, 16, "#c7cedd", 2) + tb(47, 6, 19, 16, "#c7cedd", 2) + tb(5, 25, 19, 16, "#c7cedd", 2) + tb(26, 25, 19, 16, "#c7cedd", 2) + tb(47, 25, 19, 16, "#c7cedd", 2)),
+    "swap.faq": svgW(tb(6, 6, 60, 8, "#eef1f7", 2) + tl(10, 8.5, 30, TDK) + tb(6, 16, 60, 8, "#eef1f7", 2) + tl(10, 18.5, 24, TDK) + tb(6, 26, 60, 8, "#eef1f7", 2) + tl(10, 28.5, 34, TDK) + tb(6, 36, 60, 8, "#eef1f7", 2) + tl(10, 38.5, 20, TDK)),
+    "swap.cta": svgW(tb(2, 12, 68, 24, TACC, 4) + tl(20, 19, 32, "#ffffff") + tb(27, 26, 18, 6, "#ffffff", 3)),
+    "swap.beforeAfter": svgW(tb(4, 8, 30, 32, "#c7cedd", 3) + tb(38, 8, 30, 32, "#8f9bb3", 3) + tb(35, 6, 2, 36, TACC, 1)),
+    "swap.guarantee": svgW(tc(16, 18, 7, TACC) + tc(36, 18, 7, "#c7cedd") + tc(56, 18, 7, "#c7cedd") + tl(9, 32, 14) + tl(29, 32, 14) + tl(49, 32, 14)),
+    "swap.pricing": svgW(tb(5, 8, 19, 32, "#ffffff", 3) + '<rect x="5" y="8" width="19" height="32" fill="none" rx="3" stroke="#dfe4ee"/>' + tb(26, 5, 19, 38, "#ffffff", 3) + '<rect x="26" y="5" width="19" height="38" fill="none" rx="3" stroke="' + TACC + '"/>' + tb(47, 8, 19, 32, "#ffffff", 3) + '<rect x="47" y="8" width="19" height="32" fill="none" rx="3" stroke="#dfe4ee"/>'),
   };
+
+  // Layout options per section kind — [variant, friendly label, thumb key]. Variants match the
+  // @webdev/ui `variant` props the forge applies (see edit-poll's prompt).
+  var VARIANTS = {
+    home: [["split", "Text + photo", "hero.split"], ["fullBleed", "Full-photo", "hero.fullBleed"], ["centered", "Centered", "hero.centered"], ["minimal", "Minimal", "hero.minimal"]],
+    nav: [["standard", "Classic", "nav.standard"], ["centered", "Centered", "nav.centered"], ["floating", "Floating", "nav.floating"]],
+    stats: [["band", "Color band", "stats.band"], ["inline", "Plain row", "stats.inline"]],
+    services: [["cards", "Cards", "services.cards"], ["list", "List", "services.list"], ["alternating", "Alternating", "services.alternating"]],
+  };
+  // What a section can be SWAPPED to — "want something different here?". The copy carries over;
+  // the forge rebuilds it for real on save. [kind, label, thumb key]
+  var SWAPS = [
+    ["testimonials", "Testimonials", "swap.testimonials"],
+    ["gallery", "Photo gallery", "swap.gallery"],
+    ["before-after", "Before & after", "swap.beforeAfter"],
+    ["faq", "FAQ", "swap.faq"],
+    ["stats", "Stats / numbers", "stats.band"],
+    ["guarantee", "Guarantee badges", "swap.guarantee"],
+    ["cta", "Call-to-action", "swap.cta"],
+    ["pricing", "Pricing", "swap.pricing"],
+  ];
+  var SECTIONS = {
+    home: { label: "Hero" }, stats: { label: "Stats band" }, services: { label: "Services" },
+    about: { label: "About" }, gallery: { label: "Gallery" }, pricing: { label: "Pricing" },
+    testimonials: { label: "Testimonials" }, faq: { label: "FAQ" }, cta: { label: "Call-to-action" },
+    contact: { label: "Contact" },
+  };
+  function prettyId(id) { return id.charAt(0).toUpperCase() + id.slice(1).replace(/[-_]+/g, " "); }
   function sectionTarget(el) {
     while (el && el !== document.body && el.nodeType === 1) {
       var t = el.nodeName;
-      if (t === "HEADER") return { el: el, id: "nav", label: "Navigation bar", variants: ["standard", "centered", "floating"] };
-      if (t === "FOOTER") return { el: el, id: "footer", label: "Footer", variants: [] };
-      if (t === "SECTION" && el.id) { var s = SECTIONS[el.id] || { label: el.id, variants: [] }; return { el: el, id: el.id, label: s.label, variants: s.variants }; }
+      // `chrome` = structural page furniture (nav/footer): layout options only — no swap, no remove.
+      if (t === "HEADER") return { el: el, id: "nav", label: "Navigation bar", chrome: true };
+      if (t === "FOOTER") return { el: el, id: "footer", label: "Footer", chrome: true };
+      if (t === "SECTION" && el.id) { var s = SECTIONS[el.id] || { label: prettyId(el.id) }; return { el: el, id: el.id, label: s.label }; }
       el = el.parentElement;
     }
     return null;
+  }
+
+  // ---- live try-on: approximate a layout with CSS, in place, with THEIR copy ----
+  // Honest approximation: the forge builds the real thing on save; this re-arranges what's already
+  // on screen so the choice is visible. Every try-on starts from the section's ORIGINAL snapshot
+  // (the panel restores before applying), so switching options never compounds. All best-effort —
+  // a failed heuristic just means the thumbnail carries the message alone.
+  function eachEl(list, fn) { Array.prototype.forEach.call(list, fn); }
+  function contentWrap(sec) { var el = sec.firstElementChild; while (el && el.children.length === 1) el = el.firstElementChild; return el || sec; }
+  function findGrid(sec) {
+    var els = sec.querySelectorAll("div,ul,ol");
+    for (var i = 0; i < els.length; i++) {
+      var cs = getComputedStyle(els[i]);
+      if ((cs.display === "grid" || cs.display === "flex") && els[i].children.length >= 2 && els[i].children.length <= 12) return els[i];
+    }
+    return null;
+  }
+  var TRYON = {
+    "home.centered": function (sec) { sec.style.textAlign = "center"; eachEl(sec.querySelectorAll("img"), function (im) { im.style.margin = "18px auto 0"; im.style.display = "block"; }); var w = contentWrap(sec); if (w !== sec) w.style.display = "block"; },
+    "home.minimal": function (sec) { eachEl(sec.querySelectorAll("img,video,svg"), function (m) { m.style.display = "none"; }); sec.style.textAlign = "center"; },
+    "home.split": function (sec) { var w = contentWrap(sec); if (!w || w.children.length < 2) return; w.style.display = "flex"; w.style.alignItems = "center"; w.style.gap = "40px"; eachEl(w.children, function (c) { c.style.flex = "1 1 0"; c.style.maxWidth = "none"; }); sec.style.textAlign = "left"; },
+    "home.fullBleed": function (sec) {
+      var img = sec.querySelector("img"); if (!img) return;
+      sec.style.position = "relative"; sec.style.overflow = "hidden";
+      img.style.cssText += ";position:absolute;top:0;left:0;right:0;bottom:0;width:100%;height:100%;object-fit:cover;opacity:.22;z-index:0;margin:0;";
+      eachEl(sec.children, function (c) { if (c !== img) { c.style.position = "relative"; c.style.zIndex = "1"; } });
+    },
+    "nav.standard": function () { /* the template default — restoring the snapshot IS the preview */ },
+    "nav.centered": function (sec) { var w = contentWrap(sec); w.style.display = "flex"; w.style.justifyContent = "center"; w.style.gap = "28px"; },
+    "nav.floating": function (sec) { sec.style.cssText += ";margin:10px 14px 0;border-radius:999px;box-shadow:0 10px 30px rgba(0,0,0,.12);border:1px solid #e6e9ef;overflow:hidden;"; },
+    "stats.band": function (sec, css) { sec.style.background = "#101114"; css(" *{color:#fff !important}"); },
+    "stats.inline": function (sec) { sec.style.background = "transparent"; },
+    "services.cards": function (sec) { var g = findGrid(sec); if (!g) return; eachEl(g.children, function (c) { c.style.border = "1px solid #e6e9ef"; c.style.borderRadius = "14px"; c.style.padding = "18px"; }); },
+    "services.list": function (sec) { var g = findGrid(sec); if (!g) return; g.style.display = "grid"; g.style.gridTemplateColumns = "1fr"; g.style.gap = "14px"; eachEl(g.children, function (c) { c.style.display = "flex"; c.style.alignItems = "center"; c.style.gap = "16px"; c.style.textAlign = "left"; }); },
+    "services.alternating": function (sec) { var g = findGrid(sec); if (!g) return; g.style.display = "grid"; g.style.gridTemplateColumns = "1fr"; g.style.gap = "18px"; eachEl(g.children, function (c, i) { c.style.display = "flex"; c.style.gap = "18px"; c.style.alignItems = "center"; c.style.flexDirection = i % 2 ? "row-reverse" : "row"; c.style.textAlign = "left"; }); },
+  };
+  // In-place SWAP preview: the section becomes a clearly-marked plan — big wireframe of the target
+  // kind + their own headline — dashed so it never reads as the finished thing.
+  function swapSkeleton(sec, swap, headline) {
+    function eschtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+    sec.innerHTML =
+      '<div style="max-width:880px;margin:0 auto;padding:44px 20px;">' +
+      '<div style="border:2px dashed rgba(47,107,255,.5);border-radius:16px;background:rgba(47,107,255,.04);padding:26px 22px;text-align:center;">' +
+      '<div style="max-width:320px;margin:0 auto;">' + (THUMBS[swap[2]] || "") + "</div>" +
+      (headline ? '<div style="font-weight:700;font-size:18px;margin-top:14px;color:#0a0a0b;">' + eschtml(headline) + "</div>" : "") +
+      '<div style="font-size:13px;color:#5b616e;margin-top:6px;">Preview — becomes a real <b>' + swap[1] + "</b> section, keeping your copy, when you send your changes.</div>" +
+      "</div></div>";
   }
 
   // ---- helpers ----------------------------------------------------------
@@ -593,59 +688,155 @@
     top = Math.max(gap, Math.min(rect.top, vh - ph - gap));
     pop.style.left = left + "px"; pop.style.top = top + "px";
   }
+  // A panel can register a discard callback (revert un-approved live previews) that runs on ANY
+  // close path — ✕, Cancel, or a toolbar mode switch. Approve clears it first so kept changes stay.
+  var panelDiscard = null;
   function closePanel() {
     var p = document.getElementById("__tbj-pop"); if (p) p.remove();
+    if (panelDiscard) { var f = panelDiscard; panelDiscard = null; try { f(); } catch (e) { /* best-effort */ } }
     hl.style.boxShadow = "none"; hl.style.display = "none"; selectedEl = null;
     bar.style.display = ""; removeSheetSpacer();   // un-hide the toolbar + drop the scroll spacer
   }
 
-  // ---- section panel (layout / component swaps — applied by the forge) --
+  // ---- section panel (guided: layouts w/ live try-on · swap · remove · describe) --
   function openSectionPanel(info) {
     closePanel();
-    selectedEl = info.el;
+    var sec = info.el;
+    selectedEl = sec;
     var mobile = isMobile();
-    moveHl(info.el);
+    moveHl(sec);
     hl.style.boxShadow = "0 0 0 9999px rgba(10,10,11,.55)";
-    var chosen = { variant: null };
 
+    // Everything previews from the section's ORIGINAL state, captured once here. Switching options
+    // restores first, so try-ons never compound; Cancel/✕/mode-switch restores via panelDiscard.
+    var base = snapshot(sec);
+    var headline = ((sec.querySelector("h1,h2,h3") || {}).innerText || "").trim().slice(0, 80);
+    var injected = [];             // <style> tags a try-on scoped to this section
+    var chosen = { variant: null, swap: null };
+    function resetPreview() {
+      for (var i = 0; i < injected.length; i++) { try { injected[i].remove(); } catch (e) { /* gone */ } }
+      injected = [];
+      restore(sec, base);
+      moveHl(sec);
+    }
+    panelDiscard = resetPreview;
+    function scopedCss(rules) {
+      sec.setAttribute("data-tbj-sec-tryon", "");
+      var st = document.createElement("style");
+      st.textContent = "[data-tbj-sec-tryon]" + rules;
+      document.head.appendChild(st);
+      injected.push(st);
+    }
+
+    var variants = VARIANTS[info.id] || [];
     var pop = document.createElement("div");
     pop.id = "__tbj-pop";
     pop.style.cssText = panelCss(mobile);
+    if (!mobile) pop.style.width = "340px";
 
     var h = handleHtml(mobile) +
       '<div style="display:flex;justify-content:space-between;align-items:center;">' +
       '<span style="font-size:11px;font-weight:700;color:#2f6bff;text-transform:uppercase;letter-spacing:.04em;">' + info.label + " section</span>" +
       '<button id="__tbj-x" aria-label="close" style="border:0;background:#f5f7fb;border-radius:8px;width:26px;height:26px;cursor:pointer;font-size:15px;">✕</button></div>';
-    if (info.variants && info.variants.length) {
-      h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Choose a layout</label><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">';
-      info.variants.forEach(function (v) { h += '<button type="button" class="__tbj-v" data-v="' + v + '" style="border:1px solid #e6e9ef;background:#fff;border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer;">' + v + "</button>"; });
+
+    if (variants.length) {
+      h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:10px;">Layout <span style="font-weight:400;color:#9aa0ad;">— tap to try it on</span></label>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">';
+      variants.forEach(function (v, i) {
+        h += '<button type="button" class="__tbj-vc" data-i="' + i + '" style="border:1px solid #e6e9ef;background:#fff;border-radius:10px;padding:6px 6px 4px;cursor:pointer;text-align:center;">' +
+          THUMBS[v[2]] + '<div style="font-size:11px;font-weight:600;margin-top:4px;color:#0a0a0b;">' + v[1] + "</div></button>";
+      });
       h += "</div>";
     }
-    h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:12px;">Describe a change ' +
-      (info.variants && info.variants.length ? '<span style="font-weight:400;color:#9aa0ad;">(optional)</span>' : "") + "</label>" +
-      '<textarea id="__tbj-snote" placeholder="e.g. make this a video hero, parallax background, add a testimonial…" style="width:100%;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;min-height:56px;"></textarea>' +
-      '<div style="display:flex;gap:8px;margin-top:10px;"><button id="__tbj-sadd" style="flex:1;background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:9px;font-weight:600;font-size:13px;cursor:pointer;">Request change</button>' +
-      '<button id="__tbj-scancel" style="background:#f5f7fb;border:0;border-radius:999px;padding:9px 12px;font-size:13px;cursor:pointer;">Cancel</button></div>' +
-      '<div style="font-size:11px;color:#9aa0ad;margin-top:6px;text-align:center;">Layout changes are applied by our team.</div>';
+
+    if (!info.chrome) {
+      h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:12px;">Want something different here?</label>' +
+        '<div id="__tbj-swaps" style="display:flex;gap:8px;overflow-x:auto;padding:6px 2px 2px;-webkit-overflow-scrolling:touch;">';
+      SWAPS.forEach(function (s, i) {
+        if (s[0] === info.id) return; // don't offer swapping a section to itself
+        h += '<button type="button" class="__tbj-sw" data-i="' + i + '" style="flex:0 0 88px;border:1px solid #e6e9ef;background:#fff;border-radius:10px;padding:6px 6px 4px;cursor:pointer;text-align:center;">' +
+          THUMBS[s[2]] + '<div style="font-size:10px;font-weight:600;margin-top:4px;color:#0a0a0b;white-space:nowrap;">' + s[1] + "</div></button>";
+      });
+      h += "</div>";
+    }
+
+    h += '<label style="display:block;font-size:12px;font-weight:600;margin-top:12px;">Anything else? <span style="font-weight:400;color:#9aa0ad;">(optional)</span></label>' +
+      '<textarea id="__tbj-snote" placeholder="e.g. make this a video hero, add our awards, reorder the items…" style="width:100%;box-sizing:border-box;border:1px solid #e6e9ef;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;min-height:44px;"></textarea>';
+
+    if (!info.chrome) {
+      h += '<button id="__tbj-srm" style="width:100%;margin-top:10px;background:#fff;border:1px solid #f3c1c1;color:#c0392b;border-radius:999px;padding:8px;font-weight:600;font-size:13px;cursor:pointer;">🗑 Remove this section</button>';
+    }
+
+    h += '<div style="display:flex;gap:8px;margin-top:10px;"><button id="__tbj-sadd" style="flex:1;background:#2f6bff;color:#fff;border:0;border-radius:999px;padding:10px;font-weight:600;font-size:13px;cursor:pointer;">Approve changes</button>' +
+      '<button id="__tbj-scancel" style="background:#f5f7fb;border:0;border-radius:999px;padding:10px 12px;font-size:13px;cursor:pointer;">Cancel</button></div>' +
+      '<div style="font-size:11px;color:#9aa0ad;margin-top:6px;text-align:center;">Previews are approximate — our team builds the real thing when you send.</div>';
+
     pop.innerHTML = h;
     document.documentElement.appendChild(pop);
-    placePanel(pop, info.el, mobile);
+    placePanel(pop, sec, mobile);
 
-    Array.prototype.forEach.call(pop.querySelectorAll(".__tbj-v"), function (btn) {
+    function markCards(cls, activeBtn) {
+      Array.prototype.forEach.call(pop.querySelectorAll("." + cls), function (b) {
+        b.style.borderColor = "#e6e9ef"; b.style.background = "#fff"; b.style.boxShadow = "none";
+      });
+      if (activeBtn) { activeBtn.style.borderColor = "#2f6bff"; activeBtn.style.background = "#eaf0ff"; activeBtn.style.boxShadow = "0 0 0 1px #2f6bff"; }
+    }
+
+    Array.prototype.forEach.call(pop.querySelectorAll(".__tbj-vc"), function (btn) {
       btn.onclick = function () {
-        chosen.variant = btn.getAttribute("data-v");
-        Array.prototype.forEach.call(pop.querySelectorAll(".__tbj-v"), function (b) { b.style.background = "#fff"; b.style.color = "#0a0a0b"; b.style.borderColor = "#e6e9ef"; });
-        btn.style.background = "#2f6bff"; btn.style.color = "#fff"; btn.style.borderColor = "#2f6bff";
+        var v = variants[Number(btn.getAttribute("data-i"))];
+        resetPreview();
+        chosen.variant = v[0]; chosen.swap = null;
+        markCards("__tbj-sw", null); markCards("__tbj-vc", btn);
+        var fn = TRYON[info.id + "." + v[0]];
+        if (fn) { try { fn(sec, scopedCss); } catch (e) { /* approximation failed — thumbnail carries it */ } }
+        moveHl(sec);
       };
     });
-    pop.querySelector("#__tbj-x").onclick = closePanel;
+    Array.prototype.forEach.call(pop.querySelectorAll(".__tbj-sw"), function (btn) {
+      btn.onclick = function () {
+        var s = SWAPS[Number(btn.getAttribute("data-i"))];
+        resetPreview();
+        chosen.swap = s; chosen.variant = null;
+        markCards("__tbj-vc", null); markCards("__tbj-sw", btn);
+        try { swapSkeleton(sec, s, headline); } catch (e) { /* thumbnail carries it */ }
+        moveHl(sec);
+      };
+    });
+
+    pop.querySelector("#__tbj-x").onclick = closePanel;       // panelDiscard restores the preview
     pop.querySelector("#__tbj-scancel").onclick = closePanel;
+
+    var rm = pop.querySelector("#__tbj-srm");
+    if (rm) rm.onclick = function () {
+      // One tap: the section visibly disappears, the removal queues, Undo brings it back.
+      resetPreview();
+      sec.style.display = "none";
+      var sel = "section#" + info.id;
+      edits.push({ selector: sel, tag: "section", text: info.label, section: info.id, changes: { remove: true } });
+      history.push({ el: sec, snapshot: base });
+      panelDiscard = null;
+      closePanel(); renderBar();
+    };
+
     pop.querySelector("#__tbj-sadd").onclick = function () {
       var note = pop.querySelector("#__tbj-snote").value.trim();
-      if (!chosen.variant && !note) { pop.querySelector("#__tbj-snote").focus(); return; }
+      if (!chosen.variant && !chosen.swap && !note) { pop.querySelector("#__tbj-snote").focus(); return; }
       var sel = info.id === "nav" ? "header" : info.id === "footer" ? "footer" : "section#" + info.id;
-      edits.push({ selector: sel, tag: "section", text: info.label, section: info.id, changes: { variant: chosen.variant || undefined, note: note || undefined } });
-      history.push({ el: info.el, snapshot: snapshot(info.el) }); // no live change; keeps Undo consistent
+      edits.push({
+        selector: sel, tag: "section", text: info.label, section: info.id,
+        changes: {
+          variant: chosen.variant || undefined,
+          swapTo: chosen.swap ? chosen.swap[0] : undefined,
+          swapLabel: chosen.swap ? chosen.swap[1] : undefined,
+          note: note || undefined,
+        },
+      });
+      // Keep the live preview on the page (like element edits); Undo restores the original + drops
+      // any injected preview css.
+      history.push({ el: sec, snapshot: base, styleTags: injected.slice() });
+      injected = [];
+      panelDiscard = null;
       closePanel(); renderBar();
     };
   }
@@ -783,6 +974,8 @@
     else {
       restore(last.el, last.snapshot);
       if (last.tokens) for (var v in last.tokens) { var o = last.tokens[v]; if (o) document.documentElement.style.setProperty(v, o); else document.documentElement.style.removeProperty(v); }
+      // Section try-ons may inject scoped <style> tags (outside the element snapshot) — drop them too.
+      if (last.styleTags) for (var i = 0; i < last.styleTags.length; i++) { try { last.styleTags[i].remove(); } catch (e) { /* gone */ } }
     }
     edits.pop();
     renderBar();
