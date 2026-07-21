@@ -96,6 +96,31 @@ section panels. Edits carry an Undo history and are POSTed as a batch.
 the forge's **`factory/edit-poll.mjs`** (cron, ~every 5 min) applies each batch to the site source and
 redeploys. Surfaces as the **"Customer edit queue"** on `/command/engine`.
 
+### Guided section editing (2026-07-20)
+
+Sections mode is no longer variant-name pills + a prompt box. Clicking a section opens a guided
+panel (`openSectionPanel` in `public/editor.js`):
+
+- **Layout — tap to try it on.** Wireframe thumbnail cards (inline SVGs, `THUMBS`) for the section's
+  @webdev/ui variants (`VARIANTS`); tapping one **live-previews the layout in place with the user's
+  own copy** via CSS approximation (`TRYON` map — every try-on restores from the section's original
+  snapshot first, so options never compound). ⚠️ Thumbnail SVGs draw geometry/fill as **inline
+  styles, not presentation attributes** — Tailwind v4's `@layer` preflight outranks presentation
+  attributes in the cascade and silently zeroes every shape.
+- **Want something different here?** A swap row (`SWAPS`: testimonials, gallery, before/after, FAQ,
+  stats, guarantee, CTA, pricing) — tapping replaces the section in place with a clearly-dashed
+  skeleton preview carrying their headline. On save the forge builds the real section, reusing the
+  old section's copy.
+- **🗑 Remove this section** — one tap: hides it live, queues `changes.remove`, Undo restores.
+  nav/footer are `chrome: true` → layouts only, no swap/remove.
+- **Anything else?** — the free-text prompt, demoted to the escape hatch.
+
+Un-approved previews revert on ANY close path via the `panelDiscard` hook in `closePanel` (✕,
+Cancel, or a toolbar mode switch). Approved section edits keep their preview on the page; `undo()`
+also removes any injected try-on `<style>` tags (`history[].styleTags`). The request markdown
+(`/api/edit-requests`) emits explicit **REMOVE** / **Replace with X** instructions, and edit-poll's
+prompt (webdev-templates) knows both.
+
 ### Internal sites — TBJ's own front of house (2026-07-20)
 
 Every TBJ project is a Next app with three layers: **Front of house** (public) | **Portal**
