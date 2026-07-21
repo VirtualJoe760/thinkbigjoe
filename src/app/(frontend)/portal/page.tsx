@@ -485,7 +485,7 @@ export default async function PortalPage({
                 Build a new site
               </span>
               <span className="mt-1 text-sm text-ink-soft">
-                No site yet? Tell us about your business — we&apos;ll build one. 7 days free.
+                No site yet? Call Ivy and tell her about your business — we&apos;ll build one.
               </span>
             </Link>
             <Link
