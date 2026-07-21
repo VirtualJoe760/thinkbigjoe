@@ -44,7 +44,9 @@ export default async function DashboardPage({
   const sites = await db
     .select({ id: forgeSites.id, businessName: forgeSites.businessName, timezone: forgeSites.bookingTimezone })
     .from(forgeSites)
-    .where(and(eq(forgeSites.claimedByUserId, user.id), ne(forgeSites.status, "deleted")))
+    // Internal sites (TBJ itself — Ivy's own line now persists calls under it) are edited in code
+    // and reviewed via the admin Ivy log, never shown as a customer receptionist here.
+    .where(and(eq(forgeSites.claimedByUserId, user.id), ne(forgeSites.status, "deleted"), ne(forgeSites.isInternal, true)))
     .orderBy(asc(forgeSites.id));
 
   const { site: siteParam } = await searchParams;

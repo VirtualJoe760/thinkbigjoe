@@ -62,7 +62,8 @@ export default async function PortalUsagePage({
   const sites = await db
     .select({ id: forgeSites.id, businessName: forgeSites.businessName })
     .from(forgeSites)
-    .where(and(eq(forgeSites.claimedByUserId, user.id), ne(forgeSites.status, "deleted")))
+    // Exclude internal sites (TBJ's own Ivy line persists calls under one) — never a customer surface.
+    .where(and(eq(forgeSites.claimedByUserId, user.id), ne(forgeSites.status, "deleted"), ne(forgeSites.isInternal, true)))
     // Same ordering as /portal/calls, so a multi-site owner doesn't land on a different business
     // depending on which page they opened.
     .orderBy(asc(forgeSites.id));

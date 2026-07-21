@@ -53,7 +53,8 @@ export default async function PortalCallsPage({
       timezone: forgeSites.bookingTimezone,
     })
     .from(forgeSites)
-    .where(and(eq(forgeSites.claimedByUserId, user.id), ne(forgeSites.status, "deleted")))
+    // Exclude internal sites (TBJ's own Ivy line persists calls under one) — never a customer surface.
+    .where(and(eq(forgeSites.claimedByUserId, user.id), ne(forgeSites.status, "deleted"), ne(forgeSites.isInternal, true)))
     // Deterministic order is load-bearing, not cosmetic: `sites[0]` is what a multi-site owner
     // sees when `?site=` is absent, and Postgres returns unordered rows in heap order — so
     // without this the default business changes between page loads. Oldest site first (id ASC)
