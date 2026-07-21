@@ -7,8 +7,10 @@ import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { db, calls, forgeSites, voiceLines } from "@/db";
 import { auth } from "@/lib/auth";
 import { StatGrid, StatTile } from "@/components/ui";
+import { isAdminEmail } from "@/lib/admin";
 import { CallIvy } from "@/components/portal/call-ivy";
 import { CallFeedback } from "./call-feedback";
+import { IvyCalls } from "./ivy-calls";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -32,6 +34,9 @@ export default async function DashboardPage({
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login?redirect=/portal/dashboard");
   const { user } = session;
+  // Admins get a "your own line" section reviewing Ivy's real calls from Retell (see IvyCalls).
+  // Never rendered for a customer.
+  const admin = isAdminEmail(user.email);
 
   // HARD SECURITY BOUNDARY — identical to /portal/calls. Every call below is reached only through a
   // site id that came out of THIS query (claimed by me). `?site=` is matched against this list,
@@ -128,6 +133,7 @@ export default async function DashboardPage({
             ]}
           />
         </div>
+        {admin && <IvyCalls />}
       </main>
     );
   }
@@ -339,6 +345,8 @@ export default async function DashboardPage({
           </ul>
         )}
       </section>
+
+      {admin && <IvyCalls />}
     </main>
   );
 }
