@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db, forgeSites, editRequests } from "@/db";
 import { auth } from "@/lib/auth";
@@ -76,6 +76,25 @@ export async function POST(req: Request) {
   // Internal sites (TBJ's own front of house) live in their own repo with the contract primitives
   // in src/app/(frontend)/globals.css — several instruction lines below differ for them.
   const internal = site.isInternal === true;
+
+  // ONE build at a time. A second batch sent mid-build would be applied against a moving target
+  // (the forge is rewriting the site source right now) and could silently clobber or duplicate the
+  // first batch's changes. The editor UI locks while a build runs; this is the server-side gate
+  // behind it (stale tabs, double-clicks, the Studio's save button).
+  const ownsCheck = site.claimedByUserId === session.user.id || isAdminEmail(session.user.email);
+  if (ownsCheck) {
+    const pending = await db
+      .select({ id: editRequests.id })
+      .from(editRequests)
+      .where(and(eq(editRequests.siteId, siteId), inArray(editRequests.status, ["requested", "applying"])))
+      .limit(1);
+    if (pending.length > 0) {
+      return NextResponse.json(
+        { ok: false, error: "A build is already in progress for this site. Editing unlocks the moment it finishes — usually 5–15 minutes." },
+        { status: 409 },
+      );
+    }
+  }
   const owns = site.claimedByUserId === session.user.id || isAdminEmail(session.user.email);
   if (!owns) return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
 
@@ -222,4 +241,33 @@ export async function POST(req: Request) {
   ).catch(() => {});
 
   return NextResponse.json({ ok: true, count: edits.length });
+}
+
+/**
+ * Pending-build check — polled by the editor's locked screen so it can unlock itself the moment
+ * the forge finishes applying. Owner (or admin) only; returns only a boolean, no build detail.
+ */
+export async function GET(req: Request) {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+
+  const siteId = Number(new URL(req.url).searchParams.get("siteId"));
+  if (!Number.isFinite(siteId)) return NextResponse.json({ ok: false, error: "bad siteId" }, { status: 400 });
+
+  const [site] = await db
+    .select({ claimedByUserId: forgeSites.claimedByUserId })
+    .from(forgeSites)
+    .where(eq(forgeSites.id, siteId))
+    .limit(1);
+  if (!site) return NextResponse.json({ ok: false, error: "site not found" }, { status: 404 });
+  if (site.claimedByUserId !== session.user.id && !isAdminEmail(session.user.email)) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
+
+  const pending = await db
+    .select({ id: editRequests.id })
+    .from(editRequests)
+    .where(and(eq(editRequests.siteId, siteId), inArray(editRequests.status, ["requested", "applying"])))
+    .limit(1);
+  return NextResponse.json({ ok: true, pending: pending.length > 0 });
 }

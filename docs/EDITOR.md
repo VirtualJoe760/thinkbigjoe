@@ -91,6 +91,15 @@ they revert the preview so nothing is saved unless approved. This holds across t
 (`openBrandPanel` snapshots `openTheme` on open; `discardBrand()` reverts the live theme to it), and
 section panels. Edits carry an Undo history and are POSTed as a batch.
 
+### One build at a time (2026-07-21)
+
+Send is guarded three ways: **(1)** a confirm dialog on "Send N edits" ("are you finished? builds
+take 5–15 min, editing locks until it's live"), **(2)** while a batch is `requested`/`applying` the
+whole workspace swaps to a **BuildLock** screen (`build-lock.tsx`) that polls
+`GET /api/edit-requests?siteId=` every 20s and unlocks itself when the build lands, and **(3)** the
+server rejects a second batch with a 409 while one is pending (stale tabs, double-clicks, Studio
+saves). One batch = one build — mid-build edits would apply against a moving site source.
+
 ### The apply loop (real — the Site tab genuinely changes the site)
 `editor.js` → **`POST /api/edit-requests`** → stored as markdown on the **`edit_requests`** table →
 the forge's **`factory/edit-poll.mjs`** (cron, ~every 5 min) applies each batch to the site source and

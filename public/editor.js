@@ -1296,10 +1296,29 @@
     var s = bar.querySelector("#__tbj-send"); if (s) s.onclick = submit;
   }
   function submit() {
+    // One batch = one build. Make sure they're actually done before we lock the editor behind it.
+    if (!window.confirm(
+      "Are you finished making edits?\n\n" +
+      "We'll apply all " + edits.length + " change" + (edits.length > 1 ? "s" : "") + " now. Builds can take 5–15 minutes, " +
+      "and editing stays locked until your updated site is live.\n\n" +
+      "• OK — send them and start the build.\n" +
+      "• Cancel — keep editing and send everything together."
+    )) return;
     var s = bar.querySelector("#__tbj-send"); if (s) { s.disabled = true; s.textContent = "Sending…"; }
     fetch(SAVE_URL, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ siteId: SITE_ID, edits: edits }) })
       .then(function (r) { return r.json(); })
-      .then(function (res) { if (res && res.ok) { edits = []; history = []; resetTheme(); bar.innerHTML = '<span style="font-weight:600;">✅ Sent! Our team will apply your changes and let you know.</span>'; } else if (s) { s.disabled = false; s.textContent = "Retry"; } })
+      .then(function (res) {
+        if (res && res.ok) {
+          edits = []; history = []; resetTheme();
+          bar.innerHTML = '<span style="font-weight:600;">✅ Sent! Building your changes now…</span>';
+          // Hand off to the workspace's locked screen (the parent page re-checks for a pending
+          // build on load). Same-origin by construction — the proxy serves this page from our host.
+          setTimeout(function () { try { window.top.location.reload(); } catch (e) { /* stay on the sent message */ } }, 1600);
+        } else if (res && res.error && s) {
+          // e.g. "A build is already in progress…" — say it, don't just offer a blind Retry.
+          bar.innerHTML = '<span style="font-weight:600;">⏳ ' + String(res.error).replace(/</g, "&lt;") + "</span>";
+        } else if (s) { s.disabled = false; s.textContent = "Retry"; }
+      })
       .catch(function () { if (s) { s.disabled = false; s.textContent = "Retry"; } });
   }
   renderBar();
