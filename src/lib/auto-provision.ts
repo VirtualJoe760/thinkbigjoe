@@ -50,9 +50,12 @@ export async function getAutoProvisionStatus(): Promise<AutoProvisionStatus> {
   const autoBuildEnabled = cfg?.autoBuildEnabled ?? DEFAULTS.autoBuildEnabled;
 
   // One round trip for all three counts — Neon egress is metered, and none of these scan a big table.
+  // Spend excludes internal lines (TBJ's own Ivy line): the budget counts CUSTOMER numbers we bought,
+  // not the seeded internal tenant row (which was never a provisioner purchase).
   const res = await db.execute(sql`
     SELECT
-      (SELECT count(*) FROM voice_lines WHERE created_at > now() - interval '7 days') AS lines_week,
+      (SELECT count(*) FROM voice_lines vl JOIN forge_sites f ON f.id = vl.site_id
+         WHERE vl.created_at > now() - interval '7 days' AND f.is_internal = false) AS lines_week,
       (SELECT count(*) FROM voice_provision_queue WHERE status = 'queued') AS queued,
       (SELECT count(*) FROM voice_provision_queue WHERE status = 'failed') AS failed`);
   const row = (Array.isArray(res) ? res : (res as { rows?: unknown[] }).rows ?? [])[0] as

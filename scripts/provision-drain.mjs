@@ -111,9 +111,11 @@ async function main() {
     );
     if (reclaimed) log(`reclaimed ${reclaimed} stale 'provisioning' row(s)`);
 
-    // Spend this week = numbers bought = voice_lines created in the rolling 7-day window.
+    // Spend this week = CUSTOMER numbers bought = voice_lines created in the rolling 7-day window,
+    // excluding internal lines (TBJ's own Ivy line — never a provisioner purchase).
     const { rows: lineRows } = await client.query(
-      "SELECT count(*)::int AS n FROM voice_lines WHERE created_at > now() - interval '7 days'",
+      `SELECT count(*)::int AS n FROM voice_lines vl JOIN forge_sites f ON f.id = vl.site_id
+         WHERE vl.created_at > now() - interval '7 days' AND f.is_internal = false`,
     );
     let linesThisWeek = lineRows[0]?.n ?? 0;
     const budget = cfg.weekly_line_budget;
