@@ -96,12 +96,14 @@ export default async function DashboardPage({
 
   // Is the line actually answering? "Set up and quiet" and "not set up yet" are different stories and
   // telling someone "no calls yet" when nothing is provisioned is how trust dies.
-  const [line] = await db
+  // Prefer a WORKING line over whatever is newest — a released/paused row must not shadow a line
+  // that's still answering (same rule as the Agents roster and tenantByNumber).
+  const lineRows = await db
     .select({ status: voiceLines.status })
     .from(voiceLines)
     .where(eq(voiceLines.siteId, site.id))
-    .orderBy(desc(voiceLines.createdAt))
-    .limit(1);
+    .orderBy(desc(voiceLines.createdAt));
+  const line = lineRows.find((l) => l.status === "active" || l.status === "provisioning") ?? lineRows[0];
   const isLive = line?.status === "active";
   const hasLine = Boolean(line);
 
