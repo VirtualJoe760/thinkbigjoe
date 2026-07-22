@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
 
+import { db, calls } from "@/db";
 import { type ClientCalEvent, listCalendarEvents } from "@/lib/google-oauth";
 import { SITE_SLOT_MIN, availableSlots, bookForSite, getBookableSite, ownerAccessToken } from "@/lib/site-booking";
 import { callerPhone, parseRetellArgs, voiceAuthed } from "@/lib/voice-booking";
@@ -19,6 +21,36 @@ export const dynamic = "force-dynamic";
  *
  * Args: { name, start_time (ISO, from check_job_availability), phone?, email?, notes? }
  */
+/** The Retell call id, from either payload shape (nested `call` or flat). */
+function retellCallIdOf(body: unknown): string | undefined {
+  const call = ((body ?? {}) as Record<string, unknown>).call as Record<string, unknown> | undefined;
+  const raw = call?.call_id ?? (body as Record<string, unknown> | undefined)?.call_id;
+  return typeof raw === "string" && raw ? raw : undefined;
+}
+
+/**
+ * Record the booking on the CALL row — disposition='booked' is what the portal's "jobs booked"
+ * tile and impact score count, and until this write existed nothing ever set it (the schema
+ * documented the value; no writer produced it). Upsert because the call_started webhook may or
+ * may not have opened the row yet; the lifecycle webhook's own upsert COALESCEs disposition, so
+ * 'booked' written here survives call_ended/call_analyzed enrichment. Fire-and-forget by the
+ * caller: a stats write must never break the live booking response.
+ */
+async function markCallBooked(siteId: number, lineNumber: string, body: unknown): Promise<void> {
+  const callId = retellCallIdOf(body);
+  if (!callId) return; // nothing to key on — the lifecycle webhook will still derive what it can
+  await db
+    .insert(calls)
+    .values({ siteId, retellCallId: callId, toNumber: lineNumber, disposition: "booked" })
+    .onConflictDoUpdate({
+      target: calls.retellCallId,
+      // TENANT PREDICATE — same interlock as the lifecycle webhook: a colliding call id owned by
+      // another site must update nothing rather than flip a stranger's row to 'booked'.
+      setWhere: eq(calls.siteId, siteId),
+      set: { disposition: "booked" },
+    });
+}
+
 export async function POST(req: Request) {
   if (!voiceAuthed(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -80,6 +112,10 @@ export async function POST(req: Request) {
     // line, and returning a retryable outcome is better than refusing a legitimate time.
     if (existing !== null) {
       if (existing.some((e) => isOurBookingFor(e, name, start))) {
+        // A retry of a booking that already landed is still a booked call — make the row agree.
+        markCallBooked(tenant.siteId, tenant.lineNumber, body).catch((err) =>
+          console.error("[voice/site-book] mark-booked failed (idempotent path):", err),
+        );
         return NextResponse.json({
           booked: true,
           message: `You're already down for ${label} — we'll see you then.`,
@@ -121,6 +157,12 @@ export async function POST(req: Request) {
       // taken"), so pass them straight through rather than flattening them to the generic line.
       return NextResponse.json({ booked: false, message: result.message });
     }
+
+    // Stats write AFTER the booking is real, fire-and-forget BEFORE the response — the caller's
+    // confirmation must never wait on (or fail because of) a metrics row.
+    markCallBooked(tenant.siteId, tenant.lineNumber, body).catch((err) =>
+      console.error("[voice/site-book] mark-booked failed:", err),
+    );
 
     return NextResponse.json({
       booked: true,
