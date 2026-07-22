@@ -130,12 +130,16 @@ Blockers, in order; the last one is Joe's own hand:
 - [~] **Meta Pixel + `Lead` event on `?sent=1`** — CODE SHIPPED 2026-07-22
   (`src/components/meta-pixel.tsx`, env-gated on `NEXT_PUBLIC_META_PIXEL_ID`; PageView on every
   route for the retargeting pool + once-per-session `Lead` on the contact-form success redirect).
-  ⚠️ Open question: the ID points at the pre-existing "ThinkBigJoe" dataset `1009336358210064`,
-  which Events Manager shows as app-SDK-flavored, inactive, zero events ever. Verify web events
-  actually land (Events Manager → dataset → Test Events, then submit the contact form on prod).
-  If they don't: ad account `1607001766625509` has NO business portfolio and Meta requires one to
-  connect a new web data source — Joe creates the portfolio (Events Manager prompts "Get started"),
-  mint a proper web pixel, swap the env var.
+  ⚠️ TESTED 2026-07-22: client side fully verified on prod (fbevents.js + config load; PageView
+  fires on every route incl. UTM'd URLs; Lead fires on `?sent=1` — beacons to facebook.com/tr
+  confirmed via performance entries). BUT the ID points at the pre-existing "ThinkBigJoe" dataset
+  `1009336358210064`, which is app-SDK-typed: its Test Events tab only listens for app SDK
+  activity and recorded nothing from live browser traffic — treat web events as NOT accepted.
+  **Unlock (Joe's hands, ~2 min):** ad account `1607001766625509` has no business portfolio and
+  Meta requires one to connect a web data source. Events Manager → Connect data → "Get started"
+  on the portfolio prompt → create portfolio → connect Web → new pixel ID → swap
+  `NEXT_PUBLIC_META_PIXEL_ID` in Vercel (v10 env upsert, see memory) + redeploy. Code needs no
+  change.
   (Consider CAPI later; `fbclid` is already stored per-lead for dedup when that day comes.)
 - [ ] **Ivy dress rehearsal** — gates the final switch-flip.
 - [ ] **Joe activates the paused campaign in Ads Manager himself.** Nothing else counts.
