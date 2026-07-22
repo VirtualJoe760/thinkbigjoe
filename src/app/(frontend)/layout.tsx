@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Roboto } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { AttributionCapture } from "@/components/attribution-capture";
+import { MetaPixel } from "@/components/meta-pixel";
 import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
@@ -66,6 +67,7 @@ export default function FrontendLayout({
         {children}
         <Analytics />
         <AttributionCapture />
+        <MetaPixel />
         <PwaRegister />
       </body>
     </html>

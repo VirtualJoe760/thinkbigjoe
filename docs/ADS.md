@@ -61,6 +61,15 @@ is only on the legacy `/for/*` consultancy pages and the members-only `/portal/b
 instrumented too, but it is NOT the ad landing flow. Don't design creative that promises "fill
 out the form to book a call" — the public form is a message form.
 
+**Meta assets (created/chosen 2026-07-22):** Facebook Page **"Think Big Joe"** id `61592420273591`
+(FB rejected the CamelCase "ThinkBigJoe" name; bio + contact set, brand-blue #0047FF logo avatar +
+cover, WhatsApp/invites skipped) · ad account **`1607001766625509`** (the clean unnamed one — NOT
+the real-estate account `160011552` with its 17 legacy campaigns) · pixel/dataset
+`1009336358210064` (see the pixel gate in §6 for its caveat). Retargeting strategy note: core
+motion is pixel WCA retargeting of outreach-driven visitors + LAL seeded from prospect lists;
+cold campaign 1 below is the top-up layer, not the main event. Scraped-list custom audiences are
+a ToS gray zone with poor match rates — LAL seed only, never the majority of spend.
+
 ## 4. Campaign 1 — `never-miss-a-call-v1`
 
 **Audience:** US home-service owner-operators (plumbing, HVAC, electrical, roofing).
@@ -118,7 +127,15 @@ Blockers, in order; the last one is Joe's own hand:
 - [ ] **Ivy's onboarding tools pushed + verified** — BLOCKS SPEND (and specifically gates the
   `ad-call-her-yourself` creative).
 - [ ] **Mobile pass on FOH + contact form** — near-blocking; Meta traffic is ~all mobile.
-- [ ] **Meta Pixel + `Lead` event on `?sent=1`** — required for the Leads objective (§4).
+- [~] **Meta Pixel + `Lead` event on `?sent=1`** — CODE SHIPPED 2026-07-22
+  (`src/components/meta-pixel.tsx`, env-gated on `NEXT_PUBLIC_META_PIXEL_ID`; PageView on every
+  route for the retargeting pool + once-per-session `Lead` on the contact-form success redirect).
+  ⚠️ Open question: the ID points at the pre-existing "ThinkBigJoe" dataset `1009336358210064`,
+  which Events Manager shows as app-SDK-flavored, inactive, zero events ever. Verify web events
+  actually land (Events Manager → dataset → Test Events, then submit the contact form on prod).
+  If they don't: ad account `1607001766625509` has NO business portfolio and Meta requires one to
+  connect a new web data source — Joe creates the portfolio (Events Manager prompts "Get started"),
+  mint a proper web pixel, swap the env var.
   (Consider CAPI later; `fbclid` is already stored per-lead for dedup when that day comes.)
 - [ ] **Ivy dress rehearsal** — gates the final switch-flip.
 - [ ] **Joe activates the paused campaign in Ads Manager himself.** Nothing else counts.
