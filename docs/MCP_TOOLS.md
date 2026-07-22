@@ -99,6 +99,11 @@ tool-by-tool → UI-surface map):
   > **Deliberately NOT a tool: provisioning a line.** Buying a Retell number is a real per-number
   > cost, so an agent must not be able to trigger it. That stays a human-run
   > `scripts/retell/provision-line.mjs --apply`.
+- **Paid ads** (v2.29.0): `ads_funnel_report` — the on-site half of ads math: per-campaign
+  form-fills → booked calls → accounts for leads carrying `utm_*`/`fbclid` attribution (captured
+  on ad landing, stored on `leads`), plus organic volume for contrast. Read-only; combine with
+  Meta's spend numbers (the separate `meta-ads` MCP server) for cost per form-fill. See
+  [ADS.md](ADS.md).
 - **Every state-changing tool in every group calls `audit(...)`** — the mechanism behind
   `/command/jobs`'s "verified" rows. See VENUS_UI_MAPPING.md's Audit log section.
 

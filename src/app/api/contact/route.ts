@@ -33,6 +33,11 @@ export async function POST(req: Request) {
   const errUrl = fromContactPage ? "/contact?error=contact" : "/?error=contact#contact";
   // Honeypot — bots fill every field; humans never see this one.
   const website = String(form.get("website") || "").trim();
+  // Paid-traffic attribution, injected as hidden inputs by <AttributionFields /> (docs/ADS.md).
+  const attr = (k: string, max = 200) => {
+    const v = String(form.get(k) || "").trim();
+    return v ? v.slice(0, max) : null;
+  };
 
   if (website) {
     return NextResponse.redirect(new URL(okUrl, req.url), 303);
@@ -57,6 +62,14 @@ export async function POST(req: Request) {
       source: "contact-form",
       sourcePath: fromContactPage ? "/contact" : "/",
       status: "new",
+      utmSource: attr("utm_source"),
+      utmMedium: attr("utm_medium"),
+      utmCampaign: attr("utm_campaign"),
+      utmContent: attr("utm_content"),
+      utmTerm: attr("utm_term"),
+      fbclid: attr("fbclid", 500),
+      referrer: attr("attr_referrer", 500),
+      landingPath: attr("attr_landing_path"),
     });
 
     sendNotificationEmail({

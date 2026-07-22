@@ -1340,6 +1340,47 @@ async function toolForgeFunnelStats() {
   return { content: [{ type: "text", text }] };
 }
 
+async function toolAdsFunnelReport({ days = 7 } = {}) {
+  // The on-site half of paid-ads math (docs/ADS.md): Meta reports spend + clicks, this reports
+  // what those clicks became — form-fills → booked calls → accounts — grouped per campaign.
+  const d = Math.max(1, Math.min(90, Number(days) || 7));
+  const rows = (await query(
+    `SELECT coalesce(utm_campaign, '(no campaign)') AS campaign,
+            coalesce(utm_source, 'fbclid-only') AS source,
+            count(*)::int AS form_fills,
+            count(*) FILTER (WHERE booked_slot IS NOT NULL)::int AS booked,
+            count(*) FILTER (WHERE EXISTS (
+              SELECT 1 FROM better_auth."user" u WHERE lower(u.email) = lower(leads.email)
+            ))::int AS accounts
+     FROM leads
+     WHERE created_at > now() - $1 * interval '1 day'
+       AND (utm_source IS NOT NULL OR fbclid IS NOT NULL)
+     GROUP BY 1, 2
+     ORDER BY form_fills DESC`,
+    [d],
+  )).rows;
+  const organic = Number((await query(
+    `SELECT count(*) n FROM leads
+     WHERE created_at > now() - $1 * interval '1 day'
+       AND utm_source IS NULL AND fbclid IS NULL`,
+    [d],
+  )).rows[0].n);
+  const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+  const lines = [
+    `📣 **Ads funnel — last ${d}d** (web leads with paid attribution)`,
+    ``,
+    ...(rows.length
+      ? rows.map((r) =>
+          `${r.campaign} (${r.source}): ${r.form_fills} form-fill${r.form_fills === 1 ? "" : "s"} → ${r.booked} booked (${pct(r.booked, r.form_fills)}%) → ${r.accounts} account${r.accounts === 1 ? "" : "s"} (${pct(r.accounts, r.form_fills)}%)`,
+        )
+      : [`no paid-attributed leads in this window.`]),
+    ``,
+    `organic (unattributed) leads same window: ${organic}`,
+    `cost per form-fill = campaign spend (Meta ads manager) ÷ form_fills above.`,
+  ];
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
 async function toolForgeDigest() {
   const secret = process.env.CRON_SECRET;
   if (!secret) return { content: [{ type: "text", text: "❌ CRON_SECRET is not set in environment." }] };
@@ -1720,7 +1761,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.28.0" },
+  { name: "tbj-mcp", version: "2.29.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -1995,6 +2036,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       name: "forge_funnel_stats",
       description: "The showroom funnel at a glance: stage counts (discovered → preview → sent → claimed → built → paid), conversion rates, today's generated/drafted vs the goal, the current dials, and how many previews are expiring soon. Call at the start of the marketing-manager run.",
       inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "ads_funnel_report",
+      description: "Paid-ads funnel from the site's side, per campaign: form-fills → booked calls → accounts, for web leads carrying utm/fbclid attribution (captured on ad landing, stored on the lead). Also shows organic lead volume for contrast. Combine with Meta's spend numbers to get cost per form-fill. Read-only.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          days: { type: "number", description: "Lookback window in days (default 7, max 90)." },
+        },
+      },
     },
     {
       name: "forge_digest",
@@ -2315,6 +2366,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "list_forge_outreach_queue": return toolListForgeOutreachQueue(args);
     case "list_forge_preview_outreach": return toolListForgePreviewOutreach(args);
     case "forge_funnel_stats": return toolForgeFunnelStats();
+    case "ads_funnel_report": return toolAdsFunnelReport(args);
     case "forge_digest": return toolForgeDigest();
     case "automation_status": return toolAutomationStatus();
     case "set_outreach_goal": return toolSetOutreachGoal(args);

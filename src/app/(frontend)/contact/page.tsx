@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { AttributionFields } from "@/components/attribution-capture";
 import { SiteNav } from "@/components/marketing/site-nav";
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { BUSINESS } from "@/lib/business";
@@ -52,6 +53,7 @@ export default async function ContactPage({ searchParams }: { searchParams: Prom
           {/* Honeypot — hidden from humans, bots fill it. */}
           <input type="text" name="website" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden="true" />
           <input type="hidden" name="source_path" value="/contact" />
+          <AttributionFields />
 
           <div className="grid gap-5 sm:grid-cols-2">
             <label className="block">

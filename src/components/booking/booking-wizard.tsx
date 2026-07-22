@@ -3,6 +3,7 @@
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { readAttribution } from "@/components/attribution-capture";
 import { cardClass } from "@/components/ui";
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
@@ -145,6 +146,7 @@ export function BookingWizard({
           captchaToken,
           sourcePath:
             typeof window !== "undefined" ? window.location.pathname : "",
+          attribution: readAttribution(),
         }),
       });
       const data = await res.json();

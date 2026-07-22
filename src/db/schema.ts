@@ -223,40 +223,6 @@ export const siteAnalyses = pgTable("site_analyses", {
 	index("site_analyses_url_idx").using("btree", table.url.asc().nullsLast().op("text_ops")),
 ]);
 
-export const leads = pgTable("leads", {
-	id: serial().primaryKey().notNull(),
-	name: varchar().notNull(),
-	email: varchar().notNull(),
-	phone: varchar(),
-	company: varchar(),
-	role: varchar(),
-	industry: varchar(),
-	teamSize: enumLeadsTeamSize("team_size"),
-	timeline: enumLeadsTimeline(),
-	problem: varchar(),
-	emailType: enumLeadsEmailType("email_type"),
-	source: enumLeadsSource().notNull(),
-	sourcePath: varchar("source_path"),
-	status: enumLeadsStatus().default('new'),
-	bookedSlot: varchar("booked_slot"),
-	notes: varchar(),
-	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	createdAt: timestamp("created_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	prospectId: integer("prospect_id"),
-	gcalEventId: text("gcal_event_id"),
-	gcalHtmlLink: text("gcal_html_link"),
-	meetLink: text("meet_link"),
-}, (table) => [
-	index("leads_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
-	index("leads_email_idx").using("btree", table.email.asc().nullsLast().op("text_ops")),
-	index("leads_updated_at_idx").using("btree", table.updatedAt.asc().nullsLast().op("timestamptz_ops")),
-	foreignKey({
-			columns: [table.prospectId],
-			foreignColumns: [prospects.id],
-			name: "leads_prospect_id_fkey"
-		}),
-]);
-
 export const rebuildRequests = pgTable("rebuild_requests", {
 	id: serial().primaryKey().notNull(),
 	existingUrl: text("existing_url").notNull(),
@@ -776,4 +742,47 @@ export const voiceProvisionQueue = pgTable("voice_provision_queue", {
 			name: "voice_provision_queue_site_id_fkey"
 		}),
 	unique("voice_provision_queue_site_id_key").on(table.siteId),
+]);
+
+export const leads = pgTable("leads", {
+	id: serial().primaryKey().notNull(),
+	name: varchar().notNull(),
+	email: varchar().notNull(),
+	phone: varchar(),
+	company: varchar(),
+	role: varchar(),
+	industry: varchar(),
+	teamSize: enumLeadsTeamSize("team_size"),
+	timeline: enumLeadsTimeline(),
+	problem: varchar(),
+	emailType: enumLeadsEmailType("email_type"),
+	source: enumLeadsSource().notNull(),
+	sourcePath: varchar("source_path"),
+	status: enumLeadsStatus().default('new'),
+	bookedSlot: varchar("booked_slot"),
+	notes: varchar(),
+	updatedAt: timestamp("updated_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	createdAt: timestamp("created_at", { precision: 3, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	prospectId: integer("prospect_id"),
+	gcalEventId: text("gcal_event_id"),
+	gcalHtmlLink: text("gcal_html_link"),
+	meetLink: text("meet_link"),
+	utmSource: text("utm_source"),
+	utmMedium: text("utm_medium"),
+	utmCampaign: text("utm_campaign"),
+	utmContent: text("utm_content"),
+	utmTerm: text("utm_term"),
+	fbclid: text(),
+	referrer: text(),
+	landingPath: text("landing_path"),
+}, (table) => [
+	index("leads_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	index("leads_email_idx").using("btree", table.email.asc().nullsLast().op("text_ops")),
+	index("leads_updated_at_idx").using("btree", table.updatedAt.asc().nullsLast().op("timestamptz_ops")),
+	index("leads_utm_campaign_idx").using("btree", table.utmCampaign.asc().nullsLast().op("text_ops")).where(sql`(utm_campaign IS NOT NULL)`),
+	foreignKey({
+			columns: [table.prospectId],
+			foreignColumns: [prospects.id],
+			name: "leads_prospect_id_fkey"
+		}),
 ]);

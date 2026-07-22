@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Roboto } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { AttributionCapture } from "@/components/attribution-capture";
 import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
@@ -64,6 +65,7 @@ export default function FrontendLayout({
       <body className="min-h-full flex flex-col bg-background text-ink" suppressHydrationWarning>
         {children}
         <Analytics />
+        <AttributionCapture />
         <PwaRegister />
       </body>
     </html>

@@ -57,6 +57,7 @@ export default async function OverviewPage() {
           role: leads.role, industry: leads.industry, teamSize: leads.teamSize, timeline: leads.timeline,
           problem: leads.problem, source: leads.source, bookedSlot: leads.bookedSlot,
           gcalHtmlLink: leads.gcalHtmlLink, meetLink: leads.meetLink,
+          utmSource: leads.utmSource, utmCampaign: leads.utmCampaign, utmContent: leads.utmContent,
         })
         .from(leads)
         .where(sql`${leads.bookedSlot} IS NOT NULL AND ${leads.bookedSlot} >= now()::text`)
@@ -375,6 +376,10 @@ export default async function OverviewPage() {
                   appt.industry,
                   appt.teamSize ? `${appt.teamSize} team` : null,
                   appt.timeline ? `timeline: ${appt.timeline}` : null,
+                  // Which ad bought this call — the per-campaign signal the ads budget is steered by.
+                  appt.utmSource
+                    ? `ad: ${[appt.utmSource, appt.utmCampaign, appt.utmContent].filter(Boolean).join(" / ")}`
+                    : null,
                 ].filter(Boolean) as string[];
                 return (
                   <li key={appt.id} className="rounded-xl border border-line bg-surface p-3">

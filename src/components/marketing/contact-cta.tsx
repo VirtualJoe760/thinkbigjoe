@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { AttributionFields } from "@/components/attribution-capture";
 import { ContactStatus } from "./contact-status";
 
 const CONTACT_EMAIL = "joe@thinkbigjoe.com";
@@ -65,6 +66,7 @@ export function ContactCTA() {
                 aria-hidden="true"
                 className="hidden"
               />
+              <AttributionFields />
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field name="name" label="Name" placeholder="Jane Doe" required />
                 <Field
