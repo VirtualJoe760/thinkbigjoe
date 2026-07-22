@@ -12,6 +12,20 @@ import { reportIncident } from "@/lib/monitor";
 
 const planLabel = (p: string | null | undefined) => (isPlanKey(p) ? PLANS[p].label : p || "your plan");
 
+/**
+ * Events where a handler failure MUST come back as a 5xx so Stripe redelivers (exponential
+ * backoff, up to ~3 days). Every handler below is retry-safe: the DB writes are idempotent
+ * upserts/updates, emails+Telegram are fire-and-forget and dispatched only after the throwing
+ * section succeeds, and fulfillDomain re-quotes availability so a replay can't double-buy.
+ * Unhandled event types stay 200 — a retry can't help an event we ignore on purpose.
+ */
+const RETRYABLE_EVENTS = new Set<string>([
+  "checkout.session.completed",
+  "identity.verification_session.verified",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
+]);
+
 // The claimed owner's email for a site, via the better_auth user store.
 async function ownerEmailForSite(claimedByUserId: string | null): Promise<{ email: string; name: string | null } | null> {
   if (!claimedByUserId) return null;
@@ -319,18 +333,18 @@ export async function POST(req: Request) {
         break;
     }
   } catch (err) {
-    console.error(`[stripe] handler error for ${event.type}:`, err);
-    // KNOWN GAP: this still returns 200, so Stripe won't retry. For checkout.session.completed that
-    // means a DB blip = money captured, nothing provisioned, and no automatic recovery. Fixing the
-    // retry semantics safely (500 on must-succeed events, 200 where a retry can't help) is its own
-    // change. What we can do here without risk is stop it being SILENT: alert so the sale can be
-    // reconciled by hand from the event id logged above.
+    console.error(`[stripe] handler error for ${event.type} (${event.id}):`, err);
+    // Alert either way — dedupeKey keeps Stripe's redelivery storm to one incident per type.
     void reportIncident("critical", `Stripe handler threw for ${event.type}`, {
       dedupeKey: `stripe-${event.type}`,
       detail: err,
     });
-    // Return 200 anyway so Stripe doesn't hammer retries on a transient DB blip;
-    // the event id is logged above for manual replay if needed.
+    if (RETRYABLE_EVENTS.has(event.type)) {
+      // 5xx → Stripe redelivers. A transient DB blip during checkout.session.completed used to
+      // mean money captured + nothing provisioned + no automatic recovery; now the retry replays
+      // the (idempotent) handler until it lands or the incident gets handled by hand.
+      return NextResponse.json({ error: "Handler failed — retry" }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ received: true });

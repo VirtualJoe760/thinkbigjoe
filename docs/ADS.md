@@ -112,8 +112,9 @@ report zeros).
 
 Blockers, in order; the last one is Joe's own hand:
 
-- [ ] **Stripe webhook 200-on-error fix** — BLOCKS SPEND. Paying traffic must not hit a
-  checkout that swallows failures.
+- [x] **Stripe webhook 200-on-error fix** — DONE 2026-07-22: handler errors on must-succeed
+  events (checkout completed, identity verified, subscription updates) now return 5xx so Stripe
+  redelivers; handlers verified retry-safe. Unhandled events still ack 200.
 - [ ] **Ivy's onboarding tools pushed + verified** — BLOCKS SPEND (and specifically gates the
   `ad-call-her-yourself` creative).
 - [ ] **Mobile pass on FOH + contact form** — near-blocking; Meta traffic is ~all mobile.
