@@ -1,6 +1,8 @@
 # Portal Redesign — voice-first, Ivy-driven
 
-> **Status**: PLAN, from a live audit of the deployed portal on 2026-07-20 (admin account).
+> **Status**: PLAN (2026-07-20), now mostly SHIPPED — see the **2026-07-22 status addendum** at
+> the bottom. Phases 2–4 done, Phase 5 landed, Phase 1 partial; the portal has since grown an OS
+> shell this plan predates.
 > **Owner**: Joseph Sardella · Companion to [`AUTOMATION_PIPELINE.md`](./AUTOMATION_PIPELINE.md)
 > and [`BUSINESS_PLAN.md`](./BUSINESS_PLAN.md).
 
@@ -10,7 +12,7 @@ website is a separate one-time purchase, and the admin can review Ivy's own call
 
 ---
 
-## What the audit found (live pages)
+## What the audit found (live pages, 2026-07-20 — historical snapshot; see the status addendum for what shipped)
 
 | Page | Today | Problem |
 |---|---|---|
@@ -63,6 +65,8 @@ website is a separate one-time purchase, and the admin can review Ivy's own call
   `/portal/calls` expands it — bring that into the dashboard or link through).
 - Point the overview's "Set up the voice receptionist" card here.
 - Files: `portal/dashboard/**`, delete `portal/receptionist/**`, nav in `portal-header.tsx`.
+  *(Shipped: form deleted, routes kept as redirect stubs; per-page nav superseded by the
+  PortalShell rail — see addendum.)*
 
 ### Phase 3 — "Build a site" and "Build agents" → call Ivy
 - Both become simple call-Ivy pages (fresh-user shape from Phase 2). Replace the site-build form and
@@ -83,7 +87,9 @@ website is a separate one-time purchase, and the admin can review Ivy's own call
 - Make the front-facing thinkbigjoe.com marketing site editable through the portal editor. This is
   the "marketing site → forge template" work already scoped in PLATFORM.md Phase 1 (the OKLCH-token
   vs fixed-hex mismatch is the known blocker). Kept separate because it's a platform change, not a
-  portal-copy change.
+  portal-copy change. **Update 2026-07-22: landed** — the FOH adopted the forge token contract and
+  portal edits now apply to thinkbigjoe.com through the same edit-requests → edit-poll loop
+  (internal-repo branch).
 
 ---
 
@@ -106,3 +112,46 @@ website is a separate one-time purchase, and the admin can review Ivy's own call
 [`VOICE.md`](./VOICE.md) (Ivy as a tenant, admin call review) · [`EDITOR.md`](./EDITOR.md) +
 [`PLATFORM.md`](./PLATFORM.md) (Phase 5) · [`BUSINESS_PLAN.md`](./BUSINESS_PLAN.md) (website as a
 decoupled purchase) · [`README.md`](./README.md) index. Full-stack rule applies per phase.
+
+---
+
+## Status addendum — 2026-07-22
+
+This doc was the 2026-07-20 plan. Most of it shipped within two days, and the portal then grew a
+design the plan never described. The plan text above is kept as the historical record; current
+truth:
+
+| Phase | Status |
+|---|---|
+| 1 — Billing decouple | **Partial** — $250 reads as the receptionist **setup fee** (`billing/page.tsx`, `site-billing.tsx`: "NOT a website — separate call-Ivy purchase"). Still open: tier display names are web-named (`plans.ts`: "Website", "Website + Voice") and billing has no explicit "Buy a website" purchase — a site is bought by calling Ivy (`/portal/build`). |
+| 2 — Receptionist = call Ivy | **DONE** — setup form deleted; `/portal/receptionist` (+ `[id]`) are redirect stubs to the dashboard, which is now the **Scoreboard**. |
+| 3 — Build site/agents → call Ivy | **DONE** — `/portal/build` is a CallIvy page; the overview's "Build your agents" card points at `/portal/agents`. The shared panel was built once: `src/components/portal/call-ivy.tsx` (used on build/dashboard/knowledge/agents). |
+| 4 — Ivy as tenant + Retell review | **DONE, both halves** — `scripts/db/2026-07-20-ivy-tenant.sql` gives +14807642121 a `voice_lines` row on the internal TBJ site (`forge_sites.is_internal`); admin-only `IvyCalls` on the Scoreboard reads live from Retell (`src/lib/retell-calls.ts`). The anticipated "admin/TBJ dashboard copy variant" was solved by exclusion instead: customer surfaces filter `isInternal`, so Ivy's sales calls never render as a customer receptionist. |
+| 5 — Editor on thinkbigjoe.com | **LANDED** — the OKLCH-vs-hex blocker is resolved: the FOH adopted the forge token contract (`src/app/(frontend)/globals.css` `--brand-h`/`--brand-c`, Roboto stacks), `/api/edit-requests` emits internal-site instructions (`route.ts` `internal` branch), and edit #4 was applied to the front of house via the forge's edit-poll on a branch of this repo. |
+
+### What the plan never described — the portal OS shell (2026-07-21/22)
+
+The portal grew past this plan into an OS shell: `src/components/portal/portal-shell.tsx` —
+content left, **nav rail on the RIGHT** (house style), the customer's website pinned to the rail
+as a card, `?site=` carried across tabs. Rail tabs: **Scoreboard** (`/portal/dashboard` — impact
+score, value tiles, call receipts with outcome chains), **Calls**, **Knowledge**
+(`/portal/knowledge` — `receptionist_config` shown read-only via `TENANT_DEFAULTS`/`deriveRouting`;
+changes happen by calling Ivy), **Agents** (`/portal/agents` — roster from `plans.ts` `AGENTS`,
+Ivy as the first employee card, honest "rolling out / coming soon" chips), **Calendar**,
+**Billing**. The shell wraps Scoreboard/Knowledge/Agents today; Calls/Calendar/Billing still
+render under the legacy `portal-header.tsx` navbar (applied globally by `portal/layout.tsx`).
+
+### Command is a ring
+
+(The section `portal-shell.tsx` cites.) One shell, three rings: **Ring 1** — the customer portal,
+i.e. the shell above, listing every surface a customer has today. **Ring 2** — grows in at the
+Agents tab: each new customer-facing agent becomes a card on that roster (see
+`AGENT_PLATFORM.md` for what gates tiers 2–3). **Ring 3** — Joe's `/command/**` modules stay
+behind `isAdmin` and migrate into this same shell later.
+
+### Still open (from the original recommendations)
+
+- Overview still leads with "Your sites" (`portal/page.tsx` — "Your AI" comes second); the
+  voice-first reorder didn't happen.
+- `/portal` overview is still the default landing; Scoreboard-as-front-door is unimplemented.
+- Phase 1 leftovers above (voice-first tier display names, an explicit website purchase).

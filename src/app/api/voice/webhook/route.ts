@@ -152,8 +152,9 @@ export async function POST(req: Request) {
   const toNumber = normalizePhone(str(call.to_number) ?? undefined);
   const tenant = await tenantByNumber(toNumber);
   if (!tenant) {
-    // Our own TBJ sales line (Ivy) also flows through here and has no voice_lines row, as does any
-    // number whose customer was released. Nothing to attribute the call to — drop it quietly.
+    // A number we don't serve, or one whose customer was released. (Ivy's own line USED to be
+    // dropped here too — since 2026-07-20 she has a voice_lines row on the internal TBJ site, so
+    // her calls resolve and persist like any tenant's.) Nothing to attribute — drop it quietly.
     // 200: a retry would resolve the same number to the same nothing.
     console.warn("[voice/webhook] %s: no tenant for dialled number %s", event, toNumber ?? "(none)");
     return ok();

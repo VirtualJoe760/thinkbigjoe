@@ -51,8 +51,10 @@ Prospecting via the `match` array in `command-header.tsx`, not as top-level tabs
 that bug once collapsed the drawer to header height and caused a page-wide horizontal scrollbar). Each
 surface is just a config passed to `<AppHeader>`:
 > - **Public** (`components/site-nav.tsx`): marketing links + phone + **Login**; inline links on desktop.
-> - **Portal** (`components/portal/portal-header.tsx`): Overview · Agentic Solutions · Book a call ·
->   Billing · Account (+ **Command** when `isAdmin`); email + **Sign out**; inline on desktop.
+> - **Portal** (`components/portal/portal-header.tsx`): Overview · Receptionist (`/portal/dashboard`) ·
+>   Calls · Calendar · Newsletter · Agentic Solutions · Book a call · Billing · Settings · Account
+>   (+ **Messages** and **Command** when `isAdmin`); account-ID pill inline on desktop, everything else
+>   in the drawer (`inlineOnDesktop=false`, same as Command); email + **Sign out** in the drawer footer.
 > - **Command** (`command/command-header.tsx`): the 8 workflow groups with icons, `inlineOnDesktop=false`
 >   so it stays **drawer-primary at every width** (link-dense, admin-only), + a **"‹ Portal"** back-link
 >   and Sign out.
@@ -62,6 +64,17 @@ surface is just a config passed to `<AppHeader>`:
 > now. PWA safe-area insets come from the `viewport-fit=cover` viewport export in `(frontend)/layout.tsx`;
 > the manifest's `start_url` is `/command` (admin-first — a customer install lands there and redirects to
 > `/portal`).
+
+**Portal surfaces (`PortalShell`).** Portal pages are migrating into an inner OS shell,
+`components/portal/portal-shell.tsx` — content left, nav rail RIGHT with the customer's site card
+pinned (Edit / View entry points survive the mobile collapse as a pill strip). Rail tabs:
+**Scoreboard** (`/portal/dashboard` — impact scores + call receipts + feedback) · **Calls** ·
+**Knowledge** (`/portal/knowledge` — read-only view of everything Ivy knows: `receptionist_config` +
+`TENANT_DEFAULTS`/`deriveRouting` from `src/lib/voice-vars.ts`/`voice-tenant.ts`; changes happen by
+calling Ivy, not a form) · **Agents** (`/portal/agents` — roster from `AGENTS` in `src/lib/plans.ts`) ·
+**Calendar** · **Billing**. `?site=` is carried across tabs so multi-site owners aren't bounced to
+their first site. Currently Scoreboard/Knowledge/Agents render inside the shell; Calls/Calendar/Billing
+are linked but not yet migrated. Full redesign spec: [PORTAL_REDESIGN.md](PORTAL_REDESIGN.md).
 
 > ⚠️ **DB data-transfer (egress) — command dashboards are `force-dynamic` + `<AutoRefresh>`.** A
 > `router.refresh()` re-runs *every* query on the page, so an open tab re-pulls its data on a timer. In
@@ -234,8 +247,8 @@ investigate.
 |---|---|---|
 | Owner claims a built site with the claim code | `/portal/claim` → `claimSite()` server action | `forge_sites.claimed_by_user_id`, `claim_code` |
 | Identity verification | Claim success shows "Verify my identity" → `POST /api/identity/start` → Stripe Identity hosted flow | `forge_sites.id_verified_at`, `id_verification_session` (set via `identity.verification_session.verified` webhook in `/api/stripe/webhook`) |
-| Live site editing | `/portal/edit/[id]` (Site tab: proxied live editor; Studio tab: `?tab=studio`, Gemini image gen) | writes back through `edit_requests` / forge site content, admin-accessible from Prospecting's Built cards too |
-| Register the AI receptionist | `/portal/receptionist/[id]` → `saveReceptionistSetup()` — self-serve config (services/hours/greeting/FAQs/guardrails). **Gated on a paid Website+Voice/Complete plan:** off-plan saves a **draft** only; on-plan flags `submitted`, pings the team (Telegram) to provision the per-client Retell agent, and **emails the customer a confirmation**. | `forge_sites.receptionist_config` (jsonb), `receptionist_status` (`none→submitted→active`) |
+| Live site editing | `/portal/edit/[id]` (Site tab: proxied live editor; Studio tab: `?tab=studio`, Gemini image gen). **One build at a time:** while a batch is `requested`/`applying` the workspace locks behind a polling BuildLock screen (`edit/[id]/build-lock.tsx`); `POST /api/edit-requests` is the server backstop (409 on a pending build; `GET` exposes `{pending}` for the unlock poll). | writes back through `edit_requests` / forge site content, admin-accessible from Prospecting's Built cards too |
+| Register the AI receptionist | Phone-first: the customer **calls Ivy** to set up/change their receptionist; `/portal/receptionist[/[id]]` are redirect stubs to `/portal/dashboard?site=` (the old self-serve form is retired — see [PORTAL_REDESIGN.md](PORTAL_REDESIGN.md)). What Ivy knows is inspectable read-only at `/portal/knowledge`. | `forge_sites.receptionist_config` (jsonb), `receptionist_status` |
 | Book a call with Joe | `/portal/book` → `getPortalSlots()` (open 30-min slots, Joe's regular Mon–Fri 10–5 PT window (lunch break at noon)) + `bookStrategyCall()`. **Any logged-in user**; the session is the gate (no Turnstile token, unlike the public `/api/appointments/book`). Creates the GCal event + Meet, records/updates the lead, sends the branded confirmation email + Telegram. Shows on `/command/appointments` like every other booking. | `leads` (`status='booked'`, `booked_slot`, `gcal_event_id`, `meet_link`), `activity_log` (`booking_made`) |
 
 The Retell voice receptionist (+1 480-764-2121) also guides callers through this same claim +

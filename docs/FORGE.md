@@ -39,6 +39,8 @@ the fixes are load-bearing, not decoration.
 │   ├── design-languages.json               the aesthetic specs the designer mode builds FROM
 │   ├── forge-build.sh                       builds ONE site (see lifecycle below)
 │   ├── forge-poll.mjs                       the queue worker (polls Neon, claims, runs forge-build)
+│   ├── edit-poll.mjs                        the EDIT queue worker (portal click-to-edit → site
+│   │                                         source), see EDITOR.md
 │   ├── forge-template.sh                    the template-DESIGNER mode (builds a new template)
 │   ├── deploy-vercel.mjs                    pushes a built site live (Vercel API)
 │   ├── queue/                               per-build business.json inputs (transient, gitignored-ish)
@@ -201,7 +203,11 @@ GitHub pushes flying out even for builds that failed locally. That's what draine
 - `forge-build.sh` only pushes to GitHub **after** a clean local `pnpm build` — a failed build can
   no longer spam the repo with broken commits.
 
-**Net effect:** at most one `claude -p` process runs at any moment, system-wide. A queue of N
+**Net effect:** at most one **build/template** `claude -p` runs at any moment — the forge lock
+covers forge-build.sh, forge-template.sh, and forge-poll.mjs. Customer edits are a separate serial
+lane: `edit-poll.mjs` doesn't take the forge lock, so one edit apply can overlap one build (worst
+case: two `claude -p` processes, never N). Its own overlap protection is the optimistic
+`requested`→`applying` claim per row plus the app-side one-pending-batch 409 gate. A queue of N
 approved sites drains one every ~10–15 minutes, however large N is. This is the correct behavior —
 do not "fix" slowness by re-introducing parallelism without also adding the guardrails below.
 
@@ -215,8 +221,12 @@ The forge on/off toggle in the **Engine room** (`/command/engine`) writes `forge
 Crucially, turning the forge **off never drops work**. The Vercel front-end still accepts
 everything: an approved site stays `status='approved'`, and a customer's portal edit is still
 written to `edit_requests` as `status='requested'` (the `/api/edit-requests` route has no
-forge-state gate). Both simply **queue** until Joe flips the forge back on, then drain on the next
-tick. So "the forge is offline" degrades to "builds are paused," never "edits are lost." The Engine
+forge-state gate — but it DOES enforce **one pending edit batch per site**: while a batch is
+`requested`/`applying`, further saves for that site get a 409 and the editor locks itself, polling
+`GET /api/edit-requests?siteId=` to unlock when it drains). So with the forge off, the first batch
+per site queues; later saves are refused until it's applied. Approved sites and that first batch
+simply queue until Joe flips the forge back on, then drain on the next tick. So "the forge is
+offline" degrades to "builds are paused," never "edits are lost." The Engine
 room surfaces this: a pending customer-edits indicator shows the count waiting while it's off.
 
 ### Granular controls, weekly run-budget + idle template-building
@@ -304,9 +314,10 @@ foundation, not the ceiling.
 |---|---|
 | `factory/forge-build.sh` | Builds ONE site: clone template → brief (Gemini) → `claude -p` → `pnpm build` gate → screenshot → push (gated on clean build) → deploy → register. Non-blocking lock. |
 | `factory/forge-poll.mjs` | The queue worker. Peeks the lock, claims exactly one `approved` row per tick, runs forge-build.sh, POSTs the result to `/api/forge/register`. |
+| `factory/edit-poll.mjs` | The customer-edit worker. Applies `edit_requests` batches with `claude -p --dangerously-skip-permissions` (same unattended convention as forge-build.sh — without the flag a headless run silently no-ops), with deterministic fast-paths (color-only theme, logo/circle asset saves) that skip the LLM. Understands section REMOVE / Replace-with-X. **Internal sites** (`forge_sites.is_internal`, i.e. TBJ's own front of house) apply in `~/code/thinkbigjoe` itself — only when that repo is on a clean `main` in sync with origin (otherwise the edit stays `requested` and retries later) — then push to its main so Vercel redeploys. Full editor pipeline: [`EDITOR.md`](EDITOR.md). |
 | `factory/logo-fix.mjs` | Post-build geometry fix for `logo.png` / `logo-circle.png` — trims the transparent canvas back to the real mark, re-pads **per type**, and warns when the generation itself is wrong (a bare icon instead of a filled circle; a near-square instead of a wide lockup). Idempotent + non-fatal. Spec: [`LOGOS.md`](LOGOS.md). |
 | `factory/forge-template.sh` | The template-designer mode — builds a new reusable template + queues a real prospect on it. |
 | `templates/registry.json` | The template library forge-build picks from (`enabled: true/false`). |
 | `factory/design-languages.json` | The aesthetic specs the designer mode builds templates from. |
-| `~/Library/LaunchAgents/com.thinkbigjoe.forgepoll.plist` | The launchd timer for forge-poll.mjs. **Check load state before assuming builds are/aren't running.** |
+| `~/Library/LaunchAgents/com.thinkbigjoe.forgepoll.plist` | The launchd timer for forge-poll.mjs. **Check load state before assuming builds are/aren't running.** (`com.thinkbigjoe.editpoll.plist` is the edit worker's timer — separate from forgepoll.) |
 | `scripts/lead-engine.mjs`, `enrich-engine.mjs`, `callprep-engine.mjs`, `trigger-poll.mjs` (this repo) | Separate Apify/free-agent engines for finding + enriching leads — not the forge itself, but feed `forge_sites`. Budget-aware, independently scheduled. **Apify spend is confined to the 🌙 2:30–6am night window** — see [VENUS_UI_MAPPING.md](VENUS_UI_MAPPING.md) → "Data-gathering engines" before scheduling anything that scrapes. |

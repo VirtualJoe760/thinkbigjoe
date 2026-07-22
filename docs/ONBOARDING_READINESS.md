@@ -6,6 +6,45 @@
 > health, production env, and the production database.
 > **Question asked**: a customer says yes on Thursday — what has to work for them to be live Saturday?
 
+> **⚠️ STATUS ADDENDUM — 2026-07-22.** This audit is a snapshot of 2026-07-18 (branch since merged
+> to `main`). Re-verified against code on 2026-07-22 — most of it has been fixed. Per-finding:
+>
+> | Finding | Status on 2026-07-22 |
+> |---|---|
+> | P0 #1 dead-air hangup | ✅ Fixed 2026-07-19 (see inline banner) |
+> | P0 #2 `identify_caller` leak | ✅ Customer agent excludes the three sales tools (`scripts/retell/receptionist-config.mjs`) |
+> | P0 #3 transfers to Joe's cell | ✅ `transfer_to_human` dials per-tenant `{{escalation_phone}}` (`receptionist-config.mjs`), resolved by `provision-line.mjs` mirroring `deriveRouting()` |
+> | P0 #4 books Joe's calendar | ✅ `/api/voice/site-availability` + `/api/voice/site-book` book the TENANT's calendar in the tenant's timezone via `site-booking.ts` |
+> | P0 #5 no tenant identity | ✅ `voice_lines` table + `tenantByNumber()`/`siteFromCall()` resolve `call.to_number` (`src/lib/voice-tenant.ts`) |
+> | P1 #6 nothing sets `active` | ⚠️ Column still never set — but the portal now derives live-ness from `voice_lines.status` (`portal/dashboard/page.tsx`), which `provision-line.mjs` sets to `'active'`. Cosmetic mismatch remains on surfaces that read `receptionist_status` (command/clients, portal cards) |
+> | P1 #7 calls never persisted | ✅ `calls` table + `call_started/ended/analyzed` webhook (`/api/voice/webhook`), `/portal/calls`, and `site-book` writes `disposition='booked'` |
+> | P1 #8 Stripe 200-on-error | ⚠️ Still returns 200, but no longer silent — `reportIncident()` fires a critical Telegram alert. Retry semantics, `event.id` dedupe, and `domainCredits` set-not-increment are still open |
+> | P1 #9 everyone Eastern | ❌ STILL OPEN — `booking_timezone` is never written anywhere; every tenant defaults to `America/New_York` |
+> | P1 #10 fail-open double-booking | ✅ `listCalendarEvents` returns `null` on error; `availableSlots`/`bookForSite`/`site-book` all fail closed |
+> | P1 #11 no buy path / stray coupon | ⚠️ Coupon retired (`firstMonthCouponFor()` returns null — `src/lib/plans.ts`). Buying still requires claim + built site; no stranger-to-checkout path |
+> | inbox-poll 1,461 failures | ✅ Fixed — plist runs `/usr/local/bin/node`; email loop (IMAP, bounce, reply routing) live |
+> | "No observability at all" | ⚠️ Largely superseded — `reportIncident()` → Telegram on failure paths (`src/lib/monitor.ts`), Vercel crons `voice-health` / `usage-warnings` / `daily-digest` (`vercel.json`), `/api/health` for external uptime. Mac-mini launchd fragility (`RunAtLoad`, login-window deadness) still applies to background jobs |
+>
+> **Also built since the audit:** voice-led onboarding (Ivy interviews the customer and fills
+> `receptionist_config` — `src/lib/voice-onboarding.ts`, `/api/voice/onboard/*`), one-command
+> provisioning (`scripts/retell/provision-line.mjs`), the payment→provision queue + drainer
+> (`voice_provision_queue`, `scripts/provision-drain.mjs`, `src/lib/auto-provision.ts` — money
+> switch OFF by default, see `docs/AUTOMATION_PIPELINE.md`), and the portal redesign
+> (Scoreboard dashboard, Calls, Knowledge, Agents).
+>
+> **What still blocks the first paying customer:**
+> 1. **Timezone capture (P1 #9)** — nothing writes `booking_timezone`; a non-Eastern customer's
+>    slots are wrong until it's set by hand.
+> 2. **Ivy's live agent config push is unverified** — the onboarding/receptionist tools exist in
+>    the repo, but nobody has confirmed the LIVE Retell agents match `agent-config.mjs` /
+>    `receptionist-config.mjs` since these changes landed.
+> 3. **No end-to-end paid dress rehearsal** — checkout → Stripe webhook → provision queue → drain
+>    → live line → real call → portal receipts has never been run as one sequence.
+> 4. **Stripe webhook retry semantics (P1 #8 residue)** — 500-on-must-succeed events, an
+>    `event.id` dedupe table, and incrementing (not setting) `domainCredits`.
+> 5. **Provisioning is manual-by-default on purpose** — the auto-provision switch is OFF; going
+>    live requires a human to run the drain or flip the switch.
+
 ---
 
 ## Verdict
@@ -76,6 +115,9 @@ configured from this repo.
 
 ### 2. `identify_caller` leaks our prospect database to customers' callers
 
+> **✅ FIXED** — the shared customer agent excludes all three sales tools
+> (`scripts/retell/receptionist-config.mjs`).
+
 `src/app/api/voice/identify/route.ts:38-45` scans **all** of `forge_sites` by phone, unscoped by
 tenant. A random person calling the plumber gets matched against our 1,806-row prospecting list, and
 the agent is instructed *"This looks like [SomeOtherBusiness]… walk them through creating an account
@@ -89,6 +131,9 @@ scoping them.
 
 ### 3. `transfer_to_joe` sends the customer's callers to Joe's personal cell
 
+> **✅ FIXED** — `transfer_to_human` dials the tenant's `{{escalation_phone}}`; TBJ's own agent
+> scripts are no longer the customer blueprint.
+
 `scripts/retell/agent-config.mjs:73` defaults `transferTo` to Joe's mobile, duplicated at
 `create-tbj-agent.mjs:40` and `update-tbj-agent.mjs:63`. `create_support_ticket` likewise hardcodes
 `joe@thinkbigjoe.com` (`api/voice/support/route.ts:12`).
@@ -101,6 +146,9 @@ routing to Joe.
 
 ### 4. `book_appointment` books Joe's calendar, in Joe's timezone, during Joe's sales hours
 
+> **✅ FIXED** — `/api/voice/site-availability` + `/api/voice/site-book` shipped; tenant calendar,
+> tenant timezone, slot-validated, idempotent on Retell retries.
+
 `api/voice/book/route.ts:85` calls `createEvent` from `lib/gcal.ts`, hardcoded to `GCAL_REFRESH_TOKEN`
 / `GCAL_CALENDAR_ID` — one global Google account. `check_availability` offers **Mon–Fri 10–5
 Pacific** (`voice-booking.ts:4-6`) and always speaks "Pacific."
@@ -112,6 +160,9 @@ delegate to the existing, correct `bookForSite` / `availableSlots`. **The engine
 this is an entry point, not a rewrite. Roughly a day.
 
 ### 5. No tenant identity on inbound calls
+
+> **✅ FIXED** — `voice_lines` + `siteFromCall()` (`src/lib/voice-tenant.ts`); every customer voice
+> route resolves tenancy from the dialled number.
 
 Every webhook derives context from the *caller's* number. `call.to_number` — the number that would
 identify **which business was called** — is never read anywhere in the repo. There is no column
@@ -128,11 +179,18 @@ hand-provisioned agent built on today's blueprint becomes migration debt.
 
 ### 6. Nothing ever sets `receptionist_status = 'active'`
 
+> **⚠️ PARTIALLY SUPERSEDED** — the portal now keys on `voice_lines.status` (set to `'active'` by
+> `provision-line.mjs`); the `receptionist_status` column itself still never reaches `'active'`,
+> which only mis-labels command-center and portal card badges.
+
 `portal/actions.ts:87` *preserves* `active` but never *assigns* it. No code, script, or webhook
 produces that state. A paying customer's portal reads **"⏳ Setup submitted — our team is
 provisioning your receptionist"** on day 2, day 10, and day 60.
 
 ### 7. Call data is never persisted — so the portal shows nothing
+
+> **✅ FIXED** — `calls` table + `/api/voice/webhook` lifecycle upserts + `/portal/calls` + the
+> Scoreboard's booked-jobs tile.
 
 **There is no calls table and no Retell `call_ended` / `call_analyzed` webhook.** Grepping `portal/`
 for `retell|transcript|call_log|calls` returns **zero matches across 39 files**.
@@ -145,6 +203,10 @@ Every day this ships late is a day of call history **permanently lost** — Rete
 our database.
 
 ### 8. A failed Stripe webhook loses the sale silently
+
+> **⚠️ PARTIALLY FIXED** — a handler throw now pages Joe via `reportIncident()` so the sale is
+> reconcilable; the 200-on-error retry gap, event dedupe, and set-not-increment `domainCredits`
+> remain (see addendum item 4).
 
 `api/stripe/webhook/route.ts:219-223` catches every handler error and **returns 200 anyway**, so
 Stripe never retries. A DB blip during `checkout.session.completed` = money captured, nothing
@@ -159,12 +221,17 @@ at **6am–2pm local**. This alone breaks booking for most of the country.
 
 ### 10. Fail-OPEN double-booking
 
+> **✅ FIXED** — unreadable calendars now return `null` and every consumer fails closed.
+
 `listCalendarEvents` returns `[]` on *any* error (`google-oauth.ts:209,230`). `availableSlots` reads
 that as "nothing busy" and offers every slot; the pre-book recheck (`site-booking.ts:164`) computes
 `stillFree = true` from the same empty array. **During a Google outage we book over existing
 appointments.** `gcal.ts:352-355` correctly fails closed — the customer path does the opposite.
 
 ### 11. No path for a new customer to buy
+
+> **⚠️ HALF FIXED** — the stray coupon is retired (`plans.ts`, deliberately attached to nothing);
+> the no-stranger-can-buy funnel gap remains.
 
 Public CTAs go to `/portal/book`. Paying requires: sign up → verify → claim code → **site must be
 built** (`portal/billing/page.tsx:122-126`) → then pay. There is no way for a stranger to hand us
@@ -174,6 +241,9 @@ money today. Also: the `website-first-month-99` coupon is attached to **every** 
 ---
 
 ## Live production bug — unrelated to launch, fix today
+
+> **✅ FIXED** — plist now runs `/usr/local/bin/node`; bounce detection and reply routing are live
+> again.
 
 **`inbox-poll` has failed 1,461 consecutive times over ~10 days.** Its plist uses `/usr/bin/env node`
 with no PATH block; launchd's minimal PATH has no `node`. Exit 127 every run.
@@ -206,6 +276,11 @@ that [`DELIVERABILITY.md`](./DELIVERABILITY.md) gates on.
 ---
 
 ## No observability at all
+
+> **⚠️ LARGELY SUPERSEDED 2026-07-22** — `reportIncident()`→Telegram fires on failure paths, and
+> Vercel crons (`voice-health`, `usage-warnings`, `daily-digest`) + `/api/health` cover dead-line
+> detection without synthetic calls. Still true: everything below about Mac-mini launchd jobs, and
+> no confirmed external poller on `/api/health`.
 
 - **No error tracking.** No Sentry/Datadog/OTel anywhere. Every error path ends at `console.error`.
 - **No uptime monitoring, no synthetic test call, no 5xx alerting.** Nothing would detect a dead
@@ -259,6 +334,10 @@ from customer agents, and the fallback dial. This is the week that converts a de
 ---
 
 ## What can honestly be sold this week
+
+> **⚠️ SUPERSEDED 2026-07-22** — booking now has a code path (P0 #4 shipped). The remaining gate
+> before selling "the AI books your jobs" is operational: the customer's calendar connected, their
+> timezone set (P1 #9, still open), and one full paid dress rehearsal (see addendum).
 
 **Sell the conversation, not the instant install.** The demo line works today and it is genuinely
 impressive — that sells. What follows is a start date, not a same-day activation.

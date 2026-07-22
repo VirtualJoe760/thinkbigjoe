@@ -133,8 +133,11 @@ plan:** off-plan, the form saves a **draft** (config only, status stays `none`) 
 "choose a plan" upsell; on-plan, submitting flips status to `submitted`, logs
 `receptionist_setup_submitted`, **pings Telegram** so the team provisions the per-client agent, and
 **emails the customer a confirmation** (`sendNotificationEmail`). Provisioning is now scripted — see
-"Per-client provisioning" below — but it is still **deliberately human-triggered**, because buying a
-Retell number is a real per-number cost. Nothing flips `receptionist_status` to `active` automatically.
+"Per-client provisioning" below — and a payment→provision queue + drainer exists
+(`voice_provision_queue`, `scripts/provision-drain.mjs`, gated on the `auto_provision` money switch
+in `/command/engine`, **OFF by default**), so spend stays queue-for-human until the switch is
+flipped — buying a Retell number is a real per-number cost. Nothing flips `receptionist_status` to
+`active` automatically.
 Linked from the portal site card.
 
 > ⚠️ **The form's free-text `forwardTo` field is not machine-usable on its own.** Provisioning needs a
@@ -193,14 +196,23 @@ Live agent as of this writing: `agent_fc091c7bd9f23c9760ed6fa559` / `llm_2be0665
 
 ## Status
 
-- ✅ Agent + LLM on Retell; all 5 webhooks live (identify, verify, availability, book, support).
+- ✅ Agent + LLM on Retell; all 6 Ivy webhooks live (identify, verify, availability, book,
+  support, callback-code) — plus the tenant-scoped customer routes (inbound, message,
+  site-availability, site-book, webhook; see [`VOICE_TENANCY_SPEC.md`](./VOICE_TENANCY_SPEC.md)).
 - ✅ "Ivy" persona + full flow: caller-ID greet → claim → portal plans → agentic (website + 10–5 call)
   → support ticket / book Joe. Applied to the live agent via `update-tbj-agent.mjs`.
 - ✅ Live number +1 (480) 764-2121 bound to the receptionist — calling it hits the new flow.
 - ⏳ Dashboard ticket system + `support@` mailbox — deferred (tickets email Joe meanwhile).
 - ↪ Possible upgrade: Retell inbound dynamic-variables webhook to greet by name in the *first*
   utterance (today `identify_caller` personalizes from turn 2).
-- ⏳ Automated per-client provisioning + agent activation on plan purchase — not built (billing is
-  on; each client number is a PAYG cost).
+- ✅ Auto-provision on payment — BUILT (see `docs/AUTOMATION_PIPELINE.md`): the Stripe webhook
+  enqueues `voice_provision_queue`; `scripts/provision-drain.mjs` (launchd, 5 min) drains via
+  `provision-line.mjs --apply`, gated on the `auto_provision` money switch (`/command/engine`) +
+  weekly line budget. Switch is OFF by default — spend stays queue-for-human. Agent activation
+  (`receptionist_status` → `active`) is still manual.
+- ✅ Ivy's calls persist — her number has a `voice_lines` row on the internal TBJ site
+  (`scripts/db/2026-07-20-ivy-tenant.sql`), so `/api/voice/webhook` stores her calls in `calls`
+  beyond Retell's retention. Her prompt uses zero `{{dynamic_variables}}`, so the tenant row is
+  inert for her live flow; customer surfaces exclude `is_internal`.
 - ⏳ **Texting** — the SMS agent exists (`agent_e56a619c…`) but the number isn't A2P-10DLC
   registered yet (`create-sms-chat` → 404), so two-way SMS is blocked on that registration.

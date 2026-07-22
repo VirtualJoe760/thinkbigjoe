@@ -1,6 +1,6 @@
 # EDITOR.md — the customer site editor (token-based, modular)
 
-**Status: SHIPPED (Phases 1–4, 2026-07).** The token-first modular editor + mobile-first surfaces
+**Status: SHIPPED (Phases 1–6, 2026-07).** The token-first modular editor + mobile-first surfaces
 are live. The "Target architecture" section below is now the built design (see the Roadmap table for
 the phase→commit map); the "What exists today" notes predate the build and describe the starting
 point. When in doubt, the file paths are authoritative.
@@ -76,12 +76,18 @@ variables).
 **Intent-first tool tiles.** Clicking an element opens a panel of **square tool tiles** contextual to
 the element — text/heading → **Text · Size · Color · Request**; button → Text · Color · Size · Request;
 image/graphic → Image · Request. Tapping a tile reveals only that tool's controls (with a `‹` back to
-the grid), so the panel is never a wall of inputs. Tools:
+the grid), so the panel is never a wall of inputs. Badge/pill/eyebrow text built as a bare `<div>`
+(direct text nodes only) is selectable and edits as **text** — wrapper divs whose text lives in
+children are skipped so you never select an invisible container. Tools:
 - **Text** — edits the element's full text (not the truncated label).
 - **Size** — A−/A+ steppers (×1.1, 8–200px) → per-element `font-size`, with a Reset.
 - **Color** — text/button color, with the **reframed scope control** ("Apply to: *Everywhere it's
   used* / *Just this*") — "everywhere" moves the design token (recolors every use), "just this" is a
-  per-element override. Replaces the old confusing "All body text / Just this" toggle.
+  per-element override — **and if the element's color was a shared brand token, Approve asks for
+  confirmation first** (you're deliberately leaving the palette). Replaces the old confusing "All
+  body text / Just this" toggle. The undo for accumulated one-offs is the Brand panel's **↺ Reset
+  one-off colors** button, which queues a cleanup edit returning every individually-recolored
+  element to the palette without touching the brand tokens.
 - **Request** — a free-text note the forge/team applies.
 - **Image** — upload or AI-generate a replacement (image/graphic elements).
 
@@ -90,6 +96,10 @@ commits to the `edits[]` batch (surfaced by the bottom "Send N edits →" bar); 
 they revert the preview so nothing is saved unless approved. This holds across the element, **brand**
 (`openBrandPanel` snapshots `openTheme` on open; `discardBrand()` reverts the live theme to it), and
 section panels. Edits carry an Undo history and are POSTed as a batch.
+
+**Panels are draggable on desktop** (`makeDraggable`) — grab any panel (element, section, or Brand)
+by its header row and move it out of the way; once moved, resize reflow leaves it alone. Mobile
+keeps the fixed bottom sheet.
 
 ### One build at a time (2026-07-21)
 
@@ -102,7 +112,7 @@ saves). One batch = one build — mid-build edits would apply against a moving s
 
 ### The apply loop (real — the Site tab genuinely changes the site)
 `editor.js` → **`POST /api/edit-requests`** → stored as markdown on the **`edit_requests`** table →
-the forge's **`factory/edit-poll.mjs`** (cron, ~every 5 min) applies each batch to the site source and
+the forge's **`factory/edit-poll.mjs`** (launchd, every 10 min — `com.thinkbigjoe.editpoll.plist`) applies each batch to the site source and
 redeploys. Surfaces as the **"Customer edit queue"** on `/command/engine`.
 
 ### Guided section editing (2026-07-20)
@@ -143,8 +153,13 @@ defines `--brand-h` / `--brand-c` / `--accent-h` and `--font-heading-stack` / `-
 `--brand` / `--brand-dark` / `--brand-tint` DERIVE via `oklch` (values chosen to render the original
 palette pixel-exactly). Never replace the derived colors with hex literals — that's what re-locks
 the site out of the editor. The Brand panel therefore works natively here, same as on any template.
-(editor.js still carries flat-token + literal-recolor preview fallbacks for sites that DON'T speak
-the contract.)
+
+For sites that DON'T speak the contract, `editor.js` carries two preview fallbacks:
+- **tokenAlias** — a `--color-*` edit also moves the stripped underlying var Tailwind's inline theme
+  maps it from, so "Everywhere it's used" really recolors everywhere.
+- **ensureValueRecolor** (with `captureOrigFlat`) — captures the original flat `--brand*` hexes,
+  scans same-origin stylesheets, and re-points literal-baked color declarations at the preview vars
+  — recursing nested cssRules, since modern CSSStyleRule always has a cssRules list.
 
 The portal side (site-proxy iframe + `editor.js` + `edit_requests`) is site-agnostic and needed no
 changes. The difference is all in **`edit-poll.mjs`**, which branches on `is_internal`:
@@ -158,10 +173,19 @@ changes. The difference is all in **`edit-poll.mjs`**, which branches on `is_int
 | Build | `pnpm --filter ./sites/<slug> build` | `pnpm run build` in the repo (its own merge gate) |
 | Deploy | push webdev-templates + `deploy-vercel.mjs` | `git push origin main` in its own repo → Vercel redeploys production |
 
+Dogfooded end-to-end 2026-07-21: four real edit batches were applied to TBJ's own FOH through the
+full portal → `edit_requests` → edit-poll → push cycle (see `forge: apply edit #N to the front of
+house` commits). Lesson baked into edit-poll: headless `claude -p` runs need
+`--dangerously-skip-permissions` (forge `0855e08`) — without it writes queue behind unanswerable
+permission prompts and a zero-diff run falsely reports "applied" (edit #4 was exactly this).
+
 ### Known gaps (why we're redesigning)
 1. ~~**Per-element, not modular.**~~ **✅ Fixed (Phase 3).** `editor.js` now has a **🎨 Brand mode**
    that edits the tokens (Primary/Secondary/fonts) — "change primary everywhere," live-previewed. The
-   per-element controls remain as the escape hatch.
+   per-element controls remain as the escape hatch. Fonts: 10 curated pairings **plus an "Or any
+   Google Font" free-text input** — the name is validated against Google Fonts' css2 endpoint, then
+   previewed live like a curated pick; the forge wires it via `next/font` (LLM path, since custom
+   families have no static import).
 2. ~~**The Studio dead-ends at Download.**~~ **✅ Fixed.** `image-studio.tsx` now has a **"Save to my
    site"** button next to Download. It POSTs the canvas to `/api/edit-requests` as a `kind:'asset'`
    edit (`{ asset: { key, dataUrl, mime } }`). The forge's `edit-poll.mjs` applies it: **logo/circle
@@ -236,9 +260,10 @@ run**. Element/section edits remain the `claude -p` escape hatch, coexisting in 
 tagged with `kind`.
 
 ### Open decisions (resolve before/at each phase)
-- **Curated font list (before Phase 3):** `next/font/google` needs a static import per font at build
-  time — so fonts are a **curated set** (~10–15 pairings the forge imports); free-text falls back to
-  `claude -p`. Joe picks the set.
+- ~~**Curated font list (before Phase 3):**~~ **✅ Resolved.** The curated set (10 pairings)
+  shipped, AND the Brand panel grew a validated free-text escape hatch — the "Or any Google Font"
+  input (checked against Google Fonts' css2 endpoint, live-previewed, wired by the forge via
+  `next/font` through the `claude -p` path since custom families have no static import).
 - **Lossy hex→OKLCH-hue:** the previewed primary won't *exactly* match a picked hex swatch. Frame it
   as "we build a matching palette," or offer a raw-hex escape hatch? (Confirm exact-hex needn't be honored.)
 - **Preview vs deployed font:** the proxy's Google-Fonts preview differs slightly from the self-hosted
