@@ -34,6 +34,23 @@ function zoneLabel(tz: string): string {
   return known[tz] ?? tz.split("/").pop()?.replace(/_/g, " ") ?? "local";
 }
 
+/**
+ * The per-tenant DEFAULTS the agent actually falls back to when a config field is empty — the
+ * single source for both the prompt variables below and any surface that tells the owner "what
+ * will she say if this isn't set?" (the portal's Knowledge page). Quoting different words there
+ * than the agent speaks is a lie about the product; import these, never paraphrase them.
+ */
+export const TENANT_DEFAULTS = {
+  greeting: (businessName: string) => `Thanks for calling ${businessName}, this is the after-hours line — what's going on?`,
+  services: "General service work. If you're unsure whether we cover something, take the details anyway.",
+  serviceArea: "the local area",
+  hours: "Regular business hours, Monday through Friday.",
+  emergencyDefinition:
+    "An emergency is anything causing active damage or danger right now — flooding, a burst pipe, sewage backing up, no water at all, or any smell of gas. A slow drip or a clog that still drains is not an emergency.",
+  faqs: "No specific questions on file — if you don't know an answer, say someone will cover it on the callback.",
+  doNot: "Never promise a specific arrival time.",
+} as const;
+
 export function buildDynamicVariables(t: VoiceTenant): Record<string, string> {
   const c = t.config;
 
@@ -41,22 +58,16 @@ export function buildDynamicVariables(t: VoiceTenant): Record<string, string> {
     business_name: s(t.businessName, "this business"),
 
     // The agent opens with this verbatim, so it must always be a complete sentence.
-    greeting: s(
-      c.greeting,
-      `Thanks for calling ${s(t.businessName, "us")}, this is the after-hours line — what's going on?`,
-    ),
+    greeting: s(c.greeting, TENANT_DEFAULTS.greeting(s(t.businessName, "us"))),
 
-    services: s(c.services, "General service work. If you're unsure whether we cover something, take the details anyway."),
-    service_area: s(c.serviceArea, "the local area"),
-    hours_text: s(c.hours, "Regular business hours, Monday through Friday."),
+    services: s(c.services, TENANT_DEFAULTS.services),
+    service_area: s(c.serviceArea, TENANT_DEFAULTS.serviceArea),
+    hours_text: s(c.hours, TENANT_DEFAULTS.hours),
 
-    emergency_definition: s(
-      c.emergencyDefinition,
-      "An emergency is anything causing active damage or danger right now — flooding, a burst pipe, sewage backing up, no water at all, or any smell of gas. A slow drip or a clog that still drains is not an emergency.",
-    ),
+    emergency_definition: s(c.emergencyDefinition, TENANT_DEFAULTS.emergencyDefinition),
 
-    faq_text: s(c.faqs, "No specific questions on file — if you don't know an answer, say someone will cover it on the callback."),
-    do_not_say: s(c.doNot, "Never promise a specific arrival time."),
+    faq_text: s(c.faqs, TENANT_DEFAULTS.faqs),
+    do_not_say: s(c.doNot, TENANT_DEFAULTS.doNot),
 
     // Empty string is meaningful: the prompt must not offer a transfer we can't perform.
     escalation_phone: s(t.escalateTo),

@@ -380,27 +380,43 @@ export default async function DashboardPage({
                           <p className="mt-0.5 text-sm text-ink-soft">
                             {(c.problem as string) || (c.summary as string) || "No details taken."}
                           </p>
-                          {/* Outcome tags — state you can read without reading. Same definitions as the
-                              stats above (booked = disposition, after-hours = site-timezone rule). */}
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {wasBooked && (
-                              <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-[10px] font-bold uppercase text-green-800">Booked</span>
-                            )}
-                            {urgent && !spam && (
-                              <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-[10px] font-bold uppercase text-red-700">{c.urgency as string}</span>
-                            )}
-                            {wasAfterHours && !spam && (
-                              <span className="rounded-full bg-brand-tint px-2.5 py-0.5 text-[10px] font-bold uppercase text-brand">After hours</span>
-                            )}
-                            {/* Tag = fact ("we texted you"), deliberately looser than the monthly
-                                notified stat (message-taking calls only) — if notified_at is set we
-                                DID text them, and hiding that would be less honest, not more. */}
-                            {c.notified_at && !spam ? (
-                              <span className="rounded-full bg-surface px-2.5 py-0.5 text-[10px] font-bold uppercase text-ink-soft">Texted you</span>
-                            ) : null}
-                            {spam && (
-                              <span className="rounded-full bg-surface px-2.5 py-0.5 text-[10px] font-bold uppercase text-ink-soft">Spam / wrong number</span>
-                            )}
+                          {/* OUTCOME CHAIN — what happened because of this call, in order, every
+                              chip backed by a RECORDED field (never an implied step):
+                              started_at → answered · is_real_lead → screened · urgency → qualified ·
+                              notified_at → texted you · disposition → booked/transferred.
+                              The "Texted you" chip is deliberately looser than the monthly notified
+                              stat (message-taking calls only) — if notified_at is set we DID text
+                              them, and hiding that would be less honest, not more. */}
+                          <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                            {(() => {
+                              const chip = (label: string, tone: "done" | "alert" | "ctx" | "muted") => (
+                                <span
+                                  key={label}
+                                  className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ${
+                                    tone === "done" ? "bg-green-100 text-green-800"
+                                    : tone === "alert" ? "bg-red-50 text-red-700"
+                                    : tone === "ctx" ? "bg-brand-tint text-brand"
+                                    : "bg-surface text-ink-soft"
+                                  }`}
+                                >
+                                  {label}
+                                </span>
+                              );
+                              const arrow = (k: string) => (
+                                <span key={k} aria-hidden className="text-[10px] text-ink-soft">→</span>
+                              );
+                              const steps: React.ReactNode[] = [chip("Answered", "done")];
+                              if (spam) {
+                                steps.push(arrow("a1"), chip("Screened out · spam / wrong number", "muted"));
+                              } else {
+                                if (urgent) steps.push(arrow("a1"), chip(`Qualified · ${c.urgency as string}`, "alert"));
+                                if (wasAfterHours) steps.push(arrow("a2"), chip("After hours", "ctx"));
+                                if (c.notified_at) steps.push(arrow("a3"), chip("Texted you", "done"));
+                                if (wasBooked) steps.push(arrow("a4"), chip("Booked", "done"));
+                                else if (c.disposition === "transferred") steps.push(arrow("a5"), chip("Transferred to you", "done"));
+                              }
+                              return steps;
+                            })()}
                           </div>
                           {/* Transcript expands via native <details> — zero-JS, a big tap target, and it
                               works before hydration. This is "what was actually said on the phone". */}

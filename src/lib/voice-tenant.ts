@@ -75,6 +75,19 @@ function phoneFromProse(s?: string): string | undefined {
   return m ? normalizePhone(m[0]) : undefined;
 }
 
+/**
+ * The REAL routing destinations a config produces — structured keys first, then a phone parsed out
+ * of the legacy free-text `forwardTo`, notify falling back to escalate. Exported so display
+ * surfaces (the Knowledge page) show EXACTLY what runtime will dial/text: a page that renders the
+ * raw strings can claim "messages text to: email me at joe@…" while runtime has nowhere to send —
+ * the precise lie a trust surface can't tell. `undefined` means genuinely unroutable.
+ */
+export function deriveRouting(config: VoiceConfig): { escalateTo?: string; notifyTo?: string } {
+  const escalateTo = normalizePhone(config.escalationPhone) ?? phoneFromProse(config.forwardTo);
+  const notifyTo = normalizePhone(config.notifyPhone) ?? escalateTo;
+  return { escalateTo, notifyTo };
+}
+
 function parseConfig(raw: unknown): VoiceConfig {
   if (!raw || typeof raw !== "object") return {};
   return raw as VoiceConfig;
@@ -109,8 +122,7 @@ export async function tenantByNumber(e164?: string): Promise<VoiceTenant | null>
   if (!row) return null;
 
   const config = parseConfig(row.config);
-  const escalateTo = normalizePhone(config.escalationPhone) ?? phoneFromProse(config.forwardTo);
-  const notifyTo = normalizePhone(config.notifyPhone) ?? escalateTo;
+  const { escalateTo, notifyTo } = deriveRouting(config);
 
   return {
     siteId: row.siteId,

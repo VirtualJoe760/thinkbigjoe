@@ -21,6 +21,7 @@ export type ShellSite = {
 const NAV: { href: string; label: string; icon: string }[] = [
   { href: "/portal/dashboard", label: "Scoreboard", icon: "📊" },
   { href: "/portal/calls", label: "Calls", icon: "📞" },
+  { href: "/portal/knowledge", label: "Knowledge", icon: "📚" },
   { href: "/portal/agents", label: "Agents", icon: "🤖" },
   { href: "/portal/calendar", label: "Calendar", icon: "📅" },
   { href: "/portal/billing", label: "Billing", icon: "💳" },
@@ -48,10 +49,14 @@ export function PortalShell({
     >
       {NAV.map((n) => {
         const on = n.href === active;
+        // Carry the selected site across pages — a multi-site owner viewing site B must not be
+        // silently bounced to their first site by switching tabs. Pages without a ?site= concept
+        // ignore the param harmlessly.
+        const href = site ? `${n.href}?site=${site.id}` : n.href;
         return (
           <Link
             key={n.href}
-            href={n.href}
+            href={href}
             aria-current={on ? "page" : undefined}
             className={
               orientation === "rail"
