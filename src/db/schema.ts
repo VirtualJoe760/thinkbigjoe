@@ -119,19 +119,6 @@ export const conversations = pgTable("conversations", {
 	check("conversations_direction_check", sql`(direction)::text = ANY ((ARRAY['inbound'::character varying, 'outbound'::character varying])::text[])`),
 ]);
 
-export const agents = pgTable("agents", {
-	id: varchar({ length: 40 }).primaryKey().notNull(),
-	name: varchar({ length: 80 }).notNull(),
-	role: varchar({ length: 160 }).notNull(),
-	autonomyTier: varchar("autonomy_tier", { length: 16 }).default('draft').notNull(),
-	enabled: boolean().default(false).notNull(),
-	status: varchar({ length: 16 }).default('off').notNull(),
-	dailyCap: integer("daily_cap"),
-	cohort: jsonb(),
-	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-});
-
 export const meetingBriefs = pgTable("meeting_briefs", {
 	id: serial().primaryKey().notNull(),
 	prospectId: integer("prospect_id"),
@@ -344,52 +331,6 @@ export const designReports = pgTable("design_reports", {
 	index("design_reports_created_idx").using("btree", table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
 ]);
 
-export const forgeEngine = pgTable("forge_engine", {
-	id: serial().primaryKey().notNull(),
-	enabled: boolean().default(false).notNull(),
-	avgBuildMinutes: integer("avg_build_minutes").default(12).notNull(),
-	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
-	lastRunSummary: text("last_run_summary"),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	buildsEnabled: boolean("builds_enabled").default(true).notNull(),
-	editsEnabled: boolean("edits_enabled").default(true).notNull(),
-	idleTemplatesEnabled: boolean("idle_templates_enabled").default(false).notNull(),
-	weeklyRunBudget: integer("weekly_run_budget").default(40).notNull(),
-	templatesPerDay: integer("templates_per_day").default(2).notNull(),
-	lastTemplateAt: timestamp("last_template_at", { withTimezone: true, mode: 'string' }),
-	lastWarnPct: integer("last_warn_pct").default(0).notNull(),
-	lastWarnWeek: text("last_warn_week"),
-});
-
-export const forgeReplies = pgTable("forge_replies", {
-	id: serial().primaryKey().notNull(),
-	siteId: integer("site_id").notNull(),
-	fromEmail: text("from_email"),
-	subject: text(),
-	inboundText: text("inbound_text"),
-	draft: text(),
-	finalText: text("final_text"),
-	status: text().default('awaiting').notNull(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	index("forge_replies_site_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops")),
-	index("forge_replies_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
-]);
-
-export const smsConversations = pgTable("sms_conversations", {
-	id: serial().primaryKey().notNull(),
-	contactPhone: varchar("contact_phone").notNull(),
-	lastInboundAt: timestamp("last_inbound_at", { withTimezone: true, mode: 'string' }),
-	lastOutboundAt: timestamp("last_outbound_at", { withTimezone: true, mode: 'string' }),
-	lastDirection: varchar("last_direction", { length: 8 }),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	index("sms_conversations_last_inbound_idx").using("btree", table.lastInboundAt.desc().nullsFirst().op("timestamptz_ops")),
-	unique("sms_conversations_contact_phone_key").on(table.contactPhone),
-]);
-
 export const forgeSites = pgTable("forge_sites", {
 	id: serial().primaryKey().notNull(),
 	slug: text().notNull(),
@@ -472,11 +413,63 @@ export const forgeSites = pgTable("forge_sites", {
 	bookingTimezone: text("booking_timezone").default('America/New_York').notNull(),
 	address: text(),
 	isInternal: boolean("is_internal").default(false).notNull(),
+	orgId: integer("org_id"),
 }, (table) => [
 	uniqueIndex("forge_sites_claim_code_key").using("btree", table.claimCode.asc().nullsLast().op("text_ops")),
 	index("forge_sites_outreach_status_idx").using("btree", table.outreachStatus.asc().nullsLast().op("text_ops")),
 	index("forge_sites_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
+	foreignKey({
+			columns: [table.orgId],
+			foreignColumns: [organizations.id],
+			name: "forge_sites_org_id_fkey"
+		}),
 	unique("forge_sites_slug_key").on(table.slug),
+]);
+
+export const forgeEngine = pgTable("forge_engine", {
+	id: serial().primaryKey().notNull(),
+	enabled: boolean().default(false).notNull(),
+	avgBuildMinutes: integer("avg_build_minutes").default(12).notNull(),
+	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
+	lastRunSummary: text("last_run_summary"),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	buildsEnabled: boolean("builds_enabled").default(true).notNull(),
+	editsEnabled: boolean("edits_enabled").default(true).notNull(),
+	idleTemplatesEnabled: boolean("idle_templates_enabled").default(false).notNull(),
+	weeklyRunBudget: integer("weekly_run_budget").default(40).notNull(),
+	templatesPerDay: integer("templates_per_day").default(2).notNull(),
+	lastTemplateAt: timestamp("last_template_at", { withTimezone: true, mode: 'string' }),
+	lastWarnPct: integer("last_warn_pct").default(0).notNull(),
+	lastWarnWeek: text("last_warn_week"),
+});
+
+export const forgeReplies = pgTable("forge_replies", {
+	id: serial().primaryKey().notNull(),
+	siteId: integer("site_id").notNull(),
+	fromEmail: text("from_email"),
+	subject: text(),
+	inboundText: text("inbound_text"),
+	draft: text(),
+	finalText: text("final_text"),
+	status: text().default('awaiting').notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("forge_replies_site_idx").using("btree", table.siteId.asc().nullsLast().op("int4_ops")),
+	index("forge_replies_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+]);
+
+export const smsConversations = pgTable("sms_conversations", {
+	id: serial().primaryKey().notNull(),
+	contactPhone: varchar("contact_phone").notNull(),
+	lastInboundAt: timestamp("last_inbound_at", { withTimezone: true, mode: 'string' }),
+	lastOutboundAt: timestamp("last_outbound_at", { withTimezone: true, mode: 'string' }),
+	lastDirection: varchar("last_direction", { length: 8 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("sms_conversations_last_inbound_idx").using("btree", table.lastInboundAt.desc().nullsFirst().op("timestamptz_ops")),
+	unique("sms_conversations_contact_phone_key").on(table.contactPhone),
 ]);
 
 export const callbackCodes = pgTable("callback_codes", {
@@ -785,4 +778,60 @@ export const leads = pgTable("leads", {
 			foreignColumns: [prospects.id],
 			name: "leads_prospect_id_fkey"
 		}),
+]);
+
+export const agents = pgTable("agents", {
+	id: varchar({ length: 40 }).primaryKey().notNull(),
+	name: varchar({ length: 80 }).notNull(),
+	role: varchar({ length: 160 }).notNull(),
+	autonomyTier: varchar("autonomy_tier", { length: 16 }).default('draft').notNull(),
+	enabled: boolean().default(false).notNull(),
+	status: varchar({ length: 16 }).default('off').notNull(),
+	dailyCap: integer("daily_cap"),
+	cohort: jsonb(),
+	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	orgId: integer("org_id"),
+	model: text(),
+	workspace: text(),
+	archived: boolean().default(false).notNull(),
+}, (table) => [
+	foreignKey({
+			columns: [table.orgId],
+			foreignColumns: [organizations.id],
+			name: "agents_org_id_fkey"
+		}),
+]);
+
+export const organizations = pgTable("organizations", {
+	id: serial().primaryKey().notNull(),
+	name: text().notNull(),
+	slug: text().notNull(),
+	ownerUserId: text("owner_user_id"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	accountNumber: text("account_number"),
+}, (table) => [
+	unique("organizations_slug_key").on(table.slug),
+]);
+
+export const agentMessages = pgTable("agent_messages", {
+	id: serial().primaryKey().notNull(),
+	agentId: varchar("agent_id", { length: 40 }).notNull(),
+	direction: text().notNull(),
+	body: text().notNull(),
+	status: text().default('queued').notNull(),
+	replyTo: integer("reply_to"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("agent_messages_agent_idx").using("btree", table.agentId.asc().nullsLast().op("text_ops"), table.createdAt.asc().nullsLast().op("text_ops")),
+	index("agent_messages_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")).where(sql`(status = 'queued'::text)`),
+	foreignKey({
+			columns: [table.replyTo],
+			foreignColumns: [table.id],
+			name: "agent_messages_reply_to_fkey"
+		}),
+	check("agent_messages_direction_check", sql`direction = ANY (ARRAY['to_agent'::text, 'from_agent'::text])`),
+	check("agent_messages_status_check", sql`status = ANY (ARRAY['queued'::text, 'answered'::text, 'failed'::text, 'received'::text])`),
 ]);

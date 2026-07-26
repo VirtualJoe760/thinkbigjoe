@@ -6,7 +6,9 @@ import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 
 import { db, forgeSites, voiceLines } from "@/db";
 import { auth } from "@/lib/auth";
+import { isAdminEmail } from "@/lib/admin";
 import { AGENTS, type AgentKey } from "@/lib/plans";
+import { OrgRoster } from "./org-roster";
 import { CallIvy } from "@/components/portal/call-ivy";
 import { PortalShell } from "@/components/portal/portal-shell";
 
@@ -115,14 +117,23 @@ export default async function AgentsPage({
           ? "bg-brand-tint text-brand"
           : "bg-surface text-ink-soft";
 
+  // ADMIN: the real org roster (OpenClaw agents under the TBJ organization) with live chat via the
+  // agent bridge. Customers keep the receptionist roster below; a future customer org renders
+  // OrgRoster with its own slug.
+  const admin = isAdminEmail(user.email);
+
   return (
     <PortalShell active="/portal/agents" site={shellSite}>
       {header}
       <p className="mt-1 text-sm text-ink-soft">
-        {site
-          ? `Who's working for ${site.businessName} — and who's ready to join.`
-          : "Your receptionist and the specialists behind her."}
+        {admin
+          ? "Your OpenClaw org — review, message, and monitor every agent."
+          : site
+            ? `Who's working for ${site.businessName} — and who's ready to join.`
+            : "Your receptionist and the specialists behind her."}
       </p>
+
+      {admin && <OrgRoster />}
 
       {sites.length > 1 && (
         <div className="mt-5 flex flex-wrap gap-2">

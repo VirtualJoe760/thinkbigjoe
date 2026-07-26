@@ -1,13 +1,10 @@
 /**
  * Read a Retell agent's call history straight from Retell's API.
  *
- * This is how the admin reviews IVY'S OWN calls — TBJ's receptionist line. Ivy's calls don't flow
- * into our `calls` table the way a customer receptionist's do (her number has no voice_lines row and
- * she runs the sales-concierge tools, not take_message), so the source of truth for "what did Ivy
- * say, what did the caller say" is Retell itself. Read-only, server-only (uses RETELL_API_KEY).
- *
- * Deliberately NOT cached hard: a few calls a day, an admin looking occasionally. A short fetch is
- * fine and always-fresh beats a stale cache for a review surface.
+ * SINCE 2026-07-25 this is a BACKFILL/DIAGNOSTIC helper, not the review path: Ivy's agent now has a
+ * webhook_url, her line has a voice_lines row on the internal TBJ site (1395), and her calls persist
+ * to the `calls` table with Blob-hosted recordings like any tenant's (see api/voice/webhook +
+ * scripts/backfill-ivy-calls.mjs). The dashboard reads the DB. Read-only, server-only.
  */
 
 export type RetellCall = {

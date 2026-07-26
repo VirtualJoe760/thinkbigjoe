@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { prospects, outreach, followUps, conversations, meetingBriefs, agentTasks, forgeSites, newsletterContacts, contacts, newsletters, newsletterSends, voiceLines, voiceOnboarding, calls, voiceProvisionQueue, leads } from "./schema";
+import { prospects, outreach, followUps, conversations, meetingBriefs, agentTasks, organizations, forgeSites, newsletterContacts, contacts, newsletters, newsletterSends, voiceLines, voiceOnboarding, calls, voiceProvisionQueue, leads, agents, agentMessages } from "./schema";
 
 export const outreachRelations = relations(outreach, ({one}) => ({
 	prospect: one(prospects, {
@@ -45,14 +45,11 @@ export const agentTasksRelations = relations(agentTasks, ({one}) => ({
 	}),
 }));
 
-export const newsletterContactsRelations = relations(newsletterContacts, ({one}) => ({
-	forgeSite: one(forgeSites, {
-		fields: [newsletterContacts.siteId],
-		references: [forgeSites.id]
+export const forgeSitesRelations = relations(forgeSites, ({one, many}) => ({
+	organization: one(organizations, {
+		fields: [forgeSites.orgId],
+		references: [organizations.id]
 	}),
-}));
-
-export const forgeSitesRelations = relations(forgeSites, ({many}) => ({
 	newsletterContacts: many(newsletterContacts),
 	contacts: many(contacts),
 	newsletterSends: many(newsletterSends),
@@ -61,6 +58,18 @@ export const forgeSitesRelations = relations(forgeSites, ({many}) => ({
 	voiceOnboardings: many(voiceOnboarding),
 	calls: many(calls),
 	voiceProvisionQueues: many(voiceProvisionQueue),
+}));
+
+export const organizationsRelations = relations(organizations, ({many}) => ({
+	forgeSites: many(forgeSites),
+	agents: many(agents),
+}));
+
+export const newsletterContactsRelations = relations(newsletterContacts, ({one}) => ({
+	forgeSite: one(forgeSites, {
+		fields: [newsletterContacts.siteId],
+		references: [forgeSites.id]
+	}),
 }));
 
 export const contactsRelations = relations(contacts, ({one}) => ({
@@ -121,5 +130,23 @@ export const leadsRelations = relations(leads, ({one}) => ({
 	prospect: one(prospects, {
 		fields: [leads.prospectId],
 		references: [prospects.id]
+	}),
+}));
+
+export const agentsRelations = relations(agents, ({one}) => ({
+	organization: one(organizations, {
+		fields: [agents.orgId],
+		references: [organizations.id]
+	}),
+}));
+
+export const agentMessagesRelations = relations(agentMessages, ({one, many}) => ({
+	agentMessage: one(agentMessages, {
+		fields: [agentMessages.replyTo],
+		references: [agentMessages.id],
+		relationName: "agentMessages_replyTo_agentMessages_id"
+	}),
+	agentMessages: many(agentMessages, {
+		relationName: "agentMessages_replyTo_agentMessages_id"
 	}),
 }));

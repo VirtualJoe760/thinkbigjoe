@@ -35,6 +35,16 @@ process (job profile → per-file plan → build) rather than hand-editing files
 
 ---
 
+## Organizations — who an agent works for
+
+Every agent belongs to an **organization** (`organizations` table; TBJ = org #1, slug
+`thinkbigjoe`). `agents.org_id` + `forge_sites.org_id` carry the linkage; future customer orgs
+(e.g. a roofing company buying its own agents) get their own org row, their agents live in the
+same OpenClaw install, and their dashboard shows only their org's roster. The DB `agents` table
+is the **display mirror** of the live roster — `node scripts/sync-openclaw-agents.mjs` upserts
+`~/.openclaw/openclaw.json` → `agents` (model, workspace) and archives rows that left the
+roster (never deletes; activity history stays joinable). Re-run it after any roster/model change.
+
 ## The gateway
 
 A LaunchAgent-managed process on Joe's Mac. If crons stop firing or `/command/crons` shows every
@@ -43,6 +53,15 @@ any code. Restart after a `openclaw config set` model/agent change:
 ```
 openclaw gateway restart
 ```
+
+**⚠️ In-app "Update now" is what broke it on 2026-07-24**: the control UI's updater pulled
+2026.7.1-2, which requires Node ≥24.15 (Mac has 24.13) — half-applied swap, gateway dead. Pinned
+back with `npm install -g openclaw@2026.6.10`. Don't click Update until Node is upgraded.
+
+**The agent bridge (dashboard chat).** The web app can't reach 127.0.0.1:18789, so `/portal/agents`
+chat queues rows in `agent_messages`; `scripts/agent-bridge.mjs` (launchd
+`com.thinkbigjoe.agentbridge`, every 60s, pidfile-guarded) delivers each with
+`openclaw agent --agent <id> -m <text> --json` and writes the reply back. Log: /tmp/tbj-agent-bridge.log.
 
 ---
 
@@ -53,10 +72,12 @@ Two providers are in play, and mixing them up wastes a debugging session:
 - **`claude-cli/<model>`** — rides **Joe's existing Claude Max subscription login** (macOS Keychain,
   zero extra setup). This is what `prospector`, `marketing-manager`, and `outreach` run on
   (`claude-cli/claude-sonnet-4-6` as of this writing — sonnet, not opus, to protect budget).
-- **`ollama-cloud/glm-4.7`** — a separate free-tier model. `researcher` and (historically) all workers
-  ran on this. **Known bad**: `glm-4.7`'s browser tool calls error
-  (`action targetId must match request targetId`) and it socket-fails intermittently
-  (`UND_ERR_SOCKET`). Don't put a browser-driving agent back on glm without re-testing.
+- **`ollama-cloud/glm-5.2`** — the free-tier model; `main` (Venus) and `researcher` run on it.
+  **`glm-4.7` was RETIRED by Ollama Cloud on 2026-07-15** (the API 410s) — if an ollama agent errors
+  with `FailoverError: 410 … retired`, bump its model to a live one (`openclaw config set` +
+  gateway restart, then `node scripts/sync-openclaw-agents.mjs`). Historical glm-4.7 gotchas
+  (browser targetId errors, intermittent `UND_ERR_SOCKET`) — re-test before giving any glm agent
+  browser-driving work.
 - **AVOID `anthropic/*` model strings** — that API key is drained/dead. The bare `opus`/`sonnet`
   aliases also silently resolve to that dead key, not to `claude-cli`. Always spell out
   `claude-cli/claude-sonnet-4-6` explicitly.

@@ -78,6 +78,15 @@ high-priority lines near the top; prune stale rules. Routing test for any line:
 - **TOOLS.md** — environment notes: tools/MCP, channels, logins, caps, paths, quirks. Notes, not
   rules ("always use X" → AGENTS; "X base = …" → TOOLS).
 
+## Organization + dashboard registration (always, after scaffolding)
+Every agent belongs to an **organization** — the company it works for (`organizations` table; TBJ =
+org #1). After registering the agent with OpenClaw, run
+`node ~/code/thinkbigjoe/scripts/sync-openclaw-agents.mjs` to mirror the roster into the `agents`
+table so the agent appears on the agent dashboard. New agents default to the TBJ org; an agent built
+FOR A CUSTOMER (e.g. a roofing company's own crew) belongs to that customer's org — create/confirm
+its `organizations` row and set `agents.org_id` accordingly (extend the sync's mapping if needed).
+Consider adding the agent's human-readable role line to the ROLES map in that script.
+
 ## Notes
 - Keep the intake + job profile with the agent so files can be regenerated/sharpened later.
 - Don't carry our chat's framing into the files — write the agent on its own terms.

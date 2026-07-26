@@ -1,18 +1,36 @@
-import { IVY_AGENT_ID, IVY_PHONE_PRETTY } from "@/lib/contact";
-import { listAgentCalls } from "@/lib/retell-calls";
+import { desc, eq } from "drizzle-orm";
+
+import { calls, db } from "@/db";
+import { IVY_PHONE_PRETTY } from "@/lib/contact";
 
 /**
- * ADMIN-ONLY. Ivy's own call history — TBJ's receptionist line — pulled live from Retell.
+ * ADMIN-ONLY. Ivy's own call history — TBJ's receptionist line.
  *
- * Ivy's calls don't persist to our `calls` table (see src/lib/retell-calls.ts), so the admin
- * reviews them straight from Retell: who called, how long, Retell's summary, and the full
- * transcript of what was said. The dashboard's value tiles above stay about the CUSTOMER's
- * receptionist; this is a distinct "your own line" section, so the two never blur.
+ * Reads the `calls` table (site 1395, TBJ internal): since 2026-07-25 Ivy's agent posts to
+ * /api/voice/webhook like any tenant line, so her calls PERSIST — transcript, summary, and a
+ * Blob-hosted recording that outlives Retell's 10-minute link. History before that date was
+ * backfilled transcript-only (scripts/backfill-ivy-calls.mjs).
  *
  * Gated at the call site (isAdminEmail) — never rendered for a customer.
  */
+const TBJ_SITE_ID = 1395;
+
 export async function IvyCalls({ limit = 15 }: { limit?: number }) {
-  const calls = await listAgentCalls(IVY_AGENT_ID, limit);
+  const rows = await db
+    .select({
+      id: calls.id,
+      fromNumber: calls.fromNumber,
+      startedAt: calls.startedAt,
+      durationSec: calls.durationSec,
+      transcript: calls.transcript,
+      summary: calls.summary,
+      recordingUrl: calls.recordingUrl,
+      disposition: calls.disposition,
+    })
+    .from(calls)
+    .where(eq(calls.siteId, TBJ_SITE_ID))
+    .orderBy(desc(calls.startedAt))
+    .limit(limit);
 
   return (
     <section className="mt-10 rounded-2xl border border-brand/30 bg-brand-tint/40 p-5">
@@ -20,17 +38,14 @@ export async function IvyCalls({ limit = 15 }: { limit?: number }) {
         <h2 className="text-xs font-semibold uppercase tracking-widest text-brand">
           Ivy — your own line {IVY_PHONE_PRETTY}
         </h2>
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">Admin · live from Retell</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">Admin · persisted</span>
       </div>
 
-      {calls.length === 0 ? (
-        <p className="mt-3 text-sm text-ink-soft">
-          No calls returned from Retell right now. (Empty either means a genuinely quiet stretch, or
-          Retell was briefly unreachable — reload to retry.)
-        </p>
+      {rows.length === 0 ? (
+        <p className="mt-3 text-sm text-ink-soft">No calls recorded yet.</p>
       ) : (
         <ul className="mt-3 space-y-2">
-          {calls.map((c) => {
+          {rows.map((c) => {
             const when = c.startedAt
               ? new Date(c.startedAt).toLocaleString("en-US", {
                   timeZone: "America/Phoenix",
@@ -44,10 +59,10 @@ export async function IvyCalls({ limit = 15 }: { limit?: number }) {
             return (
               <li key={c.id} className="rounded-xl border border-line bg-surface px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="font-semibold text-ink">
                       {c.fromNumber || "Unknown caller"}
-                      {c.inVoicemail && (
+                      {c.disposition === "voicemail" && (
                         <span className="ml-2 rounded-full bg-line px-2 py-0.5 text-[10px] uppercase text-ink-soft">
                           voicemail
                         </span>
@@ -56,6 +71,10 @@ export async function IvyCalls({ limit = 15 }: { limit?: number }) {
                     <p className="mt-0.5 text-sm text-ink-soft">
                       {c.summary || "No summary — open the transcript."}
                     </p>
+                    {c.recordingUrl ? (
+                      // eslint-disable-next-line jsx-a11y/media-has-caption
+                      <audio controls preload="none" src={c.recordingUrl} className="mt-2 h-9 w-full max-w-md" />
+                    ) : null}
                     {c.transcript ? (
                       <details className="mt-2 text-sm">
                         <summary className="cursor-pointer font-medium text-brand">Read transcript</summary>
@@ -68,19 +87,6 @@ export async function IvyCalls({ limit = 15 }: { limit?: number }) {
                   <div className="flex shrink-0 flex-col items-end gap-1 text-xs text-ink-soft">
                     <span>{when}</span>
                     {mins && <span className="tabular-nums">{mins}</span>}
-                    {c.sentiment && (
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                          c.sentiment === "Positive"
-                            ? "bg-emerald-50 text-emerald-700"
-                            : c.sentiment === "Negative"
-                              ? "bg-red-50 text-red-700"
-                              : "bg-line text-ink-soft"
-                        }`}
-                      >
-                        {c.sentiment}
-                      </span>
-                    )}
                   </div>
                 </div>
               </li>

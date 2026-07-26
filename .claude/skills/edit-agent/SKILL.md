@@ -39,6 +39,10 @@ routing test, SOUL = character not rules. Re-check size with `wc -m` after.
 ### 4. Make it live
 - Files take effect next session (they're injected each session).
 - If you changed `openclaw.json` config → `openclaw gateway restart`.
+- If you changed the agent's **model, name, or workspace** (or added/removed an agent) → run
+  `node ~/code/thinkbigjoe/scripts/sync-openclaw-agents.mjs` so the DB roster mirror (the agent
+  dashboard) matches. Agents belong to an **organization** (TBJ = org #1; customer crews get their
+  own org row + `agents.org_id`).
 - If the agent is a team manager/member and the change touches handoffs → update the team's `TEAM.md`
   and any teammate whose handoff references it.
 - Leave crons/autonomy as they were unless Joe says otherwise.

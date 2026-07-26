@@ -147,8 +147,30 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
   },
 
   {
+    name: "TBJ SMS Comms",
+    id: "3aa5c37b-b6e2-47be-ac1c-d32ce862cbed",
+    agent: "outreach",
+    // 3 runs inside the working window: 10am / 1pm / 4pm PT (schedules are UTC).
+    schedule: "0 17,20,23 * * *",
+    stagger: "5m",
+    summary: "Autonomous SMS: answer waiting lead replies with the sales doctrine, then send due cadence follow-ups (≤15/day, number-warming).",
+    tools: ["check_outreach_window", "list_sms_replies_pending", "list_sms_followup_due", "send_sms", "book_appointment", "log_activity"],
+    uiSurface: ["/command/messages (every text lands on the thread)", "/command/leads (timeline)"],
+    eventTypes: ["sms_outbound", "sms_outreach_sent"],
+    prompt: `This is your SMS comms run — the one channel you SEND on yourself (your AGENTS.md SMS play is the doctrine; email stays Joe-gated). Work it in this order:
+
+1. GATE: call check_outreach_window. If not allowed, log and stop — a human safeguard always wins.
+
+2. REPLIES FIRST: call list_sms_replies_pending. Answer every waiting thread in your SMS voice — respond to what THEY actually said, work the objection with a fresh angle, never re-send a link/code already in the thread, and push toward the 30-min call (book_appointment once they pick a time; collect name + email). Send each with send_sms(to, body, site_id, purpose:"reply").
+
+3. THEN FOLLOW-UPS: call list_sms_followup_due (it enforces the 15/day warming cap and every safeguard — whatever it returns is cleared to text). For each, ONE short casual text with a genuinely NEW angle for that touch number (touch 2 ≠ touch 1's pitch: try a question about how they get work, a specific thing the site fixes for their trade, a "did the link even load for you?" check-in, a review compliment → gap). Send with send_sms(to, body, site_id, purpose:"followup").
+
+4. LOG: log_activity, event_type "sms_outbound", summary like "SMS run: R replies answered · F follow-ups sent (cap X/15)". marketing-manager reads this for the digest.`,
+  },
+
+  {
     name: "TBJ Forge Reschedule Nudge",
-    id: "241192cc-2e68-4b5b-9933-f7f109122b2c",
+    id: "cf0edd0c-9419-424f-a816-e04476ac0226",
     agent: "outreach",
     schedule: "0 15,19 * * *",
     stagger: "3m",

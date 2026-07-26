@@ -77,16 +77,26 @@ export default async function DashboardPage({
     return (
       <PortalShell active="/portal/dashboard" site={null}>
         {header(false)}
-        <p className="mt-3 leading-relaxed text-ink-soft">
-          Your receptionist reports here once your site is claimed and it&apos;s live.
-        </p>
-        <Link
-          href="/portal/claim"
-          className="mt-6 inline-flex min-h-11 items-center justify-center rounded-full bg-brand px-6 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
-        >
-          Claim your site
-        </Link>
-        {/* An admin with no claimed site of their own still needs to review Ivy's line. */}
+        {/* The admin isn't a customer — no claim-your-site funnel; their scoreboard is Ivy's own
+            line, reviewed below. Customers get the claim CTA. */}
+        {!admin && (
+          <>
+            <p className="mt-3 leading-relaxed text-ink-soft">
+              Your receptionist reports here once your site is claimed and it&apos;s live.
+            </p>
+            <Link
+              href="/portal/claim"
+              className="mt-6 inline-flex min-h-11 items-center justify-center rounded-full bg-brand px-6 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
+            >
+              Claim your site
+            </Link>
+          </>
+        )}
+        {admin && (
+          <p className="mt-3 leading-relaxed text-ink-soft">
+            Ivy&apos;s line — ThinkBigJoe&apos;s own receptionist — reports below.
+          </p>
+        )}
         {admin && <IvyCalls />}
       </PortalShell>
     );
@@ -245,7 +255,7 @@ export default async function DashboardPage({
   const recent = rowsOf(
     await db.execute(sql`
       SELECT id, started_at, caller_name, callback_number, urgency, problem, summary,
-             transcript, is_real_lead, notified_at, owner_rating, disposition,
+             transcript, recording_url, is_real_lead, notified_at, owner_rating, disposition,
              (EXTRACT(hour FROM (started_at AT TIME ZONE ${tz})) < 8
               OR EXTRACT(hour FROM (started_at AT TIME ZONE ${tz})) >= 18
               OR EXTRACT(isodow FROM (started_at AT TIME ZONE ${tz})) > 5) AS after_hours
@@ -420,6 +430,11 @@ export default async function DashboardPage({
                               return steps;
                             })()}
                           </div>
+                          {/* Blob-hosted recording — permanent, streams straight from the CDN. */}
+                          {c.recording_url ? (
+                            // eslint-disable-next-line jsx-a11y/media-has-caption
+                            <audio controls preload="none" src={c.recording_url as string} className="mt-2 h-9 w-full max-w-md" />
+                          ) : null}
                           {/* Transcript expands via native <details> — zero-JS, a big tap target, and it
                               works before hydration. This is "what was actually said on the phone". */}
                           {c.transcript ? (

@@ -877,6 +877,139 @@ async function toolListForgeFollowupDue() {
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
+// ── SMS cadence (autonomous — the outreach agent's own channel) ─────────────────────────────────
+// Number-warming cap: at most this many SMS follow-ups a day, on TOP of the ~15/day first-touches.
+const SMS_FOLLOWUP_DAILY_CAP = 15;
+
+async function toolListSmsFollowupDue() {
+  // Who's due for their next SMS touch on the ~2×/week cadence. HARD FILTERS (the safeguards the
+  // agent must never override, enforced here so a paused/opted-out contact never even reaches it):
+  //   ai_paused=false · not opted_out · not declined · not claimed · has a phone · not deleted.
+  // Cadence: last outbound SMS ≥3 days ago · first touch <6 months ago · they've NEVER replied
+  // (a reply moves them to list_sms_replies_pending — conversation mode, not cadence).
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const sentToday = Number(
+    (
+      await query(
+        `SELECT count(*)::int AS n FROM activity_log
+          WHERE event_type = 'sms_outreach_sent' AND metadata->'detail'->>'via' = 'followup'
+            AND created_at >= $1`,
+        [today.toISOString()],
+      )
+    ).rows[0].n,
+  );
+  const remaining = Math.max(0, SMS_FOLLOWUP_DAILY_CAP - sentToday);
+  if (remaining === 0) {
+    return { content: [{ type: "text", text: `Today's SMS follow-up cap is met (${sentToday}/${SMS_FOLLOWUP_DAILY_CAP} — we're warming the Twilio number). Rest until tomorrow.` }] };
+  }
+
+  const res = await query(
+    `WITH sms AS (
+       SELECT (metadata->'detail'->>'siteId')::int AS site_id,
+              max(created_at) FILTER (WHERE event_type IN ('sms_outreach_sent','sms_outbound')) AS last_out,
+              min(created_at) FILTER (WHERE event_type = 'sms_outreach_sent') AS first_touch,
+              count(*) FILTER (WHERE event_type IN ('sms_outreach_sent','sms_outbound')) AS touches,
+              count(*) FILTER (WHERE event_type = 'sms_inbound') AS replies
+       FROM activity_log
+       WHERE event_type IN ('sms_outreach_sent','sms_inbound','sms_outbound')
+         AND (metadata->'detail'->>'siteId') ~ '^[0-9]+$'
+       GROUP BY 1
+     )
+     SELECT f.id, f.slug, f.business_name, f.niche, f.city, f.owner_name, f.phone, f.claim_code,
+            f.google_rating, f.review_count, f.contact_notes, f.live_url,
+            s.last_out, s.first_touch, s.touches
+     FROM sms s JOIN forge_sites f ON f.id = s.site_id
+     WHERE s.replies = 0
+       AND s.last_out < now() - interval '3 days'
+       AND s.first_touch > now() - interval '6 months'
+       AND f.status <> 'deleted' AND f.claimed_by_user_id IS NULL AND f.phone IS NOT NULL
+       AND f.ai_paused = false
+       AND f.outreach_status IS DISTINCT FROM 'opted_out'
+       AND f.lead_stage IS DISTINCT FROM 'declined'
+     ORDER BY s.last_out ASC
+     LIMIT $1`,
+    [remaining],
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: "No leads are due for an SMS follow-up right now." }] };
+  }
+  const lines = [
+    `🔁 **${res.rows.length} lead(s) due for their next SMS touch** — today ${sentToday}/${SMS_FOLLOWUP_DAILY_CAP} sent (number-warming cap):`,
+    "",
+  ];
+  for (const r of res.rows) {
+    const daysSince = Math.floor((Date.now() - new Date(r.last_out).getTime()) / 86400000);
+    const link = r.live_url || `${APP_SITE_URL}/s/${r.slug}`;
+    lines.push(
+      `**#${r.id} ${r.business_name}**${r.owner_name ? ` · owner ${r.owner_name}` : ""} · ${r.niche || "—"} · ${r.city || "—"}${r.google_rating ? ` · ${r.google_rating}★${r.review_count ? ` (${r.review_count})` : ""}` : ""}`,
+    );
+    lines.push(`   📱 ${r.phone} · touch #${Number(r.touches) + 1} · last text ${daysSince}d ago · preview: ${link} · code: ${r.claim_code || "—"}`);
+    if (r.contact_notes) lines.push(`   notes: ${String(r.contact_notes).slice(0, 160)}`);
+    lines.push("");
+  }
+  lines.push(
+    `For each: write ONE short casual text (your SMS voice — lowercase, one move, one question, a genuinely NEW angle for this touch number, never a repeat, never re-send a link they ignored without a fresh reason). Then send it with send_sms(to, body, site_id, purpose:"followup") — that logs the touch + advances the cadence. Stay under today's cap; if a text fails, move on.`,
+  );
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolListSmsRepliesPending() {
+  // Inbound SMS threads where the LEAD spoke last — the agent owes them a reply. Excludes paused /
+  // opted-out / declined contacts (the webhook already suppressed hard opt-outs before they land here).
+  const res = await query(
+    `WITH sms AS (
+       SELECT (metadata->'detail'->>'siteId')::int AS site_id,
+              max(created_at) FILTER (WHERE event_type = 'sms_inbound') AS last_in,
+              max(created_at) FILTER (WHERE event_type IN ('sms_outreach_sent','sms_outbound')) AS last_out
+       FROM activity_log
+       WHERE event_type IN ('sms_outreach_sent','sms_inbound','sms_outbound')
+         AND (metadata->'detail'->>'siteId') ~ '^[0-9]+$'
+       GROUP BY 1
+     )
+     SELECT f.id, f.slug, f.business_name, f.niche, f.city, f.service_area, f.owner_name, f.phone,
+            f.claim_code, f.google_rating, f.review_count, f.contact_notes, f.call_prep, f.live_url,
+            s.last_in
+     FROM sms s JOIN forge_sites f ON f.id = s.site_id
+     WHERE s.last_in IS NOT NULL AND (s.last_out IS NULL OR s.last_in > s.last_out)
+       AND f.status <> 'deleted' AND f.ai_paused = false
+       AND f.outreach_status IS DISTINCT FROM 'opted_out'
+       AND f.lead_stage IS DISTINCT FROM 'declined'
+     ORDER BY s.last_in ASC
+     LIMIT 10`,
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: "No SMS replies are waiting — every thread is answered." }] };
+  }
+  const lines = [`📱 **${res.rows.length} SMS repl${res.rows.length === 1 ? "y" : "ies"} waiting on you:**`, ""];
+  for (const r of res.rows) {
+    const thread = await query(
+      `SELECT event_type AS et, metadata->'detail'->>'note' AS note, created_at
+       FROM activity_log
+       WHERE event_type IN ('sms_outreach_sent','sms_inbound','sms_outbound')
+         AND (metadata->'detail'->>'siteId') = $1 AND metadata->'detail'->>'note' IS NOT NULL
+       ORDER BY created_at DESC LIMIT 12`,
+      [String(r.id)],
+    );
+    const link = r.live_url || `${APP_SITE_URL}/s/${r.slug}`;
+    lines.push(
+      `**#${r.id} ${r.business_name}**${r.owner_name ? ` · owner ${r.owner_name}` : ""} · ${r.niche || "—"} · ${r.city || r.service_area || "—"}${r.google_rating ? ` · ${r.google_rating}★${r.review_count ? ` (${r.review_count})` : ""}` : ""}`,
+    );
+    lines.push(`   📱 ${r.phone} · preview: ${link} · code: ${r.claim_code || "—"}`);
+    if (r.contact_notes) lines.push(`   notes: ${String(r.contact_notes).slice(0, 200)}`);
+    if (r.call_prep) lines.push(`   call prep: ${String(r.call_prep).slice(0, 300)}`);
+    lines.push(`   thread (newest first):`);
+    for (const t of thread.rows) {
+      lines.push(`     ${t.et === "sms_inbound" ? "THEM" : "US  "} · ${String(t.note).slice(0, 200)}`);
+    }
+    lines.push("");
+  }
+  lines.push(
+    `Answer each one with your SMS doctrine — respond to what THEY actually said, work the objection, book the call when there's interest. Send with send_sms(to, body, site_id, purpose:"reply"). Never re-send a link/code already in the thread.`,
+  );
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
 async function toolListForgeRescheduleDue() {
   // Near-won clients Joe flagged 'reschedule' — they got deep into the funnel but bailed on the
   // setup/payment call and need to rebook. Highest-priority warm leads. AI-paused rows excluded.
@@ -1561,7 +1694,7 @@ function normalizeUsPhone(raw) {
   return d ? `+${d}` : null;
 }
 
-async function toolSendSms({ to, body } = {}) {
+async function toolSendSms({ to, body, site_id, purpose } = {}) {
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
   const mgSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
@@ -1587,7 +1720,30 @@ async function toolSendSms({ to, body } = {}) {
     if (!r.ok) {
       return { content: [{ type: "text", text: `❌ Twilio rejected the text: ${data.message || `HTTP ${r.status}`}${data.code ? ` (code ${data.code})` : ""}` }], isError: true };
     }
-    await audit("sms_sent", `📱 Texted ${dest}: ${text.slice(0, 80)}`, { target: dest, detail: data.sid || null });
+    // When the agent tells us WHICH lead this text belongs to, log it into that lead's SMS thread
+    // (the same activity_log events the Messages UI + sms-agent history read) and advance cadence
+    // state — otherwise fall back to the generic sms_sent receipt.
+    const sid2 = Number(site_id);
+    if (Number.isFinite(sid2) && sid2 > 0) {
+      const kind = purpose === "followup" ? "followup" : "reply";
+      if (kind === "followup") {
+        await audit("sms_outreach_sent", `🔁 SMS follow-up → ${dest}: ${text.slice(0, 80)}`, {
+          detail: { siteId: sid2, to: dest, note: text, via: "followup" },
+        });
+        await query(
+          `UPDATE forge_sites SET followup_count = followup_count + 1, contacted_at = now(),
+                  outreach_status = CASE WHEN outreach_status IN ('none','drafted') THEN 'sent' ELSE outreach_status END,
+                  updated_at = now() WHERE id = $1`,
+          [sid2],
+        );
+      } else {
+        await audit("sms_outbound", `🤖 Agent texted lead #${sid2}: ${text.slice(0, 80)}`, {
+          detail: { siteId: sid2, to: dest, note: text, via: "agent" },
+        });
+      }
+    } else {
+      await audit("sms_sent", `📱 Texted ${dest}: ${text.slice(0, 80)}`, { target: dest, detail: data.sid || null });
+    }
     return { content: [{ type: "text", text: `✅ Sent to ${dest} (sid ${data.sid || "?"}). Their reply forwards to Joe's phone automatically.` }] };
   } catch (err) {
     return { content: [{ type: "text", text: `❌ Send failed: ${err?.message || err}` }], isError: true };
@@ -1761,7 +1917,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.29.0" },
+  { name: "tbj-mcp", version: "2.30.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -2271,9 +2427,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           to: { type: "string", description: "Recipient phone, US format (e.g. '480-555-1212' or '+14805551212')." },
           body: { type: "string", description: "The message text. Short, plain, identify as ThinkBigJoe. Include a soft opt-out hint (e.g. \"reply 'No thanks' and I'll stop\") for cold/promo texts — prefer this over 'STOP' so we don't rack up carrier opt-out records." },
+          site_id: { type: "number", description: "The forge_sites lead this text belongs to. ALWAYS pass it when texting a known lead — it logs the message into their thread and advances cadence state." },
+          purpose: { type: "string", description: "'followup' = a cadence touch (bumps followup_count + counts against the daily follow-up cap) · 'reply' = answering their inbound text. Only meaningful with site_id." },
         },
         required: ["to", "body"],
       },
+    },
+    {
+      name: "list_sms_followup_due",
+      description: "Leads due for their next SMS cadence touch (~2×/week until they reply, claim, or book; 6-month cap; 15/day number-warming cap). Pre-filtered for every human safeguard — ai_paused, opted-out, declined, claimed are already excluded, so everything returned is cleared to text. Write each touch with a fresh angle and send via send_sms(..., purpose:'followup').",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "list_sms_replies_pending",
+      description: "Inbound SMS threads where the lead spoke last and is waiting on a reply — with the full thread, the lead's real facts (trade, town, owner, reviews, call prep) and claim code. Safeguard-filtered (ai_paused/opted-out/declined excluded). Answer each with the SMS doctrine and send via send_sms(..., purpose:'reply').",
+      inputSchema: { type: "object", properties: {} },
     },
     {
       name: "issue_callback_code",
@@ -2394,6 +2562,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "save_design_report": return toolSaveDesignReport(args);
     case "list_design_reports": return toolListDesignReports(args);
     case "send_sms": return toolSendSms(args);
+    case "list_sms_followup_due": return toolListSmsFollowupDue();
+    case "list_sms_replies_pending": return toolListSmsRepliesPending();
     case "list_flagged_calls": return toolListFlaggedCalls(args);
     case "list_calls": return toolListCalls(args);
     case "get_call": return toolGetCall(args);

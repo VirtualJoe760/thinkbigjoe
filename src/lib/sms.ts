@@ -111,7 +111,18 @@ export function isOptOut(body: string): boolean {
 // A SOFT, internal opt-out: a friendly "no thanks" we honor ourselves so the prospect never has to
 // text the carrier keyword STOP (which Twilio records as a hard opt-out and dings sender metrics).
 // We advertise THIS in our outreach copy; STOP still works as the legally-required backstop.
-const SOFT_OPT_OUT = /^\s*(no[,\s]*thanks?|no[,\s]*thank\s*you|no[,\s]*thx|not\s+interested|remove\s+me|unsubscribe\s+me)\b/i;
+//
+// This matches the WHOLE message, not its start — and that distinction is the point. An explicit,
+// standalone "No" / "No thanks" ends the conversation. Anything with more in it is a CONVERSATION,
+// even when it sounds like a brush-off ("I don't need one but thank you", "no thanks, what's the
+// catch?"). Someone who typed a sentence is engaged; that's the agent's job, not a stop sign.
+// Leading/trailing quotes and punctuation are tolerated because people literally copy the
+// "reply 'No thanks'" line out of our own outreach copy, quotes and all.
+const EDGE = `[\\s'"“”‘’.,!?-]*`;
+const SOFT_OPT_OUT = new RegExp(
+  `^${EDGE}(no|nope|nah|no[,\\s]*thanks?|no[,\\s]*thank\\s*you|no[,\\s]*thx|not\\s+interested|remove\\s+me|unsubscribe\\s+me|take\\s+me\\s+off(\\s+your\\s+list)?|lose\\s+my\\s+number|(do\\s*n[o']?t|stop)\\s+(contact|text|call)(ing)?\\s*(me)?)${EDGE}$`,
+  "i",
+);
 export function isSoftOptOut(body: string): boolean {
   return SOFT_OPT_OUT.test(body || "");
 }

@@ -34,6 +34,47 @@ rules — read before queuing any site build**: [`docs/FORGE.md`](docs/FORGE.md)
 standards + the live health board — **read before touching anything that sends email, especially
 on behalf of a client**: [`docs/DELIVERABILITY.md`](docs/DELIVERABILITY.md).
 
+## THE OTHER RULE: build the agent, don't *become* the agent
+
+There are three kinds of thing in this org — **actors, models, tools** — and collapsing them is
+the single most expensive, most-repeated mistake in this codebase. Keep them straight:
+
+- **Actors = the OpenClaw agents** (Venus + `prospector`, `outreach`, `marketing-manager`,
+  `researcher`, `brand-lead`, and any comms agent). They are what **thinks, converses, decides,
+  and drives the browser.** Anything that needs judgment or a back-and-forth — a prospecting reply,
+  an outreach conversation, a rebuttal, "what do we say to this lead," "which lead to work" — is
+  **their** job.
+- **Models = what an actor runs ON** (`ollama-cloud/glm-*`, `claude-cli/claude-sonnet-4-6`,
+  gemini). Chosen per-agent in `~/.openclaw/openclaw.json`. A model is a substrate, not a task-doer.
+- **Tools = what an actor USES** (the Apify scrapers, `send_sms`, the booking endpoints — every MCP
+  tool in `mcp-server/tbj-mcp.mjs`). This repo's job is to **expose tools and surfaces for the
+  agents to call.** That's THE RULE above.
+
+**This app is the stage and the toolbox. It is never the actor.** Any "intelligence" that lives in
+the app is a narrow, deterministic helper (a single draft, a classifier) — never a conversation.
+
+Two instructions that keep getting misread — get them right:
+
+- **"It should run on Ollama"** = put the **agent** on the ollama model in `openclaw.json` and let
+  the gateway drive it. It does **NOT** mean "make the app POST to `ollama.com`." If you're writing
+  a direct model call to *hold a conversation*, stop — that conversation is an agent.
+- **"Use Apify" / "use the scraper"** = give the **prospector agent** the Apify tool and let it
+  decide when to call it. It does **NOT** mean the app hits Apify directly to do the agent's job.
+
+**The test, before you write a line:** does this task decide *what to say or do* (judgment, a
+conversation, a rebuttal, which lead to work)? → **agent work** — build or adjust the OpenClaw
+agent (its personality files, model, tools) via `/edit-agent` or `/create-agent`, and make sure the
+**gateway is running** (that's the first thing to check when an agent seems "broken" — see
+[`docs/OPENCLAW.md`](docs/OPENCLAW.md)). Is it *deterministic plumbing* (a scheduled send, a poll, a
+webhook relay, a DB write, a page)? → **app work**, and THE RULE above applies. When in doubt, it's
+an agent — ask before building a direct-to-model or direct-to-tool path.
+
+**Live example of getting this wrong:** `src/lib/sms-agent.ts` currently holds the lead conversation
+by calling a model API directly from the app. That's the mistake this rule exists to stop. The
+correct shape is an OpenClaw **comms agent** on the ollama model, using the `send_sms` + booking
+MCP tools, invoked by the gateway when a lead texts back — not app code POSTing to a model. Treat
+it as owed migration; do not add more app-side agent brains in the meantime.
+
 ## Docs protocol — how this file stays fast AND current
 
 Don't let docs drift silently (see FORGE.md's incident writeup for what that cost once — and

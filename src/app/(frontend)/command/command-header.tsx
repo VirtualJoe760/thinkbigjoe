@@ -23,6 +23,11 @@ const LINKS: NavLink[] = [
   { href: "/command/leads", label: "Leads", icon: "M4 4h16v4H4zM4 12h16v8H4z" },
   { href: "/command/clients", label: "Clients", icon: "M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6-2a3 3 0 10-3-3" },
   { href: "/command/messages", label: "Messages", icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" },
+  {
+    href: "/command/agents",
+    label: "Agents",
+    icon: "M12 2a3 3 0 013 3v1a3 3 0 01-6 0V5a3 3 0 013-3zM5 21v-1a7 7 0 0114 0v1M9 11l-2 2 2 2M15 11l2 2-2 2",
+  },
   { href: "/command/appointments", label: "Calendar", icon: "M8 2v4M16 2v4M3 9h18M5 5h14v16H5z" },
   {
     href: "/command/crons",

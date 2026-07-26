@@ -33,3 +33,29 @@ export async function uploadImage(
   });
   return { url };
 }
+
+/**
+ * Re-host a call recording so it outlives Retell's ~10-minute link expiry. Fetches the (still-live)
+ * recording URL and stores the audio permanently; returns the public URL, or null on any failure —
+ * callers keep the expiring URL as a best-effort fallback rather than losing the row.
+ */
+export async function saveRecording(
+  sourceUrl: string,
+  opts: { pathPrefix: string },
+): Promise<string | null> {
+  if (!isBlobConfigured || !sourceUrl) return null;
+  try {
+    const res = await fetch(sourceUrl, { signal: AbortSignal.timeout(20000) });
+    if (!res.ok) return null;
+    const contentType = res.headers.get("content-type") || "audio/wav";
+    const ext = contentType.includes("mp3") || contentType.includes("mpeg") ? "mp3" : "wav";
+    const bytes = Buffer.from(await res.arrayBuffer());
+    if (bytes.length < 1000 || bytes.length > 100_000_000) return null; // empty or absurd
+    const key = `${opts.pathPrefix.replace(/^\/+|\/+$/g, "")}/${crypto.randomUUID().slice(0, 12)}.${ext}`;
+    const { url } = await put(key, bytes, { access: "public", contentType, addRandomSuffix: false });
+    return url;
+  } catch (err) {
+    console.error("[blob] saveRecording failed:", err);
+    return null;
+  }
+}

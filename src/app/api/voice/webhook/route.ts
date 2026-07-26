@@ -30,6 +30,7 @@ import { NextResponse } from "next/server";
 import { eq, sql } from "drizzle-orm";
 
 import { calls, db } from "@/db";
+import { saveRecording } from "@/lib/blob";
 import { normalizePhone } from "@/lib/sms";
 import { tenantByNumber } from "@/lib/voice-tenant";
 import { reportIncident } from "@/lib/monitor";
@@ -163,6 +164,29 @@ export async function POST(req: Request) {
   const analysis = (call.call_analysis ?? {}) as Record<string, unknown>;
   const durationMs = typeof call.duration_ms === "number" ? call.duration_ms : null;
 
+  // Retell's recording link expires ~10 minutes after the call — re-host it to Blob NOW, while it's
+  // still alive, so the audio is reviewable forever. Falls back to the expiring URL on any failure
+  // (better a short-lived link than a lost row); call_analyzed re-delivers recording_url, so a miss
+  // on call_ended usually gets a second chance.
+  let recordingUrl = str(call.recording_url);
+  if (recordingUrl && !recordingUrl.includes("blob.vercel-storage.com")) {
+    // Skip the upload when an earlier event already re-hosted this call (call_analyzed re-delivers
+    // the expiring link) — no point paying for a duplicate blob object.
+    const existing = await db
+      .select({ url: calls.recordingUrl })
+      .from(calls)
+      .where(eq(calls.retellCallId, retellCallId))
+      .limit(1)
+      .then((r) => r[0]?.url ?? null)
+      .catch(() => null);
+    if (existing?.includes("blob.vercel-storage.com")) {
+      recordingUrl = existing;
+    } else {
+      const hosted = await saveRecording(recordingUrl, { pathPrefix: `calls/${tenant.siteId}` });
+      if (hosted) recordingUrl = hosted;
+    }
+  }
+
   const incoming = {
     fromNumber: normalizePhone(str(call.from_number) ?? undefined) ?? null,
     toNumber: tenant.lineNumber,
@@ -173,9 +197,7 @@ export async function POST(req: Request) {
     // call_analysis only exists on call_analyzed — null on the other events, which is exactly why
     // every field below is merged rather than assigned.
     summary: str(analysis.call_summary),
-    // Retell's recording link expires ~10 minutes after the call. Stored as-is for now because
-    // re-hosting needs a blob bucket this slice doesn't own; the portal must treat it as best-effort.
-    recordingUrl: str(call.recording_url),
+    recordingUrl,
     disposition: deriveDisposition(call),
   };
 
@@ -200,7 +222,10 @@ export async function POST(req: Request) {
           durationSec: sql`coalesce(excluded.duration_sec, ${calls.durationSec})`,
           transcript: sql`coalesce(excluded.transcript, ${calls.transcript})`,
           summary: sql`coalesce(excluded.summary, ${calls.summary})`,
-          recordingUrl: sql`coalesce(excluded.recording_url, ${calls.recordingUrl})`,
+          // A re-hosted Blob URL is permanent — never let a later event's EXPIRING Retell link
+          // overwrite it. Otherwise newer-wins as usual.
+          recordingUrl: sql`CASE WHEN ${calls.recordingUrl} LIKE '%blob.vercel-storage.com%'
+            THEN ${calls.recordingUrl} ELSE coalesce(excluded.recording_url, ${calls.recordingUrl}) END`,
           // Reverse precedence on purpose: what a live tool recorded beats what we infer afterwards.
           disposition: sql`coalesce(${calls.disposition}, excluded.disposition)`,
         },
