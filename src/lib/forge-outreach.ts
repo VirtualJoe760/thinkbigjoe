@@ -32,12 +32,14 @@ export function composeOutreach(s: {
   const repBit = rating
     ? ` your ${rating}★ reputation${reviews ? ` across ${reviews}+ reviews` : ""}`
     : " the way you show up for your customers";
+  // TRANSPARENT framing (docs/COLD_EMAIL.md): a PREVIEW we made, not "your finished website" —
+  // honest pipeline (preview → their OK → full build → they customize) + the voice-led offer.
+  // SHORT on purpose (Joe, 2026-07-26): ~70 words, three beats — who/why, the offer, the ask.
   const body = [
-    `Hi${first ? ` ${first}` : ""} — I'm Joe with ThinkBigJoe. I help local businesses generate more sales and revenue using software and AI. I came across ${s.businessName}${s.city ? ` in ${s.city}` : ""} and${repBit}, so I went ahead and built you a brand-new website — you can see it right below.`,
-    `It's a real, finished site — your services, mobile-friendly, and fast. Beyond the site, we also offer AI voice reception that answers and books your incoming calls 24/7, plus agentic solutions that handle sales and administrative work for you.`,
-    `If you'd like the site, just create a free account and enter the claim code below to claim it — then it's yours to manage and change however you want. It's reserved for you; no pressure. And when you have a minute, what's a good day and time for a quick call about your goals?`,
+    `Hi${first ? ` ${first}` : ""} — Mark with ThinkBigJoe, a Web & AI agency. I noticed${repBit}, so we made ${s.businessName} a free website preview — it's below. If you like it, we build the full site and you customize everything. Plans start at $99/mo — and for a bit more, our AI receptionist answers every call and books your jobs.`,
+    `Worth a quick Zoom this week? Grab a time: ${SITE_ORIGIN}/book-appointment — or call (480) 764-2121 and our concierge will book you in.`,
   ].join("\n\n");
-  return { subject: `I built ${s.businessName} a new website — take a look`, body };
+  return { subject: `a website preview for ${s.businessName}`, body };
 }
 
 /**
@@ -61,11 +63,14 @@ export function composeSmsOutreach(p: {
   // Casual + human — no fake name, no claim code up front. Just a friendly opener
   // that gets a reply; the agent hands over the claim code once they respond.
   // Only claims "awesome reviews" when it's actually true.
+  // TRANSPARENT framing (docs/COLD_EMAIL.md, 2026-07-26): it's a PREVIEW, not "the website I made
+  // you" — that claim read as a scam to recipients (2.9% reply rate, one "scammer" reply verbatim).
+  // Honest pipeline: preview → their OK → we build the full site → they customize.
   const opener =
     rating && reviews >= 5
-      ? `Hi, I found your business online and saw you've got a ton of awesome Google reviews but no website, so I made you one!`
-      : `Hi, I found your business online and noticed you don't have a website, so I made you one!`;
-  return `${opener} Here's the link to check it out: ${site}. Let me know what you think! (Not interested? Just reply 'No thanks' and I'll stop.)`;
+      ? `Hi, this is Mark with ThinkBigJoe, a Web & AI agency. Saw ${p.businessName}'s great reviews but no website, so we made a free preview of what one could look like:`
+      : `Hi, this is Mark with ThinkBigJoe, a Web & AI agency. Came across ${p.businessName} and noticed you don't have a website, so we made a free preview of what one could look like:`;
+  return `${opener} ${site} — if you like it, we build the full site and you can customize everything. Worth a look? (Not interested? Just reply 'No thanks' and I'll stop.)`;
 }
 
 /**
@@ -75,7 +80,7 @@ export function composeSmsOutreach(p: {
  */
 export function composeVoicemailFollowupSms(p: { liveUrl: string | null; slug: string | null }): string {
   const site = prospectSiteUrl(p);
-  return `Hey, did you get my voicemail? Here's the link to the website I made you: ${site} — let me know if you like it, and we can make any changes during our appointment and take it live. (Not interested? Just reply 'No thanks' and I'll stop.)`;
+  return `Hey, did you get my voicemail? This is Mark with ThinkBigJoe. We made a free preview of what a website for your business could look like: ${site} — if you like it, we build the full site and you customize it however you want. Worth a look? (Not interested? Just reply 'No thanks' and I'll stop.)`;
 }
 
 /**
@@ -84,7 +89,7 @@ export function composeVoicemailFollowupSms(p: { liveUrl: string | null; slug: s
  */
 export function composeVoicemailFallbackSms(p: { liveUrl: string | null; slug: string | null }): string {
   const site = prospectSiteUrl(p);
-  return `Hey, it's Joe — I just tried to reach you. Here's the link to the website I made you: ${site} — take a look and let me know what you think, and we can make any changes during our appointment and take it live. (Not interested? Just reply 'No thanks' and I'll stop.)`;
+  return `Hey, it's Mark with ThinkBigJoe — just tried to reach you. We made a free preview of what a website for your business could look like: ${site} — if you like it, we build the full site and you can customize everything. Worth a look? (Not interested? Just reply 'No thanks' and I'll stop.)`;
 }
 
 export type OutreachQueueItem = {

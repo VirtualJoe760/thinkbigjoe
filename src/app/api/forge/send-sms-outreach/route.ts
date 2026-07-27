@@ -27,7 +27,7 @@ function authed(req: Request): boolean {
   return got === expected;
 }
 
-const DAILY_GOAL = Number(process.env.SMS_OUTREACH_DAILY_GOAL || 15);
+const DAILY_GOAL = Number(process.env.SMS_OUTREACH_DAILY_GOAL || 25);
 
 export async function POST(req: Request) {
   if (!authed(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

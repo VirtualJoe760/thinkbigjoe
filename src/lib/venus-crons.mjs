@@ -114,12 +114,16 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
 
 1. PULL: call list_forge_preview_outreach (stage "none") — each preview-ready prospect with its PREVIEW URL (/s/<slug>), CLAIM CODE, reserved-days, and EVERY channel we have (email, phone, Instagram, Facebook, LinkedIn).
 
-2. FIRST-TOUCH each on the BEST channel available:
-   - Has an EMAIL → save_forge_outreach_draft(site_id, "email", subject, body): a short warm note FROM JOE — "I built you a preview of a new site for <business>: <preview link>. If you like it, create an account and enter code <code> to claim it, and we'll build & launch the real thing. It's reserved for you for a couple weeks." 3–5 sentences, reference a real detail (their reviews, a service). Joe reviews + sends.
-   - No email but a SOCIAL (Instagram/Facebook/LinkedIn) → save_forge_outreach_draft(site_id, channel, "", body): a short friendly DM with the preview link + claim invite. Joe reviews it, then YOU open their profile and send the DM, and afterward call mark_forge_outreach_sent(site_id, channel).
+2. FIRST-TOUCH each on the BEST channel available. **PERSONAL-FIRST doctrine (docs/COLD_EMAIL.md — the Kyle model + Hormozi). NO claim code in touch 1, ever. SHORT: under ~75 words total, below 3rd-grade reading level** — three beats, no filler:
+   (a) human intro — a real person from a Web & AI agency working with trades in their area;
+   (b) ONE personal observation that proves a human looked (their reviews, years in business, a specific service, where you found them — never a bare first-name merge);
+   (c) the gift + THE OFFER — **TRANSPARENT: we made a free PREVIEW of what their site could look like; if they like it we build the full site and they customize everything** (never "we built you a website" — that overclaim reads as a scam). PRICING framed exactly like this: **multiple affordable plans starting at $99/mo plus a modest fee for the site — and for a couple hundred more a month they never miss a phone call again: our AI receptionist answers their calls and books appointments. We also have AI agents that generate leads and make sales.** Never quote specific higher-tier prices. One business per trade per area (true exclusivity);
+   (d) the CTA — **propose a concrete Zoom time** ("does Wednesday at 10 or Thursday at 2 work?"), give the calendar link (https://thinkbigjoe.com/book-appointment), AND the concierge line: "or call us at (480) 764-2121 and our concierge will book you in." Sign as **Mark** with ThinkBigJoe (the team's sales persona — never Joe). Lowercase specific subject ("question about <business>"). Plain text.
+   - Has an EMAIL → save_forge_outreach_draft(site_id, "email", subject, body) with that shape. Joe reviews + sends. (The preview link may ride the send's footer for now; your BODY never pitches the code.)
+   - No email but a SOCIAL (Instagram/Facebook/LinkedIn) → save_forge_outreach_draft(site_id, channel, "", body): same shape, DM-length. Joe reviews, YOU send it, then mark_forge_outreach_sent(site_id, channel).
    - No email or social → leave it; Joe calls the phone from the contact card.
-   Genuine and non-pushy, matched to the trade. ALWAYS include the preview link + claim code. NEVER invent contact info.
-   MESSAGING RULE (important): NEVER say "free account" or imply the website/service is free — it's a paid build. The account + claim code are simply how the owner takes ownership. The PREVIEW is free to look at; the SITE is not. Don't quote prices in the first touch (that's Joe's follow-up call) — just invite them to "create an account and claim your site."
+   NEVER invent contact info. NEVER say or imply "free website/service" — the preview is free to look at; the site is a paid build. The claim code is handed over only AFTER they engage (or Joe fires it manually from the leads dashboard).
+   ON REPLIES use ACA: Acknowledge what they said → Compliment tied to it → Ask the question that moves toward a look at the site or a call.
 
 3. LOG: finish with log_activity, event_type "forge_outreach_drafted", summary like "First-touched N previews · M email drafts · K social DMs sent · P phone-only left for Joe". marketing-manager reads this for the digest — you don't message Joe directly.`,
   },

@@ -23,7 +23,7 @@ function authed(req: Request): boolean {
   return req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") === expected;
 }
 
-const DAILY_GOAL = Number(process.env.VOICEMAIL_OUTREACH_DAILY_GOAL || 15);
+const DAILY_GOAL = Number(process.env.VOICEMAIL_OUTREACH_DAILY_GOAL || 25);
 
 export async function POST(req: Request) {
   if (!authed(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

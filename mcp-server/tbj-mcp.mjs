@@ -583,11 +583,11 @@ async function toolListForgePreviewOutreach({ status } = {}) {
   const stage = status || "none";
   // GOAL-AWARE PACING: the outreach engine sets a daily first-touch GOAL so token spend is flat.
   // Only hand back up to (daily_goal - drafted today) so the agent never over-drafts in a run.
-  const cfg = (await query(`SELECT daily_goal, enabled FROM outreach_engine WHERE id = 1`)).rows[0] || { daily_goal: 15, enabled: true };
+  const cfg = (await query(`SELECT daily_goal, enabled FROM outreach_engine WHERE id = 1`)).rows[0] || { daily_goal: 25, enabled: true };
   if (!cfg.enabled) {
     return { content: [{ type: "text", text: "Outreach is paused (outreach_engine.enabled=false). Nothing to draft." }] };
   }
-  const goal = Number(cfg.daily_goal) || 15;
+  const goal = Number(cfg.daily_goal) || 25;
   const dayStart = new Date();
   dayStart.setUTCHours(0, 0, 0, 0);
   const draftedToday = Number(
@@ -879,7 +879,7 @@ async function toolListForgeFollowupDue() {
 
 // ── SMS cadence (autonomous — the outreach agent's own channel) ─────────────────────────────────
 // Number-warming cap: at most this many SMS follow-ups a day, on TOP of the ~15/day first-touches.
-const SMS_FOLLOWUP_DAILY_CAP = 15;
+const SMS_FOLLOWUP_DAILY_CAP = 25;
 
 async function toolListSmsFollowupDue() {
   // Who's due for their next SMS touch on the ~2×/week cadence. HARD FILTERS (the safeguards the
@@ -1917,7 +1917,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.30.0" },
+  { name: "tbj-mcp", version: "2.31.0" },
   { capabilities: { tools: {} } },
 );
 
