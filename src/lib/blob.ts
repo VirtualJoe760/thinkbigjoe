@@ -34,6 +34,21 @@ export async function uploadImage(
   return { url };
 }
 
+/** Store raw audio bytes (e.g. a phone call recording uploaded from the dialer phone). */
+export async function uploadAudio(
+  bytes: Buffer,
+  opts: { pathPrefix: string; contentType: string },
+): Promise<{ url: string }> {
+  if (!isBlobConfigured) throw new Error("Blob storage is not configured (BLOB_READ_WRITE_TOKEN).");
+  const ext = opts.contentType.includes("mp3") || opts.contentType.includes("mpeg") ? "mp3"
+    : opts.contentType.includes("amr") ? "amr"
+    : opts.contentType.includes("ogg") ? "ogg"
+    : opts.contentType.includes("wav") ? "wav" : "m4a";
+  const key = `${opts.pathPrefix.replace(/^\/+|\/+$/g, "")}/${crypto.randomUUID().slice(0, 12)}.${ext}`;
+  const { url } = await put(key, bytes, { access: "public", contentType: opts.contentType, addRandomSuffix: false });
+  return { url };
+}
+
 /**
  * Re-host a call recording so it outlives Retell's ~10-minute link expiry. Fetches the (still-live)
  * recording URL and stores the audio permanently; returns the public URL, or null on any failure —

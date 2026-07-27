@@ -87,7 +87,7 @@ export default async function LeadsPage() {
            event_type AS et,
            count(*)::int AS n, max(created_at) AS last_at
     FROM activity_log
-    WHERE event_type IN ('lead_contact_attempt','forge_outreach_sent','sms_outreach_sent','sms_inbound')
+    WHERE event_type IN ('lead_contact_attempt','forge_outreach_sent','sms_outreach_sent','sms_inbound','dial_call')
       AND metadata->'detail'->>'siteId' IS NOT NULL
     GROUP BY site, ch, event_type`);
   const attemptRows = (Array.isArray(attemptRes) ? attemptRes : (attemptRes as { rows?: unknown }).rows ?? []) as Record<string, unknown>[];

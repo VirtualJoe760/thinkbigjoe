@@ -169,6 +169,8 @@ export async function getPendingReplies(): Promise<PendingReply[]> {
 export type LeadHistoryEvent = {
   at: string;
   kind: "email-sent" | "call" | "text" | "email" | "bounce" | "reply" | "note" | "code" | "voicemail";
+  /** Blob-hosted call recording (dialer uploads) — the timeline renders an <audio> for it. */
+  recordingUrl?: string;
   label: string;
   subject?: string;
   body?: string;
@@ -196,9 +198,11 @@ export async function getLeadHistories(leads: HistLead[]): Promise<Record<string
            (metadata->'detail'->>'note') AS note,
            (metadata->'detail'->>'code') AS code,
            (metadata->'detail'->>'sent') AS sent,
+           (metadata->'detail'->>'recordingUrl') AS recording_url,
+           (metadata->'detail'->>'disposition') AS disposition,
            event_type, created_at
     FROM activity_log
-    WHERE event_type IN ('forge_outreach_sent','lead_contact_attempt','email_bounced','email_reply','email_reply_sent','lead_note','callback_code_sent','sms_outreach_sent','sms_inbound','sms_outbound','voicemail_dropped','voicemail_delivered','voicemail_failed')
+    WHERE event_type IN ('forge_outreach_sent','lead_contact_attempt','email_bounced','email_reply','email_reply_sent','lead_note','callback_code_sent','sms_outreach_sent','sms_inbound','sms_outbound','voicemail_dropped','voicemail_delivered','voicemail_failed','dial_call','dial_recording')
       AND (metadata->'detail'->>'siteId') IS NOT NULL
     ORDER BY created_at ASC`);
   const rows = (Array.isArray(res) ? res : (res as { rows?: unknown }).rows ?? []) as Record<string, unknown>[];
@@ -234,6 +238,15 @@ export async function getLeadHistories(leads: HistLead[]): Promise<Record<string
       ev = { at, kind: "voicemail", label: "Voicemail delivered" };
     } else if (r.event_type === "voicemail_failed") {
       ev = { at, kind: "voicemail", label: "Voicemail failed", failed: true };
+    } else if (r.event_type === "dial_call") {
+      const d = String(r.disposition || "").replace(/_/g, " ");
+      ev = { at, kind: "call", label: `Called${d ? ` — ${d}` : ""}`, body: r.note ? String(r.note) : undefined };
+    } else if (r.event_type === "dial_recording") {
+      ev = {
+        at, kind: "call", label: "Call recording + AI notes",
+        body: r.note ? String(r.note) : undefined,
+        recordingUrl: r.recording_url ? String(r.recording_url) : undefined,
+      };
     } else if (r.event_type === "callback_code_sent") {
       const delivered = String(r.sent) === "true";
       ev = {

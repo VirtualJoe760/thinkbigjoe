@@ -230,7 +230,11 @@ function Timeline({ history }: { history: LeadHistoryEvent[] }) {
                 )}
               </>
             ) : (
-              e.kind === "call" && <p className="mt-0.5 text-xs text-ink-soft">Phone call — no transcript.</p>
+              e.kind === "call" && !e.recordingUrl && <p className="mt-0.5 text-xs text-ink-soft">Phone call — no transcript.</p>
+            )}
+            {e.recordingUrl && (
+              // eslint-disable-next-line jsx-a11y/media-has-caption
+              <audio controls preload="none" src={e.recordingUrl} className="mt-2 h-8 w-full max-w-xs" />
             )}
           </li>
         );
