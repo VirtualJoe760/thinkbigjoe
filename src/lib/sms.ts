@@ -23,6 +23,28 @@ const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
 export const isSmsConfigured = Boolean(accountSid && authToken && messagingServiceSid);
 
 /** Where inbound texts are forwarded (Joe's Google Voice), in E.164. */
+/**
+ * Joe's ALERT line — the number that gets pinged the moment something needs a human: a lead
+ * replies to an email, or an appointment gets booked. Separate from SMS_FORWARD_TO (the two-way
+ * relay for lead texts) so alerts land on his phone even if the relay number changes.
+ */
+export function alertSmsTo(): string | undefined {
+  const raw = process.env.ALERT_SMS_TO || "+17603333676";
+  return normalizePhone(raw) || undefined;
+}
+
+/** Fire-and-forget alert text to Joe. Never throws — an alert must not break the caller. */
+export async function alertJoe(text: string): Promise<void> {
+  const to = alertSmsTo();
+  if (!to) return;
+  try {
+    const res = await sendSms(to, text.slice(0, 600));
+    if ("ok" in res && !res.ok) console.error("[alertJoe] send failed:", res.error);
+  } catch (err) {
+    console.error("[alertJoe] threw:", err);
+  }
+}
+
 export function smsForwardTo(): string | undefined {
   return normalizePhone(process.env.SMS_FORWARD_TO);
 }

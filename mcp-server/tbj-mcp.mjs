@@ -1015,6 +1015,37 @@ async function toolListSmsRepliesPending() {
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
+async function toolListEmailRepliesPending() {
+  // Prospects who REPLIED to an outreach email and are still waiting on us. The inbox poller
+  // (scripts/inbox-poll.mjs) writes these to forge_replies with a pre-draft; the agent's job is to
+  // write the real reply. Email stays Joe-approved, so the agent SAVES a draft, never sends.
+  const res = await query(
+    `SELECT r.id, r.site_id, r.from_email, r.subject, r.inbound_text, r.draft, r.created_at,
+            f.business_name, f.niche, f.city, f.owner_name, f.google_rating, f.review_count,
+            f.claim_code, f.slug, f.live_url, f.contact_notes
+     FROM forge_replies r JOIN forge_sites f ON f.id = r.site_id
+     WHERE r.status = 'awaiting'
+       AND f.ai_paused = false AND f.lead_stage IS DISTINCT FROM 'declined'
+     ORDER BY r.created_at ASC LIMIT 10`,
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: "No email replies are waiting — inbox is clear." }] };
+  }
+  const lines = [`📧 **${res.rows.length} email repl${res.rows.length === 1 ? "y" : "ies"} waiting on a response:**`, ""];
+  for (const r of res.rows) {
+    lines.push(`**#${r.site_id} ${r.business_name}**${r.owner_name ? ` · ${r.owner_name}` : ""} · ${r.niche || "—"} · ${r.city || "—"}${r.google_rating ? ` · ${r.google_rating}★${r.review_count ? ` (${r.review_count})` : ""}` : ""}`);
+    lines.push(`   from: ${r.from_email}${r.subject ? ` · re: "${r.subject}"` : ""}`);
+    lines.push(`   THEY WROTE: ${String(r.inbound_text || "").slice(0, 800)}`);
+    lines.push(`   preview: ${APP_SITE_URL}/s/${r.slug} · code: ${r.claim_code || "—"}`);
+    if (r.contact_notes) lines.push(`   notes: ${String(r.contact_notes).slice(0, 200)}`);
+    lines.push("");
+  }
+  lines.push(
+    `Answer each with ACA (acknowledge what they said → compliment tied to it → ask the question that moves toward a call). Short, plain, signed Joe — no branded fluff, no claim code unless they asked. Save with save_forge_outreach_draft(site_id, "email", subject, body); Joe reviews + sends from /command/leads.`,
+  );
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
 async function toolListForgeRescheduleDue() {
   // Near-won clients Joe flagged 'reschedule' — they got deep into the funnel but bailed on the
   // setup/payment call and need to rebook. Highest-priority warm leads. AI-paused rows excluded.
@@ -1922,7 +1953,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.32.0" },
+  { name: "tbj-mcp", version: "2.33.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -2439,6 +2470,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "list_email_replies_pending",
+      description: "Prospects who REPLIED to an outreach email and are waiting on a response, with their full message + the lead's facts. Answer with ACA and save a draft (save_forge_outreach_draft) — email stays Joe-approved, never auto-sent.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
       name: "list_sms_followup_due",
       description: "Leads due for their next SMS cadence touch (~2×/week until they reply, claim, or book; 6-month cap; 15/day number-warming cap). Pre-filtered for every human safeguard — ai_paused, opted-out, declined, claimed are already excluded, so everything returned is cleared to text. Write each touch with a fresh angle and send via send_sms(..., purpose:'followup').",
       inputSchema: { type: "object", properties: {} },
@@ -2567,6 +2603,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "save_design_report": return toolSaveDesignReport(args);
     case "list_design_reports": return toolListDesignReports(args);
     case "send_sms": return toolSendSms(args);
+    case "list_email_replies_pending": return toolListEmailRepliesPending();
     case "list_sms_followup_due": return toolListSmsFollowupDue();
     case "list_sms_replies_pending": return toolListSmsRepliesPending();
     case "list_flagged_calls": return toolListFlaggedCalls(args);

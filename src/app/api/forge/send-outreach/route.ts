@@ -53,20 +53,26 @@ export async function POST(req: Request) {
   }
   const dailyGoal = cfg?.dailyGoal ?? 15;
 
-  // Eligible: built, marketing-approved, has email + claim code, not already contacted, not claimed.
+  // Eligible: PREVIEW-ready OR built (2026-07-27 — the doctrine sends a preview link, so requiring
+  // a fully BUILT site kept 96% of the emailable list out of the funnel), marketing-approved, has a
+  // real email + claim code, not already contacted, not claimed.
+  //
+  // GUESSED ADDRESSES ARE EXCLUDED. Sending to invented role addresses (info@/hello@/admin@…)
+  // produced a ~50% bounce rate through July and is the fastest way to burn the sending domain
+  // (docs/DELIVERABILITY.md). Those leads need a real address from enrichment before they qualify.
   const eligible = await db
     .select({
       id: forgeSites.id, businessName: forgeSites.businessName, email: forgeSites.email,
-      claimCode: forgeSites.claimCode, liveUrl: forgeSites.liveUrl, city: forgeSites.city,
+      claimCode: forgeSites.claimCode, liveUrl: forgeSites.liveUrl, slug: forgeSites.slug, city: forgeSites.city,
       ownerName: forgeSites.ownerName, googleRating: forgeSites.googleRating, reviewCount: forgeSites.reviewCount,
     })
     .from(forgeSites)
     .where(and(
-      eq(forgeSites.status, "built"),
+      sql`(status = 'built' OR (preview IS NOT NULL AND status = 'discovered'))`,
       isNotNull(forgeSites.marketingApprovedAt),
       isNotNull(forgeSites.email),
       isNotNull(forgeSites.claimCode),
-      isNotNull(forgeSites.liveUrl),
+      sql`email !~* '^(info|hello|contact|admin|office|sales|support|team|help|service|inquiries)@'`,
       sql`(outreach_status IS NULL OR outreach_status = 'none' OR outreach_status = '')`,
       sql`claimed_by_user_id IS NULL`,
     ))

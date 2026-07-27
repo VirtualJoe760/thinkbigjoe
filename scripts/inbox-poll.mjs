@@ -26,6 +26,21 @@ const readEnv = (k) => {
 const USER = readEnv("SMTP_USER"), PASS = readEnv("SMTP_PASS");
 const DB = readEnv("DATABASE_URL_UNPOOLED") || readEnv("DATABASE_URL");
 const GKEY = readEnv("GEMINI_API_KEY");
+
+// Alert Joe's phone the moment a lead replies — the whole point of email outreach is the reply,
+// and it must not wait for him to check a dashboard. Best-effort; never breaks the poll.
+const ALERT_TO = readEnv("ALERT_SMS_TO") || "+17603333676";
+async function alertJoe(text) {
+  const sid = readEnv("TWILIO_ACCOUNT_SID"), tok = readEnv("TWILIO_AUTH_TOKEN"), mg = readEnv("TWILIO_MESSAGING_SERVICE_SID");
+  if (!sid || !tok || !mg) return;
+  try {
+    await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: "POST",
+      headers: { Authorization: "Basic " + Buffer.from(`${sid}:${tok}`).toString("base64"), "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ MessagingServiceSid: mg, To: ALERT_TO, Body: String(text).slice(0, 600) }).toString(),
+    });
+  } catch (err) { log(`alert failed: ${err?.message || err}`); }
+}
 const TG_TOKEN = readEnv("TELEGRAM_BOT_TOKEN"), TG_CHAT = readEnv("TELEGRAM_CHAT_ID");
 // Where to forward a copy of REAL prospect replies (never bounces) so Joe sees them in his inbox.
 const REPLY_FORWARD_TO = readEnv("REPLY_FORWARD_TO") || "josephsardella@gmail.com";
@@ -138,6 +153,7 @@ try {
         if (lead) {
           const cleanBody = (parsed.text || "").replace(/\s+/g, " ").trim();
           await logAct("email_reply", `Reply from ${lead.business_name} <${from}>`, { siteId: lead.id, from, subject: subject.slice(0, 140), snippet: cleanBody.slice(0, 300) });
+          await alertJoe(`📧 EMAIL REPLY — ${lead.business_name}\n${from}\n"${cleanBody.slice(0, 220)}"\n\nReply from /command/leads`);
           // Prepare a draft response (draft → Joe approves → send). One row per inbound msg (UID watermark dedupes).
           const draft = await geminiDraft(lead, parsed.text || subject);
           const ins = await db.query(

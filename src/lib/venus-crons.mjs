@@ -174,6 +174,30 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
   },
 
   {
+    name: "TBJ Email Inbox",
+    id: "a1d6b6cd-27d5-4a54-a74f-a5dab3d69293",
+    agent: "outreach",
+    // Every 2h across the working day — email replies are the whole point of the channel.
+    schedule: "15 15,17,19,21,23,1 * * *",
+    stagger: "3m",
+    summary: "Headless inbox watch: answer prospects who replied to an outreach email (draft → Joe sends). Joe also gets an instant SMS the moment a reply lands (inbox-poll).",
+    tools: ["list_email_replies_pending", "save_forge_outreach_draft", "book_appointment", "log_activity"],
+    uiSurface: ["/command/leads (Replies to respond to)"],
+    eventTypes: ["forge_outreach_drafted"],
+    prompt: `This is your INBOX run — the reply channel is where the money is, so treat every reply as the warmest lead you have.
+
+1. PULL: call list_email_replies_pending — prospects who wrote back and are waiting on us, with their full message and the lead's facts.
+
+2. ANSWER each with **ACA**: Acknowledge what they actually said → Compliment tied to it → Ask the one question that moves toward a call. SHORT (under ~80 words), plain, signed **Joe** — no branded fluff, no claim code unless they asked for it, never re-send something already in the thread. If they asked about price, use the approved frame (plans start at $99/mo + a modest site fee; a couple hundred more and our AI receptionist answers every call and books jobs) and steer to a Zoom — calendar https://thinkbigjoe.com/book-appointment, or Ivy at (480) 764-2121.
+
+3. SAVE with save_forge_outreach_draft(site_id, "email", subject, body). Email is JOE-APPROVED — you draft, he sends from /command/leads. Never send yourself.
+
+4. If someone explicitly wants a time, you may call book_appointment directly.
+
+5. LOG: log_activity, event_type "forge_outreach_drafted", summary like "Inbox: drafted N replies".`,
+  },
+
+  {
     name: "TBJ Forge Reschedule Nudge",
     id: "cf0edd0c-9419-424f-a816-e04476ac0226",
     agent: "outreach",

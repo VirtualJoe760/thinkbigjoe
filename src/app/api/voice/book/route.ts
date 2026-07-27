@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 
 import { db, leads, activityLog } from "@/db";
 import { notifyTelegram } from "@/lib/telegram";
+import { alertJoe } from "@/lib/sms";
 import { sendBookingConfirmationEmail } from "@/lib/email";
 import {
   BOOKING_TIMEZONE,
@@ -130,6 +131,7 @@ export async function POST(req: Request) {
     sendBookingConfirmationEmail({ to: email, name, whenLabel: label, meetLink, isAgentic }).catch((err) =>
       console.error("[voice/book] confirmation email failed:", err),
     );
+    alertJoe(`📅 APPOINTMENT BOOKED — ${name}${email ? ` (${email})` : ""}\n${label}${meetLink ? `\n${meetLink}` : ""}`).catch(() => {});
     notifyTelegram(
       `📞 <b>New ${isAgentic ? "AGENTIC " : ""}strategy call booked</b> (via phone assistant)\n${name}${phone ? ` · ${phone}` : ""}\n${label}${reason ? `\nReason: ${reason}` : ""}`,
     ).catch(() => {});
