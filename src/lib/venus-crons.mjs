@@ -86,6 +86,8 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
 3. SAVE: enrich_forge_contact(site_id, owner_name, email, phone, instagram_url, facebook_url, linkedin_url, notes) — only fields you found; it gap-fills. For a bounced lead, saving a new email or social automatically clears the bounce and re-arms it for outreach.
 
 === B) CALL-PREP (what Joe says on the phone) ===
+3b. BAD NUMBERS ARE TOP PRIORITY: list_forge_needs_contact now surfaces leads Joe marked **bad number** on the dialer (phone_bad_at set, phone cleared, the old number in phone_bad_note). For those, the job is ONE thing — find a WORKING phone (Google Maps listing, their site's contact page, Facebook about, Yelp). Save it with enrich_forge_contact(site_id, phone: "...") and the lead automatically returns to Joe's dial queue. If you truly can't find another number, save what other channel you found (email/social) and note it.
+
 4. PULL: call list_forge_needs_callprep — leads with no talking points yet (most-reviewed first).
 5. For each, open in Chrome and gather:
    - **Google Maps listing** → the exact star rating + review count, and copy **2–3 real review quotes** (reviewer name + the text — pick positive, specific ones).
@@ -156,7 +158,7 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
     // 3 runs inside the working window: 10am / 1pm / 4pm PT (schedules are UTC).
     schedule: "0 17,20,23 * * *",
     stagger: "5m",
-    summary: "Autonomous SMS: answer waiting lead replies with the sales doctrine, then send due cadence follow-ups (≤15/day, number-warming).",
+    summary: "Autonomous SMS: answer waiting lead replies with the sales doctrine. REPLIES ONLY — outbound texting is paused (2026-07-27, Joe: email + his calls are the outbound channels).",
     tools: ["check_outreach_window", "list_sms_replies_pending", "list_sms_followup_due", "send_sms", "book_appointment", "log_activity"],
     uiSurface: ["/command/messages (every text lands on the thread)", "/command/leads (timeline)"],
     eventTypes: ["sms_outbound", "sms_outreach_sent"],
@@ -166,7 +168,7 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
 
 2. REPLIES FIRST: call list_sms_replies_pending. Answer every waiting thread in your SMS voice — respond to what THEY actually said, work the objection with a fresh angle, never re-send a link/code already in the thread, and push toward the 30-min call (book_appointment once they pick a time; collect name + email). Send each with send_sms(to, body, site_id, purpose:"reply").
 
-3. THEN FOLLOW-UPS: call list_sms_followup_due (it enforces the 15/day warming cap and every safeguard — whatever it returns is cleared to text). For each, ONE short casual text with a genuinely NEW angle for that touch number (touch 2 ≠ touch 1's pitch: try a question about how they get work, a specific thing the site fixes for their trade, a "did the link even load for you?" check-in, a review compliment → gap). Send with send_sms(to, body, site_id, purpose:"followup").
+3. NO OUTBOUND FOLLOW-UPS — outbound texting is PAUSED (Joe's call, 2026-07-27: outbound = email + Joe dialing). Do NOT call list_sms_followup_due; never initiate a text to someone who hasn't written in. Replying to inbound messages is your whole job on this run.
 
 4. LOG: log_activity, event_type "sms_outbound", summary like "SMS run: R replies answered · F follow-ups sent (cap X/15)". marketing-manager reads this for the digest.`,
   },

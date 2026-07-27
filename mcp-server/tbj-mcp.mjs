@@ -707,11 +707,13 @@ async function toolListForgeNeedsContact() {
   // reachable channel for. Built ones first (they're ready for outreach/calls).
   const res = await query(
     `SELECT id, business_name, niche, city, service_area, phone, email, owner_name,
-            existing_website_url, live_url, google_maps_url, linkedin_url, instagram_url, facebook_url, status, outreach_status
+            existing_website_url, live_url, google_maps_url, linkedin_url, instagram_url, facebook_url, status, outreach_status,
+            phone_bad_at, phone_bad_note
      FROM forge_sites
      WHERE status IN ('built','approved','discovered')
-       AND (email IS NULL OR email = '' OR owner_name IS NULL OR owner_name = '' OR outreach_status = 'bounced')
-     ORDER BY (outreach_status = 'bounced') DESC, (status = 'built') DESC, created_at DESC
+       AND (email IS NULL OR email = '' OR owner_name IS NULL OR owner_name = ''
+            OR outreach_status = 'bounced' OR phone_bad_at IS NOT NULL)
+     ORDER BY (phone_bad_at IS NOT NULL) DESC, (outreach_status = 'bounced') DESC, (status = 'built') DESC, created_at DESC
      LIMIT 40`,
   );
   if (!res.rows.length) {
@@ -771,6 +773,9 @@ async function toolEnrichForgeContact({ site_id, owner_name, email, phone, insta
   const gotChannel = [email, instagram_url, facebook_url, linkedin_url].some((v) => v && String(v).trim());
   const recovered = site.outreach_status === "bounced" && gotChannel;
   if (recovered) set.push(`outreach_status = 'none'`);
+  // A NEW phone clears the bad-number flag — the lead flows straight back into the dialer queue.
+  const gotPhone = phone && String(phone).trim();
+  if (gotPhone) set.push(`phone_bad_at = NULL`);
   set.push(`contact_enriched_at = now()`, `updated_at = now()`);
   await query(`UPDATE forge_sites SET ${set.join(", ")} WHERE id = $1`, vals);
 
@@ -1917,7 +1922,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.31.0" },
+  { name: "tbj-mcp", version: "2.32.0" },
   { capabilities: { tools: {} } },
 );
 

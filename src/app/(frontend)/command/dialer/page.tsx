@@ -28,6 +28,7 @@ export default async function DialerPage() {
            (callback_at IS NOT NULL AND callback_at <= now() + interval '2 hours') AS callback_due
     FROM forge_sites
     WHERE status <> 'deleted' AND phone IS NOT NULL AND claimed_by_user_id IS NULL
+      AND phone_bad_at IS NULL
       AND ai_paused = false
       AND outreach_status IS DISTINCT FROM 'opted_out'
       AND lead_stage IS DISTINCT FROM 'declined'

@@ -29,6 +29,7 @@ const DISPOSITIONS: Array<{ key: DialDisposition; label: string; tone: "muted" |
   { key: "interested", label: "Interested", tone: "hot" },
   { key: "booked", label: "Booked 🎉", tone: "hot" },
   { key: "not_interested", label: "Not interested", tone: "cold" },
+  { key: "bad_number", label: "☎️ Bad number", tone: "muted" },
 ];
 
 /**

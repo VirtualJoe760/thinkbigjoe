@@ -5,7 +5,7 @@ import { sql } from "drizzle-orm";
 import { db, activityLog } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
 
-export type DialDisposition = "no_answer" | "voicemail" | "callback" | "interested" | "booked" | "not_interested";
+export type DialDisposition = "no_answer" | "voicemail" | "callback" | "interested" | "booked" | "not_interested" | "bad_number";
 
 const LABELS: Record<DialDisposition, string> = {
   no_answer: "No answer",
@@ -14,6 +14,7 @@ const LABELS: Record<DialDisposition, string> = {
   interested: "Interested",
   booked: "Booked",
   not_interested: "Not interested",
+  bad_number: "Bad number — sent for enrichment",
 };
 
 /**
@@ -52,6 +53,20 @@ export async function logDialOutcome(input: {
       UPDATE forge_sites SET lead_stage = 'declined', outreach_status = 'opted_out',
              declined_at = COALESCE(declined_at, now()), denied_reason = 'Not interested (phone)',
              updated_at = now()
+      WHERE id = ${siteId}`);
+  } else if (disposition === "bad_number") {
+    // Flag the number bad + clear it so contact enrichment treats this lead as needing a channel.
+    // The dialer queue skips flagged leads; saving a NEW phone (enrich_forge_contact) clears the
+    // flag automatically, so the lead flows back into the queue with no manual step.
+    await db.execute(sql`
+      UPDATE forge_sites
+      SET phone_bad_at = now(),
+          phone_bad_note = ${note || "Wrong/disconnected number (dialer)"} || ' (was ' || COALESCE(phone, '?') || ')',
+          -- Clear the dead number so enrichment's fill-if-empty actually writes the new one.
+          phone = NULL,
+          contact_notes = COALESCE(contact_notes || E'\n', '') ||
+            ${`[dialer ${new Date().toISOString().slice(0, 10)}] BAD NUMBER${note ? `: ${note}` : ""} — needs a new phone`},
+          updated_at = now()
       WHERE id = ${siteId}`);
   } else if (disposition === "interested" || disposition === "booked") {
     await db.execute(sql`
