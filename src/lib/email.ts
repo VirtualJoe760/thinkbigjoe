@@ -242,12 +242,12 @@ export async function sendForgeOutreachEmail(args: {
     to: args.to,
     subject: args.subject,
     // From the real, monitored mailbox with the persona's display name — never no-reply.
-    from: `Mark at ThinkBigJoe <${mailbox}>`,
+    from: `Joe at ThinkBigJoe <${mailbox}>`,
     // Replies land in the MONITORED mailbox so the inbox poller catches them.
     replyTo: mailbox,
     html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;color:#111;">
       ${paragraphs}
-      <p style="margin:18px 0 0;">— Mark<br/>ThinkBigJoe · <a href="${SITE_URL}" style="color:#111;">thinkbigjoe.com</a></p>
+      <p style="margin:18px 0 0;">— Joe<br/>ThinkBigJoe · <a href="${SITE_URL}" style="color:#111;">thinkbigjoe.com</a></p>
     </div>`,
   });
 }

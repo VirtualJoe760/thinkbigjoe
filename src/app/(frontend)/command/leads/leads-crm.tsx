@@ -35,7 +35,7 @@ const STAGE: Record<LeadStage, { label: string; dot: string; chip: string; blurb
   hot: { label: "Hot", dot: "bg-orange-500", chip: "bg-orange-50 text-orange-700", blurb: "Strong interest — prioritize + close" },
   reschedule: { label: "Reschedule", dot: "bg-indigo-500", chip: "bg-indigo-50 text-indigo-700", blurb: "Almost closed — needs to rebook setup + payment (AI on)" },
   replied: { label: "Replied", dot: "bg-amber-500", chip: "bg-amber-50 text-amber-700", blurb: "They wrote back — follow up" },
-  opted_out: { label: "Declined", dot: "bg-rose-600", chip: "bg-rose-50 text-rose-700", blurb: "Texted STOP — call to confirm, then remove" },
+  opted_out: { label: "🗄 Archive", dot: "bg-rose-600", chip: "bg-rose-50 text-rose-700", blurb: "Declined / opted out — archived, kept for the record" },
   bounced: { label: "Bad contact", dot: "bg-red-500", chip: "bg-red-50 text-red-700", blurb: "Email bounced — hunting a new channel" },
   claimed: { label: "User", dot: "bg-violet-500", chip: "bg-violet-50 text-violet-700", blurb: "Signed up + claimed — not paid yet" },
   customer: { label: "Customer", dot: "bg-brand", chip: "bg-brand-tint text-brand", blurb: "Paying customer" },
@@ -1145,7 +1145,11 @@ export function LeadsCRM({
     const needle = q.trim().toLowerCase();
     const digits = needle.replace(/\D/g, "");
     return leads.filter((l) => {
-      if (filter !== "all" && metaOf(l.id).stage !== filter) return false;
+      const st = metaOf(l.id).stage;
+      // Declined/opted-out leads are ARCHIVED — out of every default view, visible only on the
+      // Archive tab. History stays intact; nothing is deleted.
+      if (filter === "all" && st === "opted_out") return false;
+      if (filter !== "all" && st !== filter) return false;
       if (!needle) return true;
       const textMatch = [l.businessName, l.ownerName, l.city, l.niche, l.email].filter(Boolean).some((v) => String(v).toLowerCase().includes(needle));
       const phoneMatch = digits.length >= 3 && String(l.phone || "").replace(/\D/g, "").includes(digits);

@@ -23,7 +23,7 @@ export default async function DialerPage() {
 
   const res = await db.execute(sql`
     SELECT id, slug, business_name, niche, city, service_area, owner_name, phone, claim_code,
-           google_rating, review_count, contact_notes, call_prep, live_url,
+           google_rating, review_count, contact_notes, call_prep, live_url, existing_website_url,
            callback_at, callback_note,
            (callback_at IS NOT NULL AND callback_at <= now() + interval '2 hours') AS callback_due
     FROM forge_sites
@@ -51,6 +51,7 @@ export default async function DialerPage() {
     notes: r.contact_notes ? String(r.contact_notes) : null,
     callPrep: r.call_prep ? String(r.call_prep) : null,
     previewUrl: prospectSiteUrl({ liveUrl: r.live_url as string | null, slug: r.slug as string | null }),
+    existingSite: r.existing_website_url ? String(r.existing_website_url) : null,
     claimCode: r.claim_code ? String(r.claim_code) : null,
     callbackDue: r.callback_due === true,
     callbackNote: r.callback_note ? String(r.callback_note) : null,

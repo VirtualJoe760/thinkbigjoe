@@ -76,20 +76,24 @@ export function MessagesClient({ conversations }: { conversations: Conversation[
     router.replace(id ? `${pathname}?site=${id}` : pathname, { scroll: false });
   };
   const [q, setQ] = useState("");
+  // Opted-out/declined threads are ARCHIVED — hidden from the inbox, kept for the record.
+  const [showArchive, setShowArchive] = useState(false);
+  const archivedCount = conversations.filter((c) => c.status === "opted_out").length;
 
   const filtered = useMemo(() => {
+    const pool = conversations.filter((c) => (showArchive ? c.status === "opted_out" : c.status !== "opted_out"));
     const needle = q.trim().toLowerCase();
     const digits = needle.replace(/\D/g, "");
-    if (!needle) return conversations;
-    return conversations.filter((c) => {
+    if (!needle) return pool;
+    return pool.filter((c) => {
       const text = [c.businessName, c.city, c.niche, c.lastText].filter(Boolean).some((v) => v.toLowerCase().includes(needle));
       const phone = digits.length >= 3 && c.phone.replace(/\D/g, "").includes(digits);
       return text || phone;
     });
-  }, [conversations, q]);
+  }, [conversations, q, showArchive]);
 
   const open = conversations.find((c) => c.siteId === openId) || null;
-  const needsReplyCount = conversations.filter((c) => c.needsReply).length;
+  const needsReplyCount = conversations.filter((c) => c.needsReply && c.status !== "opted_out").length;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -117,9 +121,19 @@ export function MessagesClient({ conversations }: { conversations: Conversation[
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search contacts…"
+              placeholder={showArchive ? "Search archive…" : "Search contacts…"}
               className="w-full rounded-full border border-line bg-surface px-4 py-2.5 text-base text-ink outline-none placeholder:text-ink-soft focus:border-brand sm:text-sm"
             />
+            {archivedCount > 0 && (
+              <button
+                onClick={() => setShowArchive((v) => !v)}
+                className={`mt-2 w-full rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  showArchive ? "border-brand bg-brand-tint text-brand" : "border-line text-ink-soft hover:text-ink"
+                }`}
+              >
+                {showArchive ? "← Back to inbox" : `🗄 Archive (${archivedCount})`}
+              </button>
+            )}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {filtered.length === 0 ? (

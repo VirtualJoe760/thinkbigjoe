@@ -16,7 +16,7 @@ export function prospectSiteUrl(p: { liveUrl?: string | null; slug?: string | nu
 }
 
 /**
- * The owner-outreach email — PLAIN + SHORT (docs/COLD_EMAIL.md): preview framing, Mark persona,
+ * The owner-outreach email — PLAIN + SHORT (docs/COLD_EMAIL.md): preview framing, signed Joe,
  * inline link, no claim code. Shared by the 10am sender (/api/forge/send-outreach) and the
  * dashboard review (/command/outreach) so what you preview is exactly what goes out.
  * sendForgeOutreachEmail adds only a 2-line signature — no branded wrapper.
@@ -38,7 +38,7 @@ export function composeOutreach(s: {
   // The preview link rides INLINE — the email is plain now (no branded wrapper, no buttons).
   const link = prospectSiteUrl(s);
   const body = [
-    `Hi${first ? ` ${first}` : ""} — Mark with ThinkBigJoe, a Web & AI agency. I noticed${repBit}, so we made ${s.businessName} a free website preview: ${link} — if you like it, we build the full site and you customize everything. Plans start at $99/mo — and for a bit more, our AI receptionist answers every call and books your jobs.`,
+    `Hi${first ? ` ${first}` : ""} — Joe with ThinkBigJoe, a Web & AI agency. I noticed${repBit}, so we made ${s.businessName} a free website preview: ${link} — if you like it, we build the full site and you customize everything. Plans start at $99/mo — and for a bit more, our AI receptionist answers every call and books your jobs.`,
     `Worth a quick Zoom this week? Grab a time: ${SITE_ORIGIN}/book-appointment — or call (480) 764-2121 and our concierge will book you in.`,
   ].join("\n\n");
   return { subject: `a website preview for ${s.businessName}`, body };
@@ -70,8 +70,8 @@ export function composeSmsOutreach(p: {
   // Honest pipeline: preview → their OK → we build the full site → they customize.
   const opener =
     rating && reviews >= 5
-      ? `Hi, this is Mark with ThinkBigJoe, a Web & AI agency. Saw ${p.businessName}'s great reviews but no website, so we made a free preview of what one could look like:`
-      : `Hi, this is Mark with ThinkBigJoe, a Web & AI agency. Came across ${p.businessName} and noticed you don't have a website, so we made a free preview of what one could look like:`;
+      ? `Hi, this is Joe with ThinkBigJoe, a Web & AI agency. Saw ${p.businessName}'s great reviews but no website, so we made a free preview of what one could look like:`
+      : `Hi, this is Joe with ThinkBigJoe, a Web & AI agency. Came across ${p.businessName} and noticed you don't have a website, so we made a free preview of what one could look like:`;
   return `${opener} ${site} — if you like it, we build the full site and you can customize everything. Worth a look? (Not interested? Just reply 'No thanks' and I'll stop.)`;
 }
 
@@ -82,7 +82,7 @@ export function composeSmsOutreach(p: {
  */
 export function composeVoicemailFollowupSms(p: { liveUrl: string | null; slug: string | null }): string {
   const site = prospectSiteUrl(p);
-  return `Hey, did you get my voicemail? This is Mark with ThinkBigJoe. We made a free preview of what a website for your business could look like: ${site} — if you like it, we build the full site and you customize it however you want. Worth a look? (Not interested? Just reply 'No thanks' and I'll stop.)`;
+  return `Hey, did you get my voicemail? This is Joe with ThinkBigJoe. We made a free preview of what a website for your business could look like: ${site} — if you like it, we build the full site and you customize it however you want. Worth a look? (Not interested? Just reply 'No thanks' and I'll stop.)`;
 }
 
 /**
@@ -91,7 +91,7 @@ export function composeVoicemailFollowupSms(p: { liveUrl: string | null; slug: s
  */
 export function composeVoicemailFallbackSms(p: { liveUrl: string | null; slug: string | null }): string {
   const site = prospectSiteUrl(p);
-  return `Hey, it's Mark with ThinkBigJoe — just tried to reach you. We made a free preview of what a website for your business could look like: ${site} — if you like it, we build the full site and you can customize everything. Worth a look? (Not interested? Just reply 'No thanks' and I'll stop.)`;
+  return `Hey, it's Joe with ThinkBigJoe — just tried to reach you. We made a free preview of what a website for your business could look like: ${site} — if you like it, we build the full site and you can customize everything. Worth a look? (Not interested? Just reply 'No thanks' and I'll stop.)`;
 }
 
 export type OutreachQueueItem = {
@@ -130,7 +130,7 @@ export async function getOutreachQueue(): Promise<OutreachQueueItem[]> {
 /** The standard "text the link" SMS body (deterministic — same as the call-room button). */
 export function smsText(l: { businessName: string; ownerName: string | null; liveUrl: string | null }): string {
   const first = l.ownerName ? l.ownerName.trim().split(/\s+/)[0] : "";
-  return `Hi${first ? ` ${first}` : ""}, it's Mark with ThinkBigJoe — here's the website preview we made for ${l.businessName}: ${l.liveUrl || ""}`;
+  return `Hi${first ? ` ${first}` : ""}, it's Joe with ThinkBigJoe — here's the website preview we made for ${l.businessName}: ${l.liveUrl || ""}`;
 }
 
 export type PendingReply = {

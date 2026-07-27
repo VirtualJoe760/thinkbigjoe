@@ -82,8 +82,9 @@ make the bonus feel stupid to leave):
 
 (2026-07-26 revision, Joe's wording: soft-anchor at $99, "a couple hundred more" instead of naming
 $299, capabilities-forward. CTA now proposes a concrete Zoom time + the calendar link
-(/book-appointment) + the concierge line (480) 764-2121. **Persona: sign as "Mark" with
-ThinkBigJoe** — a standard sales alias; "Joe from ThinkBigJoe" reads conceited.)
+(/book-appointment) + the concierge line (480) 764-2121. **Sign as "Joe"** — the from-address is
+joe@thinkbigjoe.com, so any alias would mismatch the mailbox and read fake. The "Mark" alias
+experiment (2026-07-27) was reverted the same day for exactly that reason.)
 
 Why price goes IN the first email now: it qualifies instantly (no wasted threads with people who'd
 never spend), it reads confident instead of bait-y, and the anchor works for us — a site alone is
@@ -102,11 +103,11 @@ Structure — 60–120 words, plain text:
    fee; a couple hundred more = the AI receptionist answering + booking; AI agents for leads +
    sales too). One business per trade per area.
 4. **CTA:** propose a concrete Zoom time + the calendar link (/book-appointment) + "or call
-   (480) 764-2121 and our concierge will book you in." Sign as **Mark**.
+   (480) 764-2121 and our concierge will book you in." Sign as **Joe** (matches the from-address).
 
 Example (handyman, Chandler):
 
-> Hi Gene — Mark with ThinkBigJoe, a Web & AI agency. I noticed your 4.9★ reviews, so we made
+> Hi Gene — Joe with ThinkBigJoe, a Web & AI agency. I noticed your 4.9★ reviews, so we made
 > Ready To Sell AZ a free website preview — it's below. If you like it, we build the full site
 > and you customize everything. Plans start at $99/mo — and for a bit more, our AI receptionist
 > answers every call and books your jobs.

@@ -16,6 +16,7 @@ export type DialerLead = {
   notes: string | null;
   callPrep: string | null;
   previewUrl: string;
+  existingSite: string | null;
   claimCode: string | null;
   callbackDue: boolean;
   callbackNote: string | null;
@@ -106,16 +107,39 @@ export function DialerClient({ queue }: { queue: DialerLead[] }) {
           {lead.claimCode && <span className="rounded-full border border-line px-3 py-1.5 text-ink-soft">code {lead.claimCode}</span>}
         </div>
 
-        {lead.callPrep && (
-          <div className="mt-4 rounded-xl bg-brand-tint px-4 py-3 text-sm leading-relaxed">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-brand">Call prep</p>
-            <p className="mt-1 whitespace-pre-wrap">{lead.callPrep}</p>
-          </div>
-        )}
-        {lead.notes && (
+        {/* FACTS — only what the DB actually holds; website status is hedged, never asserted. */}
+        <div className="mt-4 rounded-xl border border-line bg-background px-4 py-3 text-sm">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-ink-soft">Facts</p>
+          <ul className="mt-1 space-y-0.5 text-xs">
+            {lead.rating && <li>⭐ {lead.rating}★{lead.reviews ? ` · ${lead.reviews} reviews` : ""} (Google)</li>}
+            <li>
+              {lead.existingSite
+                ? <>🌐 has a site on file: <a className="text-brand underline" href={lead.existingSite} target="_blank" rel="noreferrer">{lead.existingSite.replace(/^https?:\/\//, "")}</a> — check its state before claiming anything</>
+                : <>🌐 no site on file — <b>ask, don&apos;t assert</b> (our scan can miss one)</>}
+            </li>
+            {lead.niche && <li>🔧 {lead.niche}</li>}
+          </ul>
+        </div>
+
+        {/* THE SCRIPT — deterministic, short, question-led. Grounded in the doctrine (Sandler
+            up-front contract · SPIN/NEPQ discovery-before-pitch · approved offer frame). */}
+        <div className="mt-2 rounded-xl bg-brand-tint px-4 py-3 text-sm leading-relaxed">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-brand">Script</p>
+          <ol className="mt-1 list-decimal space-y-1.5 pl-4 text-[13px]">
+            <li><b>Open:</b> &ldquo;Hey{lead.ownerName ? ` ${lead.ownerName.split(" ")[0]}` : ""}, this is Joe with ThinkBigJoe — I know I&apos;m calling out of the blue. Got 30 seconds?&rdquo;</li>
+            <li><b>Ask (never assert):</b> &ldquo;How are you handling your website right now?&rdquo; <span className="text-ink-soft">…listen. Their answer sets the call.</span></li>
+            <li><b>The gift:</b> &ldquo;Reason I ask — we made a free preview of what a site for {lead.businessName} could look like. Want me to text you the link right now?&rdquo;</li>
+            <li><b>Offer (only if they engage):</b> plans start at $99/mo + a modest site fee; a couple hundred more = our AI receptionist answers every call and books jobs.</li>
+            <li><b>Close:</b> book the Zoom, or text the preview + let the follow-up cadence work.</li>
+          </ol>
+          <p className="mt-2 text-[11px] text-ink-soft">Objections: has a site → &ldquo;is it bringing you calls, or just sitting there?&rdquo; · busy → &ldquo;totally — 30 seconds: can I text you the link?&rdquo; · not interested → thank them, mark it, out.</p>
+        </div>
+
+        {(lead.callPrep || lead.notes) && (
           <details className="mt-2 text-sm text-ink-soft">
-            <summary className="cursor-pointer font-medium">Notes</summary>
-            <p className="mt-1 whitespace-pre-wrap text-xs">{lead.notes}</p>
+            <summary className="cursor-pointer font-medium">Research notes</summary>
+            {lead.callPrep && <p className="mt-1 whitespace-pre-wrap text-xs">{lead.callPrep}</p>}
+            {lead.notes && <p className="mt-1 whitespace-pre-wrap text-xs">{lead.notes}</p>}
           </details>
         )}
       </div>
