@@ -149,13 +149,15 @@ type SendArgs = {
   subject: string;
   html: string;
   replyTo?: string;
+  /** Display-name/address override (e.g. the sales persona). Must be an address SMTP may send as. */
+  from?: string;
 };
 
 /**
  * Low-level send via SMTP (Nodemailer). No-ops (with a warning) when SMTP env
  * vars are unset so signups and other flows never break without email set up.
  */
-export async function sendEmail({ to, subject, html, replyTo }: SendArgs) {
+export async function sendEmail({ to, subject, html, replyTo, from }: SendArgs) {
   if (!transporter) {
     console.warn(
       `[email] SMTP not configured — skipping "${subject}" to ${Array.isArray(to) ? to.join(", ") : to}`,
@@ -164,7 +166,7 @@ export async function sendEmail({ to, subject, html, replyTo }: SendArgs) {
   }
   try {
     const info = await transporter.sendMail({
-      from: FROM,
+      from: from || FROM,
       to,
       subject,
       html,
@@ -212,47 +214,72 @@ function escapeHtml(s: string): string {
  * CTAs so those are always present regardless of the drafted copy. Replies route
  * to Joe (not the no-reply box) so an interested owner can just hit reply.
  */
+/**
+ * Cold outreach email — PLAIN AND HUMAN, on purpose (docs/COLD_EMAIL.md). No branded shell, no
+ * logo, no headline, no claim-code block, no buttons: it must read like an email a person typed.
+ * The body IS the email; we add only a two-line signature. Sent from the monitored mailbox with
+ * the sales persona's name so replies thread naturally and land in the inbox-poller pipeline.
+ * (The claim code is deliberately absent — it's handed over after they engage, or via the manual
+ * "Send claim code" action on the leads dashboard, which uses the branded template below.)
+ */
 export async function sendForgeOutreachEmail(args: {
   to: string;
   subject: string;
   body: string;
   businessName: string;
   liveUrl?: string | null;
-  claimCode: string;
+  claimCode?: string | null;
 }) {
   const paragraphs = args.body
     .split(/\n{2,}/)
     .map((p) => p.trim())
     .filter(Boolean)
-    .map(
-      (p) =>
-        `<p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#5b616e;">${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`,
-    )
+    .map((p) => `<p style="margin:0 0 14px;">${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`)
     .join("");
 
+  const mailbox = process.env.OUTREACH_REPLY_TO || process.env.SMTP_USER || "joe@thinkbigjoe.com";
+  return sendEmail({
+    to: args.to,
+    subject: args.subject,
+    // From the real, monitored mailbox with the persona's display name — never no-reply.
+    from: `Mark at ThinkBigJoe <${mailbox}>`,
+    // Replies land in the MONITORED mailbox so the inbox poller catches them.
+    replyTo: mailbox,
+    html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;color:#111;">
+      ${paragraphs}
+      <p style="margin:18px 0 0;">— Mark<br/>ThinkBigJoe · <a href="${SITE_URL}" style="color:#111;">thinkbigjoe.com</a></p>
+    </div>`,
+  });
+}
+
+/**
+ * The CLAIM-CODE email — the old branded send, now an OPERATOR TOOL fired manually from the leads
+ * dashboard once a conversation has earned it. Never part of the cold sequence.
+ */
+export async function sendClaimCodeEmail(args: {
+  to: string;
+  businessName: string;
+  liveUrl?: string | null;
+  claimCode: string;
+}) {
   const claimBlock = `
     <div style="margin:20px 0;padding:14px 18px;background:#f5f7fb;border:1px solid #e6e9ef;border-radius:12px;">
       <div style="font-size:11px;color:#9aa0ad;text-transform:uppercase;letter-spacing:.5px;">Your claim code</div>
       <div style="font-size:22px;font-weight:800;letter-spacing:1.5px;font-family:'Courier New',monospace;color:#0a0a0b;">${escapeHtml(args.claimCode)}</div>
       <div style="margin-top:4px;font-size:13px;line-height:1.5;color:#5b616e;">Create an account, then enter this code at <a href="${SITE_URL}/portal/claim" target="_blank" rel="noopener" style="color:${BRAND};">${SITE_URL}/portal/claim</a> to claim your site and take ownership.</div>
     </div>`;
-
   const buttons = `
     <div style="margin-top:8px;">
-      ${args.liveUrl ? `<a href="${args.liveUrl}" target="_blank" rel="noopener" style="display:inline-block;margin:8px 8px 0 0;background:${BRAND};color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:999px;">See your website preview</a>` : ""}
-      <a href="${SITE_URL}/book-appointment" target="_blank" rel="noopener" style="display:inline-block;margin:8px 0 0 0;background:#0a0a0b;color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:999px;">Book a call with Joe</a>
+      ${args.liveUrl ? `<a href="${args.liveUrl}" target="_blank" rel="noopener" style="display:inline-block;margin:8px 8px 0 0;background:${BRAND};color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:999px;">See your website</a>` : ""}
+      <a href="${SITE_URL}/book-appointment" target="_blank" rel="noopener" style="display:inline-block;margin:8px 0 0 0;background:#0a0a0b;color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:999px;">Book a call</a>
     </div>`;
-
   return sendEmail({
     to: args.to,
-    subject: args.subject,
-    // Replies must land in the MONITORED mailbox (joe@thinkbigjoe.com) so the inbox poller
-    // catches them + the reply pipeline drafts a response. Zoho then forwards a copy to Joe's
-    // Gmail (forwarding keeps a copy so the poller still sees it). OUTREACH_REPLY_TO can override.
+    subject: `Your claim code for ${args.businessName}`,
     replyTo: process.env.OUTREACH_REPLY_TO || process.env.SMTP_USER || "joe@thinkbigjoe.com",
     html: layout(`
-      <h1 style="margin:0 0 12px;font-size:22px;font-weight:800;">${escapeHtml(args.businessName)} — your new website is ready 🎉</h1>
-      ${paragraphs}
+      <h1 style="margin:0 0 12px;font-size:22px;font-weight:800;">Here's your claim code</h1>
+      <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#5b616e;">As promised — claim ${escapeHtml(args.businessName)}'s site and it's yours to run and customize.</p>
       ${claimBlock}
       ${buttons}
     `),

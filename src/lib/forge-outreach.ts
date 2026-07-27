@@ -16,15 +16,15 @@ export function prospectSiteUrl(p: { liveUrl?: string | null; slug?: string | nu
 }
 
 /**
- * The owner-outreach message for a built site — "I built you a website, claim it."
- * Shared by the 10am sender (/api/forge/send-outreach) and the dashboard review
- * (/command/outreach) so what you preview is exactly what goes out. The branded
- * wrapper (claim-code block + "See your new site" + "Book a call", reply-to Joe)
- * is added by sendForgeOutreachEmail — this is just the personal message.
+ * The owner-outreach email — PLAIN + SHORT (docs/COLD_EMAIL.md): preview framing, Mark persona,
+ * inline link, no claim code. Shared by the 10am sender (/api/forge/send-outreach) and the
+ * dashboard review (/command/outreach) so what you preview is exactly what goes out.
+ * sendForgeOutreachEmail adds only a 2-line signature — no branded wrapper.
  */
 export function composeOutreach(s: {
   businessName: string; city: string | null; ownerName: string | null;
   googleRating: string | null; reviewCount: string | null;
+  liveUrl?: string | null; slug?: string | null;
 }): { subject: string; body: string } {
   const first = s.ownerName ? s.ownerName.trim().split(/\s+/)[0] : "";
   const rating = s.googleRating ? Number(s.googleRating) : 0;
@@ -35,8 +35,10 @@ export function composeOutreach(s: {
   // TRANSPARENT framing (docs/COLD_EMAIL.md): a PREVIEW we made, not "your finished website" —
   // honest pipeline (preview → their OK → full build → they customize) + the voice-led offer.
   // SHORT on purpose (Joe, 2026-07-26): ~70 words, three beats — who/why, the offer, the ask.
+  // The preview link rides INLINE — the email is plain now (no branded wrapper, no buttons).
+  const link = prospectSiteUrl(s);
   const body = [
-    `Hi${first ? ` ${first}` : ""} — Mark with ThinkBigJoe, a Web & AI agency. I noticed${repBit}, so we made ${s.businessName} a free website preview — it's below. If you like it, we build the full site and you customize everything. Plans start at $99/mo — and for a bit more, our AI receptionist answers every call and books your jobs.`,
+    `Hi${first ? ` ${first}` : ""} — Mark with ThinkBigJoe, a Web & AI agency. I noticed${repBit}, so we made ${s.businessName} a free website preview: ${link} — if you like it, we build the full site and you customize everything. Plans start at $99/mo — and for a bit more, our AI receptionist answers every call and books your jobs.`,
     `Worth a quick Zoom this week? Grab a time: ${SITE_ORIGIN}/book-appointment — or call (480) 764-2121 and our concierge will book you in.`,
   ].join("\n\n");
   return { subject: `a website preview for ${s.businessName}`, body };
@@ -108,7 +110,7 @@ export async function getOutreachQueue(): Promise<OutreachQueueItem[]> {
   const rows = await db
     .select({
       id: forgeSites.id, businessName: forgeSites.businessName, email: forgeSites.email,
-      liveUrl: forgeSites.liveUrl, claimCode: forgeSites.claimCode, city: forgeSites.city,
+      liveUrl: forgeSites.liveUrl, slug: forgeSites.slug, claimCode: forgeSites.claimCode, city: forgeSites.city,
       ownerName: forgeSites.ownerName, googleRating: forgeSites.googleRating,
       reviewCount: forgeSites.reviewCount, outreachStatus: forgeSites.outreachStatus,
     })
@@ -128,7 +130,7 @@ export async function getOutreachQueue(): Promise<OutreachQueueItem[]> {
 /** The standard "text the link" SMS body (deterministic — same as the call-room button). */
 export function smsText(l: { businessName: string; ownerName: string | null; liveUrl: string | null }): string {
   const first = l.ownerName ? l.ownerName.trim().split(/\s+/)[0] : "";
-  return `Hi${first ? ` ${first}` : ""}, it's Joe — here's the site I built for ${l.businessName}: ${l.liveUrl || ""}`;
+  return `Hi${first ? ` ${first}` : ""}, it's Mark with ThinkBigJoe — here's the website preview we made for ${l.businessName}: ${l.liveUrl || ""}`;
 }
 
 export type PendingReply = {

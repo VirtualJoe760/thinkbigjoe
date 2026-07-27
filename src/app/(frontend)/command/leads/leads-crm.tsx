@@ -4,7 +4,7 @@ import { useActionState, useMemo, useRef, useState, useEffect, useTransition } f
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, denyForgeSite, dropLeadVoicemail, setLeadStage, queueLeadBuild, scheduleCallback, clearCallback, type ContactSlot, type BookForContactState } from "../actions";
+import { logContactAttempt, getContactSlots, bookForContact, sendCallbackCodeText, saveLeadNote, denyForgeSite, dropLeadVoicemail, setLeadStage, queueLeadBuild, scheduleCallback, clearCallback, emailClaimCode, type ContactSlot, type BookForContactState } from "../actions";
 import type { ForgeSiteItem } from "../sites/sites-queue";
 import type { LeadHistoryEvent } from "@/lib/forge-outreach";
 import { cardClass, StatusPill } from "@/components/ui";
@@ -558,6 +558,7 @@ function ContactDetail({
 }) {
   const [copied, setCopied] = useState(false);
   const [copiedMsg, setCopiedMsg] = useState(false);
+  const [claimEmailState, setClaimEmailState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [showBook, setShowBook] = useState(false);
   const [codeBusy, setCodeBusy] = useState(false);
   const [codeMsg, setCodeMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -880,6 +881,21 @@ function ContactDetail({
                   Text the code from your <b>Google Voice</b> — copy, then paste + send in GV. The Call/Text
                   buttons above use your device. Every tap is logged below.
                 </p>
+                {item.email && (
+                  <button
+                    onClick={() => {
+                      if (claimEmailState !== "idle") return;
+                      setClaimEmailState("sending");
+                      emailClaimCode(Number(item.id)).then((r) => {
+                        setClaimEmailState(r.ok ? "sent" : "error");
+                        setTimeout(() => setClaimEmailState("idle"), 2500);
+                      }).catch(() => setClaimEmailState("error"));
+                    }}
+                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-line px-3 py-3 text-sm font-semibold text-ink transition-colors hover:bg-surface active:scale-[0.98]"
+                  >
+                    {claimEmailState === "sent" ? "✓ Claim code emailed" : claimEmailState === "sending" ? "Sending…" : claimEmailState === "error" ? "⚠️ Send failed — see logs" : "🔑 Email the claim code"}
+                  </button>
+                )}
               </>
             )}
 

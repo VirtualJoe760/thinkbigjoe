@@ -7,7 +7,7 @@ import { and, sql } from "drizzle-orm";
 
 import { db, outreach, prospects, forgeSites, activityLog, forgeBlacklist, leadEngine, jobRequests, outreachEngine, previewEngine, forgeEngine, forgeReplies, designReports, contactOverrides, autoProvision } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
-import { sendForgeOutreachEmail, sendReplyEmail, sendBookingConfirmationEmail } from "@/lib/email";
+import { sendForgeOutreachEmail, sendReplyEmail, sendBookingConfirmationEmail, sendClaimCodeEmail } from "@/lib/email";
 import { notifyTelegram } from "@/lib/telegram";
 import { sendSms } from "@/lib/sms";
 import { mintCallbackCode, callbackCodeMessage } from "@/lib/callback-codes";
@@ -1102,4 +1102,37 @@ export async function bookForContact(
     console.error("[bookForContact] failed:", err);
     return { ok: false, message: "Couldn't book that — try another slot." };
   }
+}
+
+/**
+ * Manually email a lead their CLAIM CODE (the branded template) — an operator action for when a
+ * conversation has EARNED it (docs/COLD_EMAIL.md: the code is never part of the cold sequence).
+ */
+export async function emailClaimCode(siteId: number): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin();
+  const [site] = await db
+    .select({
+      id: forgeSites.id, businessName: forgeSites.businessName, email: forgeSites.email,
+      liveUrl: forgeSites.liveUrl, claimCode: forgeSites.claimCode,
+    })
+    .from(forgeSites)
+    .where(eq(forgeSites.id, siteId))
+    .limit(1);
+  if (!site) return { ok: false, error: "Lead not found." };
+  if (!site.email) return { ok: false, error: "No email on file." };
+  if (!site.claimCode) return { ok: false, error: "No claim code minted for this lead." };
+
+  const r = await sendClaimCodeEmail({
+    to: site.email, businessName: site.businessName, liveUrl: site.liveUrl, claimCode: site.claimCode,
+  });
+  if ("error" in r) return { ok: false, error: "Send failed — check SMTP/logs." };
+  if ("skipped" in r) return { ok: false, error: "SMTP not configured." };
+
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "lead_contact_attempt",
+    summary: `🔑 Emailed claim code to ${site.businessName} (${site.email})`,
+    metadata: { detail: { siteId: site.id, channel: "email", note: `Sent claim code ${site.claimCode}` } },
+  });
+  return { ok: true };
 }
