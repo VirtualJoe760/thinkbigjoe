@@ -57,9 +57,12 @@ export async function POST(req: Request) {
   // a fully BUILT site kept 96% of the emailable list out of the funnel), marketing-approved, has a
   // real email + claim code, not already contacted, not claimed.
   //
-  // GUESSED ADDRESSES ARE EXCLUDED. Sending to invented role addresses (info@/hello@/admin@…)
-  // produced a ~50% bounce rate through July and is the fastest way to burn the sending domain
-  // (docs/DELIVERABILITY.md). Those leads need a real address from enrichment before they qualify.
+  // NOTE (2026-07-27): role addresses (info@/hello@) are NOT excluded — the bounce data shows the
+  // problem was never the mailbox NAME, it was GUESSED DOMAINS. Bounces split evenly between role
+  // and personal formats (mark@thesuperiortouch.com bounced 3×; Aspen Roofing was tried on two
+  // different invented domains). info@ is usually a real, monitored mailbox at a small business.
+  // The real guard is: never retry a bounced lead without a genuinely new address (already
+  // enforced — a bounce flips outreach_status='bounced', which this query excludes).
   const eligible = await db
     .select({
       id: forgeSites.id, businessName: forgeSites.businessName, email: forgeSites.email,
@@ -72,7 +75,6 @@ export async function POST(req: Request) {
       isNotNull(forgeSites.marketingApprovedAt),
       isNotNull(forgeSites.email),
       isNotNull(forgeSites.claimCode),
-      sql`email !~* '^(info|hello|contact|admin|office|sales|support|team|help|service|inquiries)@'`,
       sql`(outreach_status IS NULL OR outreach_status = 'none' OR outreach_status = '')`,
       sql`claimed_by_user_id IS NULL`,
     ))

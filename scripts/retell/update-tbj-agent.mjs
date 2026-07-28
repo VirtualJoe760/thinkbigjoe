@@ -40,6 +40,31 @@ async function retell(path, body, method = "POST") {
   return json;
 }
 
+/**
+ * List Retell VOICE agents (paginated).
+ *
+ * Migrated 2026-07-27 off the deprecated `GET /list-agents`, which Retell removes 2026-07-31.
+ * The v2 endpoint is a POST, returns results under `items` (not a bare array), unifies voice +
+ * chat agents — hence the channel filter — and pages via `pagination_key`/`has_more`.
+ * See https://docs.retellai.com/deprecation-notice/2026/07-31_agent_list_endpoints
+ */
+async function listVoiceAgents() {
+  const out = [];
+  let paginationKey;
+  for (let page = 0; page < 20; page++) {
+    const body = {
+      filter_criteria: { channel: { type: "string", op: "eq", value: "voice" } },
+      limit: 100,
+      ...(paginationKey ? { pagination_key: paginationKey } : {}),
+    };
+    const res = await retell("/v2/list-agents", body, "POST");
+    out.push(...(res?.items || []));
+    if (!res?.has_more || !res?.pagination_key) break;
+    paginationKey = res.pagination_key;
+  }
+  return out;
+}
+
 async function main() {
   const dry = process.argv.includes("--dry");
   const llmFlagIdx = process.argv.indexOf("--llm");
@@ -47,8 +72,7 @@ async function main() {
   let agentName = AGENT_NAME;
 
   if (!llmId) {
-    const agents = await retell("/list-agents", null, "GET");
-    const arr = Array.isArray(agents) ? agents : agents?.agents || [];
+    const arr = await listVoiceAgents();
     const agent = arr.find((a) => a.agent_name === AGENT_NAME)
       || arr.find((a) => /thinkbigjoe|receptionist/i.test(a.agent_name || ""));
     if (!agent) { console.error(`no agent named "${AGENT_NAME}" found. Agents: ${arr.map((a) => a.agent_name).join(", ")}`); process.exit(1); }

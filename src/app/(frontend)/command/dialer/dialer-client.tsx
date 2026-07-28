@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 
-import { logDialOutcome, type DialDisposition } from "./actions";
+import { logDialOutcome, textPreviewFromDialer, type DialDisposition } from "./actions";
 
 export type DialerLead = {
   id: number;
@@ -20,27 +20,36 @@ export type DialerLead = {
   claimCode: string | null;
   callbackDue: boolean;
   callbackNote: string | null;
+  /** Set client-side when a no-answer sends the lead back through the queue. */
+  retried?: boolean;
 };
 
 const DISPOSITIONS: Array<{ key: DialDisposition; label: string; tone: "muted" | "warm" | "hot" | "cold" }> = [
-  { key: "no_answer", label: "No answer", tone: "muted" },
-  { key: "voicemail", label: "Voicemail", tone: "muted" },
-  { key: "callback", label: "Callback", tone: "warm" },
+  // No-answer/voicemail RECYCLE (back of today's queue for another try); the rest close the lead out.
+  { key: "no_answer", label: "No answer → retry later", tone: "muted" },
+  { key: "voicemail", label: "Left voicemail", tone: "muted" },
+  { key: "callback", label: "📅 Set callback", tone: "warm" },
   { key: "interested", label: "Interested", tone: "hot" },
-  { key: "booked", label: "Booked 🎉", tone: "hot" },
+  { key: "booked", label: "✅ Booked", tone: "hot" },
   { key: "not_interested", label: "Not interested", tone: "cold" },
   { key: "bad_number", label: "☎️ Bad number", tone: "muted" },
 ];
+
+/** Dispositions that send the lead to the BACK of the queue instead of retiring it. */
+const RECYCLE: DialDisposition[] = ["no_answer", "voicemail"];
 
 /**
  * The call session. One lead at a time: tap Call (native dialer on the Boost phone), come back,
  * tap the outcome — the next lead loads instantly. Optimistic + fire-and-forget logging so the
  * flow never waits on the network between calls.
  */
-export function DialerClient({ queue }: { queue: DialerLead[] }) {
+export function DialerClient({ queue: initialQueue }: { queue: DialerLead[] }) {
+  const [queue, setQueue] = useState(initialQueue);
   const [i, setI] = useState(0);
   const [note, setNote] = useState("");
   const [done, setDone] = useState<Record<number, DialDisposition>>({});
+  const [texted, setTexted] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [showCallback, setShowCallback] = useState(false);
   const [, start] = useTransition();
 
   const lead = queue[i];
@@ -56,15 +65,23 @@ export function DialerClient({ queue }: { queue: DialerLead[] }) {
     );
   }
 
-  function next(d: DialDisposition) {
+  function next(d: DialDisposition, callbackAt?: string) {
     const target = lead!;
     const n = note.trim();
     setDone((cur) => ({ ...cur, [target.id]: d }));
     setNote("");
-    setI((cur) => cur + 1);
+    setTexted("idle");
+    setShowCallback(false);
+    // No answer / voicemail isn't a dead end — the lead goes to the BACK of the queue so a second
+    // pass happens later in the same session (people pick up at different times of day).
+    if (RECYCLE.includes(d)) {
+      setQueue((q) => [...q.slice(0, i), ...q.slice(i + 1), { ...target, retried: true }]);
+    } else {
+      setI((cur) => cur + 1);
+    }
     start(async () => {
       try {
-        await logDialOutcome({ siteId: target.id, disposition: d, note: n });
+        await logDialOutcome({ siteId: target.id, disposition: d, note: n, callbackAt });
       } catch {
         /* logged optimistically; a miss here loses one log line, never the session */
       }
@@ -88,6 +105,9 @@ export function DialerClient({ queue }: { queue: DialerLead[] }) {
             ⏰ Callback due{lead.callbackNote ? ` — ${lead.callbackNote}` : ""}
           </p>
         )}
+        {lead.retried && (
+          <p className="mb-2 rounded-lg bg-surface px-3 py-1.5 text-xs font-semibold text-ink-soft">🔁 2nd attempt this session</p>
+        )}
         <h1 className="text-2xl font-extrabold tracking-tight">{lead.businessName}</h1>
         <p className="mt-0.5 text-sm text-ink-soft">
           {[lead.ownerName && `owner: ${lead.ownerName}`, lead.niche, lead.city].filter(Boolean).join(" · ")}
@@ -100,6 +120,25 @@ export function DialerClient({ queue }: { queue: DialerLead[] }) {
         >
           📞 Call {lead.phone}
         </a>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (texted !== "idle") return;
+            setTexted("sending");
+            textPreviewFromDialer(lead.id)
+              .then((r) => setTexted(r.ok ? "sent" : "error"))
+              .catch(() => setTexted("error"));
+          }}
+          disabled={texted === "sending"}
+          className={`mt-2 flex min-h-12 w-full items-center justify-center rounded-2xl text-base font-bold transition-colors ${
+            texted === "sent" ? "bg-green-100 text-green-800"
+            : texted === "error" ? "bg-red-50 text-red-700"
+            : "bg-brand text-white active:bg-brand-dark"
+          }`}
+        >
+          {texted === "sent" ? "✓ Preview + code texted" : texted === "sending" ? "Sending…" : texted === "error" ? "⚠️ Text failed — retry?" : "📲 Text preview + claim code"}
+        </button>
 
         <div className="mt-3 flex flex-wrap gap-2 text-xs">
           <a href={lead.previewUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-line px-3 py-1.5 font-semibold text-brand">
@@ -129,7 +168,7 @@ export function DialerClient({ queue }: { queue: DialerLead[] }) {
           <ol className="mt-1 list-decimal space-y-1.5 pl-4 text-[13px]">
             <li><b>Open:</b> &ldquo;Hey{lead.ownerName ? ` ${lead.ownerName.split(" ")[0]}` : ""}, this is Joe with ThinkBigJoe — I know I&apos;m calling out of the blue. Got 30 seconds?&rdquo;</li>
             <li><b>Ask (never assert):</b> &ldquo;How are you handling your website right now?&rdquo; <span className="text-ink-soft">…listen. Their answer sets the call.</span></li>
-            <li><b>The gift:</b> &ldquo;Reason I ask — we made a free preview of what a site for {lead.businessName} could look like. Want me to text you the link right now?&rdquo;</li>
+            <li><b>The gift:</b> &ldquo;Reason I ask — we made a free preview of what a site for {lead.businessName} could look like. Want me to text you the link right now?&rdquo; <span className="text-ink-soft">→ hit the Text button.</span></li>
             <li><b>Offer (only if they engage):</b> plans start at $99/mo + a modest site fee; a couple hundred more = our AI receptionist answers every call and books jobs.</li>
             <li><b>Close:</b> book the Zoom, or text the preview + let the follow-up cadence work.</li>
           </ol>
@@ -153,12 +192,41 @@ export function DialerClient({ queue }: { queue: DialerLead[] }) {
         placeholder="Quick note (optional) — objection, promise, detail…"
         className="mt-3 w-full resize-none rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
       />
+      {showCallback && (
+        <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-3">
+          <p className="text-xs font-semibold text-amber-900">When should you call back?</p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {[
+              { label: "In 2 hours", h: 2 },
+              { label: "Tomorrow 9am", h: -1 },
+              { label: "In 3 days", h: 72 },
+              { label: "Next week", h: 168 },
+            ].map((o) => (
+              <button
+                key={o.label}
+                type="button"
+                onClick={() => {
+                  const d = new Date();
+                  if (o.h === -1) { d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); }
+                  else d.setHours(d.getHours() + o.h);
+                  next("callback", d.toISOString());
+                }}
+                className="min-h-11 rounded-lg bg-amber-100 text-xs font-bold text-amber-900 active:bg-amber-200"
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={() => setShowCallback(false)} className="mt-2 w-full text-center text-[11px] text-amber-800">cancel</button>
+        </div>
+      )}
+
       <div className="mt-2 grid grid-cols-2 gap-2">
         {DISPOSITIONS.map((d) => (
           <button
             key={d.key}
             type="button"
-            onClick={() => next(d.key)}
+            onClick={() => (d.key === "callback" ? setShowCallback(true) : next(d.key))}
             className={`min-h-12 rounded-xl text-sm font-bold transition-colors ${
               d.tone === "hot" ? "bg-brand text-white active:bg-brand-dark"
               : d.tone === "warm" ? "bg-amber-100 text-amber-900 active:bg-amber-200"

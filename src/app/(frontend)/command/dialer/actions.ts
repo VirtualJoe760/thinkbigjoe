@@ -4,6 +4,8 @@ import { sql } from "drizzle-orm";
 
 import { db, activityLog } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
+import { sendSms } from "@/lib/sms";
+import { prospectSiteUrl } from "@/lib/forge-outreach";
 
 export type DialDisposition = "no_answer" | "voicemail" | "callback" | "interested" | "booked" | "not_interested" | "bad_number";
 
@@ -75,4 +77,41 @@ export async function logDialOutcome(input: {
              updated_at = now()
       WHERE id = ${siteId}`);
   }
+}
+
+/**
+ * Text the lead their preview link + claim code, straight from the dialer — the "I'll send it to
+ * you right now" moment on a live call, which is when a prospect is warmest. Sends through our
+ * Twilio number (the one their replies already route back from), and logs to the lead's thread so
+ * the conversation stays in one place.
+ */
+export async function textPreviewFromDialer(siteId: number): Promise<{ ok: boolean; error?: string }> {
+  await assertAdmin();
+  const rows = (
+    await db.execute(sql`
+      SELECT id, business_name, owner_name, phone, claim_code, slug, live_url
+      FROM forge_sites WHERE id = ${siteId} LIMIT 1`)
+  ).rows as Array<Record<string, unknown>>;
+  const s = rows[0];
+  if (!s) return { ok: false, error: "Lead not found." };
+  if (!s.phone) return { ok: false, error: "No phone on file." };
+
+  const link = prospectSiteUrl({ liveUrl: s.live_url as string | null, slug: s.slug as string | null });
+  const first = s.owner_name ? String(s.owner_name).trim().split(/\s+/)[0] : "";
+  const body =
+    `Hi${first ? ` ${first}` : ""}, Joe with ThinkBigJoe — great talking with you. Here's the website preview we made for ${s.business_name}: ${link}` +
+    (s.claim_code ? ` — to claim it, make a free account at https://thinkbigjoe.com and use code ${s.claim_code}.` : ".") +
+    ` Any questions, just text me back.`;
+
+  const res = await sendSms(String(s.phone), body);
+  if ("ok" in res && !res.ok) return { ok: false, error: res.error };
+  if ("skipped" in res) return { ok: false, error: "SMS isn't configured." };
+
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "sms_outbound",
+    summary: `📲 Texted preview + code to ${s.business_name}`,
+    metadata: { detail: { siteId, to: String(s.phone), note: body, via: "dialer" } },
+  });
+  return { ok: true };
 }
