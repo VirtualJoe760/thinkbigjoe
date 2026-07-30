@@ -7,8 +7,30 @@ with `tbj-mcp.mjs`, touch no TBJ database, and run standalone.
 
 | Server | Role |
 |---|---|
-| `research-mcp.mjs` | **Tool 1 — the research instrument.** Finds, reads, verifies and records facts with a citation locked to each one. Emits the research report. |
+| `research-mcp.mjs` | **Tool 1 — the research instrument.** Indexes the search space, reads it in a stratified order, records facts with a citation locked to each one, and emits the white paper, the visual report, and the publishable dataset. |
 | `thesis-mcp.mjs` | **Tool 2 — the thesis instrument.** Reads tool 1's corpus (read-only) and builds an investigational protocol thesis where every value traces back to a finding. |
+
+Built to run **unattended in Cowork for days**. See *Surviving a multi-day run* below.
+
+## The loop
+
+```
+start_run → INDEXING → TRIAGE → READING → GAP_FILL → SAFETY → WHITE PAPER → VISUAL → DONE
+```
+
+The agent calls `next_action`, does exactly what it returns, and calls it again. **It cannot
+return `done:true` until both reports exist on disk.** Every state's exit condition is a
+computable predicate over ledger counts — not a judgement the model makes about whether it has
+done enough.
+
+State is recomputed from the ledgers on every call, so there is no checkpoint file to corrupt.
+A crashed run, a new session, or a different model a week later all resume exactly where the
+corpus actually is.
+
+| Failure mode | The guard |
+|---|---|
+| **Stops early** at 40% coverage because searches look repetitive | Chao1 capture–recapture on query overlap must clear the coverage target; rolling marginal yield must fall below the saturation floor; per-stratum read quotas must all be met |
+| **Churns forever** re-searching an exhausted space | Per-gap attempt budget; on give-up the gap is written to the ledger and appears in the report's limitations. Giving up is allowed, giving up *quietly* is not |
 
 Both write to an append-only file corpus at `RESEARCH_CORPUS_DIR`
 (default `~/research-corpus/<project>/`): `findings.jsonl`, `searches.jsonl`,
@@ -68,6 +90,40 @@ neutral in a prompt. Both are fixed structurally:
 
 ---
 
+## Surviving a multi-day run
+
+A long unattended run breaks in ways a short one never shows. Each of these was measured, not
+assumed:
+
+**The index would have died.** A 14-query seed produced 7,193 index rows. An exhaustive run is
+~1,120 queries × 7 sources, and most of what a query returns is a document some earlier query
+already found — projecting to ~2.8M rows and >1 GB, re-parsed several times per `next_action`.
+The fix is three things: a **snapshot + tail** store (`store.mjs`) where reads load compacted
+state and replay only what has happened since; **bounded per-candidate state** (a distinct-query
+count and three boolean hints, replacing an unbounded provenance array); and **writes that update
+the in-process cache** instead of invalidating it, so the writing process never re-parses its own
+snapshot. Compaction thresholds scale with corpus size — a fixed trigger means rewriting a 100 MB
+snapshot every ten queries.
+
+Measured on a simulated full run — 5,500 source-queries, 2.2M records, 176,917 unique documents:
+
+| | Before | After |
+|---|---|---|
+| Write 2.2M records | (did not complete) | **50 s** |
+| `readIndex`, cold | ~28 s projected | **1.36 s** (once per process) |
+| `readIndex`, warm | — | **2 ms** |
+| `next_action` | minutes projected | **71 ms** |
+
+**Rate limits and daily quotas persist to disk** (`ratelimit.mjs`). An in-memory counter resets on
+restart, so a crash-looping agent would blow through a 100/day Google quota several times over and
+never know. Counters are keyed by UTC date in the corpus directory. Backoff is exponential with
+jitter and honours `Retry-After` on a 429. A source whose quota is spent returns a structured
+error the caller logs as a coverage gap — it never looks like "no results".
+
+**A heartbeat makes the run observable.** Every `next_action` writes `run-status.json` with state,
+progress counters, movement since the last beat, store size and quota use — so "still working" can
+be told apart from "wedged four hours ago" with a single file read from outside the process.
+
 ## Depth: how these get past page-one
 
 Surface search (Google, DuckDuckGo) is treated as a **pointer layer only**. The
@@ -83,12 +139,52 @@ depth comes from four things:
   that no search engine ranks).
 - **`find_trials`** — ClinicalTrials.gov v2, including `why_stopped` on
   terminated trials, which is frequently the most informative field on the page.
+- **The indexing layer itself** — `build_index` pages every source *to exhaustion* rather than to
+  the end of page one, and records which of "there is no more" and "we cannot see any more"
+  actually happened. Verified live: Europe PMC enumerated all 1,960 records for one query via
+  cursorMark; PubMed walked 454 via WebEnv; ClinicalTrials.gov and OpenAlex paged by token and
+  cursor.
 - **`safety_profile`** — FDA label + FAERS adverse-event counts, so the harm
   ledger is populated from regulatory data even when the literature is silent.
 
 `read_source` warns loudly when a page is client-rendered or bot-walled instead
 of quietly returning 169 characters of navigation chrome — that failure mode is
 how an agent ends up "reading" a paper it never saw.
+
+### The query matrix
+
+One question expands into hundreds of deliberate queries. At `standard` depth ≈ 500; at
+`exhaustive` ≈ 1,260.
+
+| Axis | What it exists to catch |
+|---|---|
+| core | substance × indication, including the misspellings people actually type ("methane blue", "mebendazol") |
+| mechanism | biology papers that never name the indication and so never appear in the core axis |
+| design | each evidence tier separately, so one ranking cannot bury every case report under the reviews |
+| outcome | papers indexed by what they measured rather than what they studied |
+| combination | repurposing literature is mostly combination literature — gemcitabine, FOLFIRINOX, radiation |
+| **disconfirming** | the vocabulary negative results are *actually* published under — "no significant difference", "failed to inhibit", terminated, retracted. ~30% of all queries |
+| **species** | the veterinary record — dog, cattle, horse, sheep. Decades of licensed tolerability data invisible to any query pairing the drug with "cancer" |
+| grey | reported experience and testimonial, including the named Joe Tippens protocol — recorded at anecdote tier, never promoted |
+| **lang:zh / ru / es / ja** | native-language queries pairing substance and indication *in the same language*, routed to Baidu, Yandex, OpenAlex and Europe PMC. An English query with one translated word does not reach this literature |
+| safety | maximum tolerated dose, interactions, pharmacokinetics, overdose case reports |
+
+### Species
+
+Animal evidence is not one category, and `species` is a first-class normalised field alongside the
+verbatim model description. A mouse xenograft and a licensed canine tolerability study answer
+different questions; for the benzimidazoles the veterinary record *is* the best-characterised
+safety data that exists. Every species carries its own interpretive caveat, rendered at the point
+of reading rather than buried in a methods note.
+
+### Relevance to the actual question
+
+Searching a drug with "cancer" returns a great deal of work on other cancers and on the drug's
+original non-cancer use. `indication.mjs` classifies every finding as **target / adjacent /
+other_cancer / non_cancer / unclear**, and both reports lead with the breakdown. The distance
+between "there is a substantial literature on this drug and cancer" and "there are 11 findings on
+this drug and pancreatic adenocarcinoma, 4 of them in people" is where a repurposing case is
+usually overstated, so it is the first thing either report says.
 
 ## Contacts
 
@@ -121,6 +217,8 @@ Optional environment:
 | Var | Effect |
 |---|---|
 | `RESEARCH_CORPUS_DIR` | Where corpora live. Default `~/research-corpus`. |
+| `YANDEX_API_KEY` + `YANDEX_FOLDER_ID` | Yandex Cloud Search — the practical route into the Russian-language web. |
+| `SERPAPI_KEY` | Unlocks Google, **Baidu** (the only reliable route into the Chinese-language web), and Google Scholar. |
 | `RESEARCH_CONTACT_EMAIL` | Sent as the polite-pool contact to NCBI / OpenAlex / Crossref. Set this — it raises your rate limits and it is the courteous thing to do. |
 | `GOOGLE_CSE_ID` + `GOOGLE_API_KEY` | Enables the Google layer via Programmable Search (100 queries/day free). |
 | `SERPAPI_KEY` | Alternative Google layer, and the only way to reach Google Scholar. |
@@ -170,15 +268,19 @@ to. 20 checks.
 **Phase 1 — research** (one project per research question):
 
 ```
-deep_search        → pointers, plus the disconfirming mirror
-find_trials        → trials + contacts; record terminated ones too
-get_full_text      → the actual paper, not the abstract
-expand_citations   → backward to the primary source, forward to the rebuttals
-check_integrity    → before recording anything
-safety_profile     → the harm side of the ledger
-record_finding     → one sourced fact at a time
-research_status    → check your own balance; fix the gaps it names
-compile_report     → the deliverable
+start_run            → question, substances, depth
+next_action          → ★ the loop. Do what it says; call it again. Repeat until done:true.
+  build_index        →   enumeration, to exhaustion, before anything is read
+  read_queue         →   stratified priority order — not citation rank
+  get_full_text      →   the actual paper, not the abstract
+  expand_citations   →   backward to the primary source, forward to the rebuttals
+  check_integrity    →   before recording anything
+  record_finding     →   one sourced fact at a time
+  mark_read          →   advance the queue
+  safety_profile     →   the harm side of the ledger
+compile_whitepaper   → PRISMA/GRADE white paper
+compile_visual_report→ the self-contained HTML page
+export_dataset       → versioned JSON for the website
 ```
 
 **Phase 2 — thesis** (different agent, same project name):

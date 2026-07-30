@@ -11,6 +11,18 @@
       "name": "ad-renderer",
       "url": "http://localhost:8737",
       "port": 8737
+    },
+    {
+      "name": "research-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4599",
+        "--directory",
+        "/Users/macdaddyjoe/code/thinkbigjoe/mcp-server/research/preview"
+      ],
+      "port": 4599
     }
   ]
 }

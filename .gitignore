@@ -57,3 +57,4 @@ next-env.d.ts
 windows-sender/chrome-profile/
 windows-sender/*.log
 mcp-server/research/node_modules
+mcp-server/research/preview/

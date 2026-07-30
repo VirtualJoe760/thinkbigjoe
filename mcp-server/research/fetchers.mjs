@@ -646,3 +646,110 @@ export async function fetchPage(url, { maxChars = 60000 } = {}) {
     ].slice(0, 100),
   };
 }
+
+// ---------------------------------------------------------------------------
+// SURFACE LAYER — Yandex and Baidu
+// ---------------------------------------------------------------------------
+//
+// These are here for a specific reason, not for completeness. A large amount of
+// benzimidazole and repurposed-drug oncology work is published in Russian and
+// Chinese venues that Google and DuckDuckGo index thinly or not at all. Yandex
+// is the practical route into the Russian-language web; Baidu into the Chinese.
+//
+// Neither offers a free, scrape-stable endpoint, so both follow the same honest
+// pattern as Google: use a configured key if one exists, and otherwise return a
+// structured `unavailable` marker rather than silently returning nothing. A
+// source that never ran must never look like a source that found nothing.
+
+/**
+ * Yandex. Two supported routes:
+ *   YANDEX_API_KEY + YANDEX_FOLDER_ID → Yandex Cloud Search API v2 (current)
+ *   SERPAPI_KEY                       → SerpAPI's yandex engine
+ */
+export async function yandexSearch(query, { limit = 20, lang = "ru" } = {}) {
+  const key = process.env.YANDEX_API_KEY;
+  const folder = process.env.YANDEX_FOLDER_ID;
+  const serp = process.env.SERPAPI_KEY;
+
+  if (key && folder) {
+    try {
+      const res = await fetch("https://searchapi.api.cloud.yandex.net/v2/web/search", {
+        method: "POST",
+        headers: { Authorization: `Api-Key ${key}`, "Content-Type": "application/json", "User-Agent": UA },
+        body: JSON.stringify({
+          query: { searchType: lang === "ru" ? "SEARCH_TYPE_RU" : "SEARCH_TYPE_COM", queryText: query },
+          folderId: folder,
+          responseFormat: "FORMAT_XML",
+          groupSpec: { groupsOnPage: Math.min(limit, 100), docsInGroup: 1 },
+        }),
+        signal: AbortSignal.timeout(45000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      // The API returns base64 XML in rawData.
+      const xml = data.rawData ? Buffer.from(data.rawData, "base64").toString("utf8") : "";
+      const results = [];
+      const re = /<doc>[\s\S]*?<url>([^<]+)<\/url>[\s\S]*?<title>([\s\S]*?)<\/title>([\s\S]*?)<\/doc>/g;
+      let m;
+      while ((m = re.exec(xml)) && results.length < limit)
+        results.push({ engine: "yandex", url: m[1], title: htmlToText(m[2]), snippet: htmlToText(m[3]).slice(0, 300) });
+      return { results };
+    } catch (e) {
+      return { unavailable: `Yandex Cloud Search API error: ${e.message}`, results: [] };
+    }
+  }
+
+  if (serp) {
+    try {
+      const data = await getJson(
+        `https://serpapi.com/search.json?engine=yandex&text=${encodeURIComponent(query)}&api_key=${serp}`,
+      );
+      return {
+        results: (data.organic_results || []).slice(0, limit).map((r) => ({
+          engine: "yandex",
+          url: r.link,
+          title: r.title,
+          snippet: r.snippet,
+        })),
+      };
+    } catch (e) {
+      return { unavailable: `SerpAPI yandex error: ${e.message}`, results: [] };
+    }
+  }
+
+  return {
+    unavailable:
+      "Yandex is not configured. Set YANDEX_API_KEY + YANDEX_FOLDER_ID (Yandex Cloud Search API) or SERPAPI_KEY. Without it, Russian-language sources are reachable only through whatever OpenAlex and Europe PMC happen to index — report this as a coverage gap.",
+    results: [],
+  };
+}
+
+/**
+ * Baidu. Baidu publishes no general web-search API and blocks direct scraping
+ * aggressively, so SerpAPI's baidu engine is the only reliable route.
+ */
+export async function baiduSearch(query, { limit = 20 } = {}) {
+  const serp = process.env.SERPAPI_KEY;
+  if (serp) {
+    try {
+      const data = await getJson(
+        `https://serpapi.com/search.json?engine=baidu&q=${encodeURIComponent(query)}&rn=${Math.min(limit, 50)}&api_key=${serp}`,
+      );
+      return {
+        results: (data.organic_results || []).slice(0, limit).map((r) => ({
+          engine: "baidu",
+          url: r.link,
+          title: r.title,
+          snippet: r.snippet,
+        })),
+      };
+    } catch (e) {
+      return { unavailable: `SerpAPI baidu error: ${e.message}`, results: [] };
+    }
+  }
+  return {
+    unavailable:
+      "Baidu is not configured. Baidu publishes no general web-search API and blocks direct scraping, so SERPAPI_KEY (engine=baidu) is the only reliable route. Without it, Chinese-language sources are reachable only through OpenAlex and Europe PMC's Chinese-journal coverage — report this as a coverage gap.",
+    results: [],
+  };
+}
