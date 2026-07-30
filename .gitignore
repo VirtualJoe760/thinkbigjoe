@@ -56,3 +56,4 @@ next-env.d.ts
 # Windows sender: never commit the logged-in session profile or logs
 windows-sender/chrome-profile/
 windows-sender/*.log
+mcp-server/research/node_modules

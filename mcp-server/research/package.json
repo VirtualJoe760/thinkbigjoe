@@ -1,0 +1,15 @@
+{
+  "name": "research-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Two MCP servers: a citation-locked deep research instrument (research-mcp) and the investigational thesis builder that reads its corpus (thesis-mcp).",
+  "scripts": {
+    "research": "node research-mcp.mjs",
+    "thesis": "node thesis-mcp.mjs",
+    "smoke": "node smoke-test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.13.1"
+  }
+}

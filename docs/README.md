@@ -120,6 +120,7 @@ remembers. ⚠️ = retired/legacy, kept only for history; safe to ignore unless
 | `/windows-sender/README.md` | ⚠️ Deleted (2026-07-09, `f55f515`) | Windows/Playwright variant of linkedin-sender; superseded by it, then removed with it. |
 | `/vps-sentinel/README.md` | ⚠️ Retired | The DigitalOcean Gmail-IMAP sentinel; no VPS anymore. Its own "replaced by X" banner had gone stale too (X was later removed) — fixed 2026-07-06, see the banner for the story. |
 | `/macmini-runner/README.md` | ⚠️ Retired | Replaced entirely by Venus on OpenClaw — this banner has stayed accurate. |
+| [`/mcp-server/research/README.md`](../mcp-server/research/README.md) | Active (added 2026-07-30) | **Not part of the TBJ pipeline.** Two standalone MCP servers built for a research client: `research-mcp` (citation-locked deep-research instrument — Google/DuckDuckGo + PubMed, Europe PMC, ClinicalTrials.gov, OpenAlex, openFDA, with a mandatory disconfirming-search mirror) and `thesis-mcp` (investigational thesis builder where every parameter must trace to a recorded finding). Shares no code, DB or config with `tbj-mcp.mjs`; corpus is flat JSONL outside the repo. THE RULE (UI + tool + cron) does not apply — there is no TBJ surface for it. |
 
 **`~/code/webdev-templates` (the forge — separate repo, see [FORGE.md](FORGE.md)):**
 
