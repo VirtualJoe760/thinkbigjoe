@@ -114,6 +114,20 @@ Measured on a simulated full run — 5,500 source-queries, 2.2M records, 176,917
 | `readIndex`, warm | — | **2 ms** |
 | `next_action` | minutes projected | **71 ms** |
 
+**Every outbound request is rate-limited.** This was not true in the first pass and the omission
+was the real hazard: `build_index` was paced, but `deep_search`, `read_source`, `find_trials`,
+`expand_citations`, `check_integrity` and `safety_profile` all called `fetchers.mjs` directly — 28
+network call sites with no pacing at all. Over a multi-day run those paths make far more requests
+than indexing does. All of them now route through the limiter.
+
+**A circuit breaker stops a bad minute becoming a block.** Retries alone are not enough: when a
+source starts refusing, retrying it on every subsequent call turns one throttle into thousands of
+hostile requests. Four consecutive failures open the circuit for that source; the cooldown grows
+(1 → 5 → 15 → 60 min) and one success closes it. Breaker state persists, so a crash-looping
+process cannot reset it and resume hammering. DuckDuckGo gets special handling — it answers a
+challenge page rather than a 429, so a challenge page is counted as a refusal rather than parsed
+as zero results.
+
 **Rate limits and daily quotas persist to disk** (`ratelimit.mjs`). An in-memory counter resets on
 restart, so a crash-looping agent would blow through a 100/day Google quota several times over and
 never know. Counters are keyed by UTC date in the corpus directory. Backoff is exponential with

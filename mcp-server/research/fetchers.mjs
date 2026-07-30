@@ -30,25 +30,73 @@ const UA =
 
 const CONTACT = process.env.RESEARCH_CONTACT_EMAIL || "research@example.org";
 
+// EVERY outbound request in this file goes through the shared rate limiter.
+// This was not always true, and the omission was the real hazard: build_index
+// was paced but deep_search, read_source, find_trials, expand_citations,
+// check_integrity and safety_profile were not, so a long run made thousands of
+// unpaced requests through those paths. The limiter enforces per-source rates,
+// persistent daily quotas, exponential backoff honouring Retry-After, and a
+// circuit breaker that stops retrying a source that is refusing.
+
+/** Map a URL to the limiter bucket that governs it. */
+export function sourceOf(url) {
+  const h = (() => { try { return new URL(url).host; } catch { return ""; } })();
+  if (/ncbi\.nlm\.nih\.gov/.test(h)) return "pubmed";
+  if (/ebi\.ac\.uk|europepmc\.org/.test(h)) return "europepmc";
+  if (/clinicaltrials\.gov/.test(h)) return "clinicaltrials";
+  if (/openalex\.org/.test(h)) return "openalex";
+  if (/crossref\.org/.test(h)) return "crossref";
+  if (/api\.fda\.gov|open\.fda\.gov/.test(h)) return "openfda";
+  if (/duckduckgo\.com/.test(h)) return "duckduckgo";
+  if (/googleapis\.com|google\.com/.test(h)) return "google";
+  if (/serpapi\.com/.test(h)) return "serpapi";
+  if (/yandex/.test(h)) return "yandex";
+  if (/baidu/.test(h)) return "baidu";
+  if (/marginalia/.test(h)) return "marginalia";
+  return "web"; // arbitrary pages fetched by read_source
+}
+
 async function getJson(url, opts = {}) {
-  const res = await fetch(url, {
-    headers: { "User-Agent": UA, Accept: "application/json", ...(opts.headers || {}) },
-    signal: AbortSignal.timeout(opts.timeout || 30000),
+  const src = opts.source || sourceOf(url);
+  const r = await limited(src, async () => {
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA, Accept: "application/json", ...(opts.headers || {}) },
+      signal: AbortSignal.timeout(opts.timeout || 30000),
+    });
+    if (!res.ok) {
+      const e = new Error(`HTTP ${res.status} from ${new URL(url).host}`);
+      const ra = res.headers.get("retry-after");
+      if (ra) e.retryAfter = Number(ra);
+      throw e;
+    }
+    return res.json();
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status} from ${new URL(url).host}`);
-  return res.json();
+  if (!r.ok) throw new Error(r.error);
+  return r.value;
 }
 
 async function getText(url, opts = {}) {
-  const res = await fetch(url, {
-    headers: { "User-Agent": UA, Accept: "*/*", ...(opts.headers || {}) },
-    signal: AbortSignal.timeout(opts.timeout || 30000),
-    redirect: "follow",
+  const src = opts.source || sourceOf(url);
+  const r = await limited(src, async () => {
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA, Accept: "*/*", ...(opts.headers || {}) },
+      signal: AbortSignal.timeout(opts.timeout || 30000),
+      redirect: "follow",
+    });
+    const body = await res.text();
+    if (!res.ok) {
+      const e = new Error(`HTTP ${res.status} from ${new URL(url).host}`);
+      const ra = res.headers.get("retry-after");
+      if (ra) e.retryAfter = Number(ra);
+      throw e;
+    }
+    return { body, finalUrl: res.url, contentType: res.headers.get("content-type") || "" };
   });
-  const body = await res.text();
-  if (!res.ok) throw new Error(`HTTP ${res.status} from ${new URL(url).host}`);
-  return { body, finalUrl: res.url, contentType: res.headers.get("content-type") || "" };
+  if (!r.ok) throw new Error(r.error);
+  return r.value;
 }
+
+import { limited, recordFailure, breakerOpen } from "./ratelimit.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -135,6 +183,12 @@ export function extractContacts(text, html = "") {
  * We deliberately use the no-JS endpoint so results are parseable and stable.
  */
 export async function duckduckgoSearch(query, { limit = 25, region = "wt-wt", timeRange } = {}) {
+  // A cooling-down breaker is a known temporary condition, not an error. Report
+  // it the same way an unconfigured engine is reported, so the caller logs a
+  // coverage gap rather than crashing or — worse — recording "0 results".
+  const br = breakerOpen("duckduckgo");
+  if (br.open) return { unavailable: `DuckDuckGo cooling down (${br.consecutive_failures} consecutive failures, ${br.seconds_left}s left).`, results: [] };
+
   const results = [];
   const seen = new Set();
   let body = new URLSearchParams({ q: query, kl: region });
@@ -142,18 +196,41 @@ export async function duckduckgoSearch(query, { limit = 25, region = "wt-wt", ti
 
   for (let page = 0; page < Math.ceil(limit / 25) && results.length < limit; page++) {
     if (page > 0) body.set("s", String(page * 25));
-    const res = await fetch("https://html.duckduckgo.com/html/", {
-      method: "POST",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: body.toString(),
-      signal: AbortSignal.timeout(30000),
-    });
-    if (!res.ok) throw new Error(`DuckDuckGo HTTP ${res.status}`);
-    const html = await res.text();
+    let attempt;
+    try {
+      attempt = await limited("duckduckgo", async () => {
+      const res = await fetch("https://html.duckduckgo.com/html/", {
+        method: "POST",
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: body.toString(),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) {
+        const e = new Error(`DuckDuckGo HTTP ${res.status}`);
+        const ra = res.headers.get("retry-after");
+        if (ra) e.retryAfter = Number(ra);
+        throw e;
+      }
+        return res.text();
+      });
+    } catch (e) {
+      return { unavailable: `DuckDuckGo: ${e.message}`, results };
+    }
+    if (!attempt.ok) return { unavailable: `DuckDuckGo: ${attempt.error}`, results };
+    const html = attempt.value;
+    // An anomaly/challenge page is a soft refusal — treat it as a failure so the
+    // breaker sees it, rather than parsing zero results and calling it success.
+    if (/anomaly|unusual traffic|challenge-form/i.test(html.slice(0, 2000))) {
+      recordFailure("duckduckgo");
+      return {
+        unavailable: "DuckDuckGo returned an anomaly/challenge page. Counted as a refusal, not as zero results — the breaker will back off before trying again.",
+        results,
+      };
+    }
 
     const re =
       /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:class="result__snippet"[^>]*>([\s\S]*?)<\/a>)?/gi;
@@ -173,9 +250,8 @@ export async function duckduckgoSearch(query, { limit = 25, region = "wt-wt", ti
       });
     }
     if (!/class="result__a"/.test(html)) break;
-    await sleep(700); // be a good citizen
   }
-  return results;
+  return { results };
 }
 
 // ---------------------------------------------------------------------------
@@ -673,19 +749,23 @@ export async function yandexSearch(query, { limit = 20, lang = "ru" } = {}) {
 
   if (key && folder) {
     try {
-      const res = await fetch("https://searchapi.api.cloud.yandex.net/v2/web/search", {
-        method: "POST",
-        headers: { Authorization: `Api-Key ${key}`, "Content-Type": "application/json", "User-Agent": UA },
-        body: JSON.stringify({
-          query: { searchType: lang === "ru" ? "SEARCH_TYPE_RU" : "SEARCH_TYPE_COM", queryText: query },
-          folderId: folder,
-          responseFormat: "FORMAT_XML",
-          groupSpec: { groupsOnPage: Math.min(limit, 100), docsInGroup: 1 },
-        }),
-        signal: AbortSignal.timeout(45000),
+      const attempt = await limited("yandex", async () => {
+        const res = await fetch("https://searchapi.api.cloud.yandex.net/v2/web/search", {
+          method: "POST",
+          headers: { Authorization: `Api-Key ${key}`, "Content-Type": "application/json", "User-Agent": UA },
+          body: JSON.stringify({
+            query: { searchType: lang === "ru" ? "SEARCH_TYPE_RU" : "SEARCH_TYPE_COM", queryText: query },
+            folderId: folder,
+            responseFormat: "FORMAT_XML",
+            groupSpec: { groupsOnPage: Math.min(limit, 100), docsInGroup: 1 },
+          }),
+          signal: AbortSignal.timeout(45000),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      if (!attempt.ok) throw new Error(attempt.error);
+      const data = attempt.value;
       // The API returns base64 XML in rawData.
       const xml = data.rawData ? Buffer.from(data.rawData, "base64").toString("utf8") : "";
       const results = [];

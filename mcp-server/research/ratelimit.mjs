@@ -37,16 +37,91 @@ export const LIMITS = {
   openalex: { rps: () => 8, daily: 90000, note: "OpenAlex polite pool: 10/s and 100k/day with a mailto. Kept under both." },
   crossref: { rps: () => 8, daily: null, note: "Crossref polite pool with a mailto." },
   openfda: { rps: () => 3, daily: 900, note: "openFDA: 240/min and 1000/day without a key." },
-  duckduckgo: { rps: () => 0.7, daily: null, note: "No API; the HTML endpoint blocks aggressively. Deliberately slow." },
+  duckduckgo: { rps: () => 0.5, daily: null, note: "No API; the HTML endpoint throttles aggressively and answers a challenge page rather than a 429. One request every two seconds, and a challenge page counts as a refusal so the breaker sees it." },
   google: { rps: () => 2, daily: 95, note: "Programmable Search free tier is 100 queries/day. Stops at 95 to leave headroom." },
   yandex: { rps: () => 1, daily: null, note: "Yandex Cloud Search API is billed per request." },
   baidu: { rps: () => 1, daily: null, note: "Via SerpAPI; billed per search." },
   serpapi: { rps: () => 2, daily: null, note: "Billed per search — the daily ceiling is the plan, not the API." },
-  web: { rps: () => 0.7, daily: null, note: "Alias for the web-search fan-out." },
+  marginalia: { rps: () => 1, daily: null, note: "Small volunteer-run index with a free public API. Kept gentle on principle." },
+  web: { rps: () => 1.5, daily: null, note: "Arbitrary pages fetched by read_source, and the web fan-out." },
   default: { rps: () => 3, daily: null, note: "Unrecognised source." },
 };
 
 const lastCall = new Map(); // source → ms timestamp
+
+// ---------------------------------------------------------------------------
+// Circuit breaker
+// ---------------------------------------------------------------------------
+//
+// Retries alone are not enough over a multi-day run. When a source starts
+// refusing — a temporary throttle, an outage, an anomaly page — retrying it on
+// every subsequent call turns one bad minute into thousands of hostile requests,
+// which is how a temporary throttle becomes a durable block.
+//
+// So consecutive failures open a circuit for that source: further calls return
+// immediately with a structured "cooling down" result the caller logs as a
+// coverage gap, and the cooldown grows with each additional failure round.
+// One success closes it.
+//
+// State persists to the quota file, so a crash-looping process cannot reset the
+// breaker and resume hammering a source that just asked it to stop.
+
+const BREAKER_TRIP_AFTER = Number(process.env.RESEARCH_BREAKER_TRIP || 4);
+const BREAKER_COOLDOWNS_MS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000];
+
+const breakers = new Map(); // source → { fails, openUntil }
+
+function breakerState(source) {
+  if (!breakers.has(source)) {
+    const persisted = readQuota().breakers?.[source];
+    breakers.set(source, persisted || { fails: 0, openUntil: 0 });
+  }
+  return breakers.get(source);
+}
+
+function persistBreakers() {
+  const q = readQuota();
+  q.breakers = Object.fromEntries(breakers);
+  writeQuota(q);
+}
+
+export function recordFailure(source) {
+  const b = breakerState(source);
+  b.fails++;
+  if (b.fails >= BREAKER_TRIP_AFTER) {
+    const round = Math.min(BREAKER_COOLDOWNS_MS.length - 1, Math.floor(b.fails / BREAKER_TRIP_AFTER) - 1);
+    b.openUntil = Date.now() + BREAKER_COOLDOWNS_MS[round];
+  }
+  persistBreakers();
+  return b;
+}
+
+export function recordSuccess(source) {
+  const b = breakerState(source);
+  if (b.fails || b.openUntil) {
+    b.fails = 0;
+    b.openUntil = 0;
+    persistBreakers();
+  }
+}
+
+/** Is this source currently cooling down? */
+export function breakerOpen(source) {
+  const b = breakerState(source);
+  if (b.openUntil && Date.now() < b.openUntil) {
+    return { open: true, until: new Date(b.openUntil).toISOString(), seconds_left: Math.ceil((b.openUntil - Date.now()) / 1000), consecutive_failures: b.fails };
+  }
+  return { open: false };
+}
+
+export function breakerReport() {
+  const out = {};
+  for (const [src, b] of breakers) {
+    const st = breakerOpen(src);
+    out[src] = { consecutive_failures: b.fails, cooling_down: st.open, until: st.until || null };
+  }
+  return out;
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -92,7 +167,7 @@ export function quotaReport() {
       note: lim.note,
     };
   }
-  return { date: q.date, sources: out };
+  return { date: q.date, sources: out, breakers: breakerReport() };
 }
 
 /**
@@ -102,6 +177,14 @@ export function quotaReport() {
  */
 export async function acquire(source) {
   const lim = LIMITS[source] || LIMITS.default;
+
+  const br = breakerOpen(source);
+  if (br.open)
+    return {
+      ok: false,
+      cooling_down: true,
+      reason: `${source} is cooling down after ${br.consecutive_failures} consecutive failures — ${br.seconds_left}s left. Retrying a source that is refusing is how a temporary throttle becomes a durable block. Record this as a coverage gap and move on; it will be retried automatically once the cooldown expires.`,
+    };
 
   if (lim.daily) {
     const q = readQuota();
@@ -131,19 +214,24 @@ export async function acquire(source) {
  */
 export async function limited(source, fn, { tries = 4, baseDelay = 900 } = {}) {
   const gate = await acquire(source);
-  if (!gate.ok) return { ok: false, quota_exhausted: true, error: gate.reason };
+  if (!gate.ok)
+    return { ok: false, quota_exhausted: !gate.cooling_down, cooling_down: !!gate.cooling_down, error: gate.reason };
 
   let last;
   for (let attempt = 0; attempt < tries; attempt++) {
     try {
-      return { ok: true, value: await fn() };
+      const value = await fn();
+      recordSuccess(source);
+      return { ok: true, value };
     } catch (e) {
       last = e;
       const msg = String(e?.message || e);
       const retryAfter = Number(e?.retryAfter);
       const is429 = /\b429\b|too many requests/i.test(msg);
       const is5xx = /\b5\d\d\b|ECONNRESET|ETIMEDOUT|socket hang up|fetch failed/i.test(msg);
-      if (!is429 && !is5xx) return { ok: false, error: msg }; // a 404 will not improve with retries
+      // A 404 will not improve with retries, and must not trip the breaker —
+      // that is the source answering correctly, not refusing.
+      if (!is429 && !is5xx) return { ok: false, error: msg };
 
       const wait = Number.isFinite(retryAfter)
         ? retryAfter * 1000
@@ -151,5 +239,14 @@ export async function limited(source, fn, { tries = 4, baseDelay = 900 } = {}) {
       if (attempt < tries - 1) await sleep(wait);
     }
   }
-  return { ok: false, error: String(last?.message || last), exhausted_retries: true };
+  // Every retry was spent and the source is still refusing: count it against
+  // the breaker so a persistent failure stops being retried at all.
+  const b = recordFailure(source);
+  return {
+    ok: false,
+    error: String(last?.message || last),
+    exhausted_retries: true,
+    consecutive_failures: b.fails,
+    cooling_down_until: b.openUntil ? new Date(b.openUntil).toISOString() : null,
+  };
 }

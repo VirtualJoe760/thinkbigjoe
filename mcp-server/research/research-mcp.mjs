@@ -575,8 +575,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
                   recs = (g.results || []).map((x) => ({ source_type: "web", url: x.url, title: x.title, snippet: x.snippet }));
                 } else if (layer === "duckduckgo") {
                   const d = await duckduckgoSearch(query, { limit });
-                  r = { results: d };
-                  recs = d.map((x) => ({ source_type: "web", url: x.url, title: x.title, snippet: x.snippet }));
+                  r = d.unavailable ? { unavailable: d.unavailable, results: [] } : { results: d.results };
+                  recs = (d.results || []).map((x) => ({ source_type: "web", url: x.url, title: x.title, snippet: x.snippet }));
                 } else if (layer === "pubmed") {
                   const p = await pubmedSearch(query, { limit });
                   r = { total_in_db: p.total, results: p.records };

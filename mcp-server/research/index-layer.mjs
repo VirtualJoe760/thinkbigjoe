@@ -690,7 +690,7 @@ export async function enumerateWeb(query, { max = 100 } = {}) {
   // ones ran. An engine that was unreachable must never be indistinguishable
   // from an engine that found nothing.
   const attempts = [
-    ["duckduckgo", async () => ({ results: await duckduckgoSearch(query, { limit: Math.min(max, 100) }) })],
+    ["duckduckgo", () => duckduckgoSearch(query, { limit: Math.min(max, 100) })],
     ["google", () => googleSearch(query, { limit: Math.min(max, 100) })],
     ["marginalia", () => marginaliaSearch(query, { limit: Math.min(max, 40) })],
     ["searxng", () => searxngSearch(query, { limit: Math.min(max, 50) })],
