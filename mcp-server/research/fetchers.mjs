@@ -753,3 +753,76 @@ export async function baiduSearch(query, { limit = 20 } = {}) {
     results: [],
   };
 }
+
+// ---------------------------------------------------------------------------
+// SURFACE LAYER — keyless fallbacks
+// ---------------------------------------------------------------------------
+//
+// DuckDuckGo is the only mainstream engine with a keyless endpoint, and it
+// blocks aggressively — on some networks it is simply unreachable. When it is,
+// the web surface layer would otherwise be empty for anyone without a Google or
+// SerpAPI key. These two fill that hole without a key.
+//
+// Neither is a substitute for Google, and the reports say so. Marginalia in
+// particular indexes the small, non-commercial, independent web — which makes it
+// weak for mainstream coverage and unusually strong for exactly the grey
+// literature (protocol write-ups, patient accounts, independent researchers'
+// sites) that the grey axis is trying to reach and that commercial engines
+// demote.
+
+/**
+ * Marginalia — a small independent-web index with a free, keyless public API.
+ * Strong on the long tail, weak on mainstream results. Use as a complement.
+ */
+export async function marginaliaSearch(query, { limit = 20, index = 0 } = {}) {
+  try {
+    const data = await getJson(
+      `https://api.marginalia.nu/public/search/${encodeURIComponent(query)}?index=${index}`,
+      { timeout: 25000 },
+    );
+    return {
+      results: (data.results || []).slice(0, limit).map((r) => ({
+        engine: "marginalia",
+        url: r.url,
+        title: r.title,
+        snippet: r.description || "",
+      })),
+      pages: data.pages ?? null,
+      license: data.license || null,
+    };
+  } catch (e) {
+    return { unavailable: `Marginalia: ${e.message}`, results: [] };
+  }
+}
+
+/**
+ * SearXNG — a metasearch front end that aggregates Google, Bing, Brave and
+ * others. Public instances rate-limit or block JSON output, so this requires a
+ * SEARXNG_URL pointing at an instance you control (self-hosting is a container
+ * and about five minutes). With one configured it is the best keyless route to
+ * mainstream results that exists.
+ */
+export async function searxngSearch(query, { limit = 25, categories = "general", language = "all" } = {}) {
+  const base = process.env.SEARXNG_URL;
+  if (!base)
+    return {
+      unavailable:
+        "SearXNG is not configured. Set SEARXNG_URL to an instance you control (public instances block JSON output). It aggregates Google, Bing and Brave without per-engine API keys and is the best keyless route to mainstream web results.",
+      results: [],
+    };
+  try {
+    const url = `${base.replace(/\/$/, "")}/search?q=${encodeURIComponent(query)}&format=json&categories=${categories}&language=${language}`;
+    const data = await getJson(url, { timeout: 30000 });
+    return {
+      results: (data.results || []).slice(0, limit).map((r) => ({
+        engine: "searxng",
+        url: r.url,
+        title: r.title,
+        snippet: r.content || "",
+        via: r.engine || null,
+      })),
+    };
+  } catch (e) {
+    return { unavailable: `SearXNG at ${base}: ${e.message}`, results: [] };
+  }
+}

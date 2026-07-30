@@ -71,6 +71,7 @@ import {
 
 import { expandQueryMatrix, ENUMERATORS, TERMS } from "./index-layer.mjs";
 import { nextAction, initRun, getRunConfig } from "./driver.mjs";
+import { estimateProgress } from "./progress.mjs";
 import { renderWhitePaper } from "./render-whitepaper.mjs";
 import { renderVisualReport } from "./render-visual.mjs";
 import { exportDataset } from "./export.mjs";
@@ -128,6 +129,16 @@ Rules that are not negotiable:
   anecdote_unverified and never launder one into a stronger tier.
 - Capture contact details wherever a source exposes them.
 - Check every source for retraction before recording a finding from it.
+- EVERYTHING YOU WRITE IS IN ENGLISH. The claim, the model description, the
+  limitations — all English, always. Non-English sources are valuable and you
+  should search them, but when you record from one: leave verbatim_quote in the
+  source's own language (never translate it — a translated quote is no longer
+  verbatim and cannot be checked against the source) and put your English
+  translation in verbatim_quote_english. The gate rejects a non-English claim,
+  and rejects a non-English quote that arrives without a translation.
+- Call run_progress whenever you want elapsed time and an estimate of what is
+  left. It reports active working time separately from wall clock, so an
+  overnight pause does not corrupt the estimate.
 
 Work depth-first. A search result is a starting point, never an endpoint: open
 the paper, read the full text, then walk its references backward to the primary
@@ -185,6 +196,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         }),
         required: ["project"],
       },
+    },
+    {
+      name: "run_progress",
+      description:
+        "★ Elapsed time and estimated time remaining. Reports two clocks that mean different things: wall-clock since the run started, and ACTIVE working time with idle gaps excluded — a run that pauses overnight would otherwise report a meaningless rate. Throughput is the median over active intervals, remaining work is counted from the query matrix and the unmet read quotas, and the estimate is given as a range with its basis stated. Says 'not yet measurable' rather than guessing when too little has been done.",
+      inputSchema: { type: "object", properties: P(), required: ["project"] },
     },
     {
       name: "index_status",
@@ -284,8 +301,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: "object",
         properties: P({
-          claim: { type: "string", description: "The factual statement in neutral language — what was done and what was observed. No interpretation." },
-          verbatim_quote: { type: "string", description: "Word-for-word from the source. Required, ≥20 chars." },
+          claim: { type: "string", description: "The factual statement, ALWAYS IN ENGLISH, in neutral language — what was done and what was observed. No interpretation. Rejected if written in another language: the report is an English document." },
+          verbatim_quote: { type: "string", description: "Word-for-word from the source, in the SOURCE'S OWN LANGUAGE. Never translate this — a translated quote is no longer verbatim and cannot be checked against the source." },
+          verbatim_quote_english: { type: "string", description: "REQUIRED when verbatim_quote is not in English: your English translation of it. The report renders this as the body text and keeps the original beneath it." },
           direction: { type: "string", enum: DIRECTIONS, description: "benefit | harm | null | mixed | background. Classify honestly." },
           evidence_tier: { type: "string", enum: EVIDENCE_TIERS },
           subject: { type: "string", description: "Substance, e.g. 'fenbendazole'." },
@@ -502,6 +520,12 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         );
       }
 
+      case "run_progress": {
+        const cfg = getRunConfig(project);
+        const na = nextAction(project);
+        return ok(j({ state: na.state, done: na.done, ...estimateProgress(project, cfg, na.state) }));
+      }
+
       case "index_status": {
         const ix = indexStats(project);
         return ok(j({ project, corpus_dir: CORPUS_DIR, ...ix, per_source: sourceExhaustion(project) }));
@@ -526,7 +550,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       case "mark_read": {
         if (["rejected", "unreachable"].includes(a.status) && !a.reason)
           return err(`REJECTED: status '${a.status}' requires a reason. A document dropped without a recorded reason is indistinguishable from one never seen.`);
-        const r = updateCandidate(project, a.key, { status: a.status, reason: a.reason || null });
+        const r = updateCandidate(project, a.key, { status: a.status, reason: a.reason || null, read_at: new Date().toISOString() });
         if (!r.ok) return err(r.error);
         const ix = indexStats(project);
         return ok(j({ marked: a.key, status: a.status, read: ix.read, outstanding: ix.outstanding }));

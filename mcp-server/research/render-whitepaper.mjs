@@ -182,7 +182,23 @@ export function renderWhitePaper(project, opts = {}) {
   L.push(`The complete query list appears in Appendix A.`);
   L.push(``);
 
-  L.push(`### 1.4 Assessment of search completeness`);
+  const nonEnglish = findings.filter((f) => f.source_language && f.source_language !== "en" && f.source_language !== "und");
+  L.push(`### 1.4 Language`);
+  L.push(``);
+  L.push(`This document is written in English. Where a source was published in another language, the quotation is reproduced **in its original language** — translating it would make it no longer verbatim, and a verbatim quotation is what allows a reader to check a claim against its source. An English translation is printed above each such quotation.`);
+  L.push(``);
+  if (nonEnglish.length) {
+    const byLang = {};
+    for (const f of nonEnglish) byLang[f.source_language_name || f.source_language] = (byLang[f.source_language_name || f.source_language] || 0) + 1;
+    L.push(`${nonEnglish.length} of ${findings.length} findings come from non-English sources:`);
+    L.push(``);
+    for (const [lang, n] of Object.entries(byLang).sort((a, b) => b[1] - a[1])) L.push(`- ${lang}: ${n}`);
+  } else {
+    L.push(`All findings in this corpus come from English-language sources. Given that a meaningful share of repurposed-drug oncology work is published in Chinese and Russian venues, this is more likely a limit of the search than a property of the literature — see the coverage table in §1.2 for which non-English sources were reachable.`);
+  }
+  L.push(``);
+
+  L.push(`### 1.5 Assessment of search completeness`);
   L.push(``);
   L.push(`Completeness was estimated by capture-recapture on query overlap. Each query is treated as a capture occasion; a document found by many independent queries indicates dense coverage, while a large population of documents found by exactly one query indicates unexplored space. The Chao1 estimator gives:`);
   L.push(``);
@@ -425,7 +441,15 @@ export function renderWhitePaper(project, opts = {}) {
       L.push(``);
       L.push(f.claim);
       L.push(``);
-      L.push(`> ${f.verbatim_quote.replace(/\n/g, "\n> ")}`);
+      if (f.verbatim_quote_english) {
+        L.push(`> ${f.verbatim_quote_english.replace(/\n/g, "\n> ")}`);
+        L.push(`>`);
+        L.push(`> *— translated from ${f.source_language_name || "the original"}. Original as published:*`);
+        L.push(`>`);
+        L.push(`> ${f.verbatim_quote.replace(/\n/g, "\n> ")}`);
+      } else {
+        L.push(`> ${f.verbatim_quote.replace(/\n/g, "\n> ")}`);
+      }
       L.push(``);
       const meta = [
         f.indication && `**Indication:** ${f.indication}`,

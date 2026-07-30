@@ -31,6 +31,7 @@ import { join } from "node:path";
 import { SPECIES, ANIMAL_SPECIES, normaliseSpecies } from "./species.mjs";
 import { loadIndex, appendIndexRows, compactIndex, maybeCompact, indexSize } from "./store.mjs";
 import { classifyRelevance, RELEVANCE_LEVELS } from "./indication.mjs";
+import { validateLanguage } from "./language.mjs";
 
 export const CORPUS_DIR =
   process.env.RESEARCH_CORPUS_DIR || join(homedir(), "research-corpus");
@@ -425,6 +426,11 @@ export function recordFinding(project, input) {
   // Species is normalised from the free-text model description, or taken as
   // given when the caller states it. The free text is kept verbatim — the
   // normalised value exists for grouping, never to replace what was written.
+  // Language contract: the claim is English, the quote stays in its own
+  // language, and a non-English quote carries an English translation with it.
+  const lang = validateLanguage(input);
+  if (!lang.ok) return { ok: false, error: lang.error };
+
   const sp = SPECIES.includes(input.species)
     ? { species: input.species, confidence: "declared", matched: "caller-supplied" }
     : normaliseSpecies(input.model_system, input.evidence_tier);
@@ -435,6 +441,9 @@ export function recordFinding(project, input) {
     project,
     claim: input.claim.trim(),
     verbatim_quote: input.verbatim_quote.trim(),
+    verbatim_quote_english: input.verbatim_quote_english ? String(input.verbatim_quote_english).trim() : null,
+    source_language: lang.source_language,
+    source_language_name: lang.source_language_name,
     direction: input.direction,
     evidence_tier: input.evidence_tier,
     subject: input.subject || null, // e.g. "ivermectin", "fenbendazole"

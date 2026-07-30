@@ -203,6 +203,30 @@ research correspondence.
 
 ---
 
+## Language
+
+The report is an English document, and the gate enforces it:
+
+| Field | Rule |
+|---|---|
+| `claim` | **Always English.** Rejected if written in another language — script detection for CJK/Cyrillic/Arabic/Greek, stopword detection for Spanish/French/German/Portuguese/Italian/Turkish. |
+| `verbatim_quote` | **Always the source's own words, untranslated.** Translating it would make it no longer verbatim, and a verbatim quotation is the whole mechanism that lets a reader check a claim against its source. |
+| `verbatim_quote_english` | **Required when the quote is not English.** Both are stored; the reports print the translation as body text and keep the original beneath it, tagged with its language. |
+
+## Elapsed time and ETA
+
+`run_progress` (and the `timing` block on every `next_action`) reports **two clocks that mean
+different things**:
+
+- `elapsed_wall` — time since the run started, including overnight pauses
+- `elapsed_active` — how much of that was actually spent working
+
+Throughput is the **median over active intervals**, with gaps longer than five minutes classified
+as idle rather than slow. This matters: a naive wall-clock rate on a run that pauses overnight
+reports four days remaining when the real figure is forty minutes of work. The estimate is a
+**range** with its basis stated, and says `not yet measurable` rather than guessing when too little
+has been done.
+
 ## Setup
 
 ```bash
@@ -219,6 +243,7 @@ Optional environment:
 | `RESEARCH_CORPUS_DIR` | Where corpora live. Default `~/research-corpus`. |
 | `YANDEX_API_KEY` + `YANDEX_FOLDER_ID` | Yandex Cloud Search — the practical route into the Russian-language web. |
 | `SERPAPI_KEY` | Unlocks Google, **Baidu** (the only reliable route into the Chinese-language web), and Google Scholar. |
+| `SEARXNG_URL` | A SearXNG instance you control. Aggregates Google/Bing/Brave without per-engine keys — the best keyless route to mainstream web results. Public instances block JSON output, so self-host. |
 | `RESEARCH_CONTACT_EMAIL` | Sent as the polite-pool contact to NCBI / OpenAlex / Crossref. Set this — it raises your rate limits and it is the courteous thing to do. |
 | `GOOGLE_CSE_ID` + `GOOGLE_API_KEY` | Enables the Google layer via Programmable Search (100 queries/day free). |
 | `SERPAPI_KEY` | Alternative Google layer, and the only way to reach Google Scholar. |

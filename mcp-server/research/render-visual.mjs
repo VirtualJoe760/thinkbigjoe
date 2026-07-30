@@ -840,7 +840,13 @@ function findingsTable(findings) {
 </tr>
 <tr class="det" id="d${i}"><td colspan="8">
   <div><b>${esc(f.claim)}</b></div>
-  <div class="quote">${esc(f.verbatim_quote)}</div>
+  ${
+    f.verbatim_quote_english
+      ? `<div class="quote">${esc(f.verbatim_quote_english)}</div>
+         <div class="meta">— translated from ${esc(f.source_language_name || "the original")}. Original as published:</div>
+         <div class="quote" lang="${esc(f.source_language || "")}">${esc(f.verbatim_quote)}</div>`
+      : `<div class="quote">${esc(f.verbatim_quote)}</div>`
+  }
   <div class="meta">
     ${[
       f.route && `Route: ${esc(f.route)}`,

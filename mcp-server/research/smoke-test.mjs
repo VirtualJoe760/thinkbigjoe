@@ -38,10 +38,15 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 
 console.log("\n── retrieval layer (live network) ──");
 
-await t("duckduckgo", async () => {
-  const r = await duckduckgoSearch("fenbendazole pancreatic cancer", { limit: 10 });
-  assert(r.length > 0, "no results");
-  return `${r.length} results, first: ${r[0].url.slice(0, 60)}`;
+await t("web layer (keyless fallbacks included)", async () => {
+  const { enumerateWeb } = await import("./index-layer.mjs");
+  const r = await enumerateWeb("fenbendazole pancreatic cancer", { max: 30 });
+  // DuckDuckGo blocks some networks outright. That is an environment fact, not
+  // a code failure — what must hold is that SOME web engine ran and that the
+  // ones that did not are reported rather than silently dropped.
+  assert(r.retrieved > 0, `no web engine returned anything. unavailable: ${r.engines_unavailable.join(" | ")}`);
+  assert(Array.isArray(r.engines_unavailable), "unavailable engines not reported");
+  return `${r.retrieved} results · ran ${r.engines_ran.join(", ")} · ${r.engines_unavailable.length} unavailable (reported, not hidden)`;
 });
 
 await t("google", async () => {
@@ -117,6 +122,36 @@ await t("get_full_text API path beats scraping (the depth guarantee)", async () 
   assert(ft.text.length > 20000, `only ${ft.text.length} chars`);
   assert(ft.reference_count > 5, "no reference list");
   return `${ft.text.length} chars of full text, ${ft.reference_count} references extracted for citation walking`;
+});
+
+await t("language gate: non-English claim rejected", async () => {
+  const { recordFinding } = await import("./corpus.mjs");
+  const r = recordFinding("smoke", {
+    claim: "伊维菌素抑制胰腺癌细胞的增殖，具有剂量依赖性。",
+    verbatim_quote: "Ivermectin inhibited proliferation in a dose-dependent manner in PANC-1 cells.",
+    direction: "benefit", evidence_tier: "in_vitro", source: { doi: "10.1000/lang1" },
+  });
+  assert(!r.ok && /must be in English/.test(r.error), "did not reject");
+  return "rejected";
+});
+
+await t("language gate: non-English quote needs a translation", async () => {
+  const { recordFinding } = await import("./corpus.mjs");
+  const bad = recordFinding("smoke", {
+    claim: "Ivermectin inhibited proliferation in a pancreatic cancer cell line.",
+    verbatim_quote: "伊维菌素以剂量依赖的方式抑制了胰腺癌细胞的增殖，并诱导细胞凋亡。",
+    direction: "benefit", evidence_tier: "in_vitro", source: { doi: "10.1000/lang2" },
+  });
+  assert(!bad.ok && /verbatim_quote_english/.test(bad.error), "accepted an untranslated non-English quote");
+  const good = recordFinding("smoke", {
+    claim: "Ivermectin inhibited proliferation in a pancreatic cancer cell line.",
+    verbatim_quote: "伊维菌素以剂量依赖的方式抑制了胰腺癌细胞的增殖，并诱导细胞凋亡。",
+    verbatim_quote_english: "Ivermectin inhibited the proliferation of pancreatic cancer cells in a dose-dependent manner and induced apoptosis.",
+    direction: "benefit", evidence_tier: "in_vitro", source: { doi: "10.1000/lang2" },
+  });
+  assert(good.ok, "rejected a properly translated quote: " + good.error);
+  assert(good.finding.source_language === "zh", "language not recorded");
+  return "rejects untranslated, accepts translated, records source language";
 });
 
 console.log("\n── corpus gates (these MUST reject) ──");

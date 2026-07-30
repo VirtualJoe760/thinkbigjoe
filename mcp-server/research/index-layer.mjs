@@ -38,6 +38,8 @@ import {
   googleSearch,
   yandexSearch,
   baiduSearch,
+  marginaliaSearch,
+  searxngSearch,
 } from "./fetchers.mjs";
 import { SPECIES_QUERY_TERMS } from "./species.mjs";
 import { limited } from "./ratelimit.mjs";
@@ -681,23 +683,41 @@ export async function enumerateOpenAlex(query, { max = 5000, perPage = 200, filt
  */
 export async function enumerateWeb(query, { max = 100 } = {}) {
   const out = [];
-  let ceilingReason = null;
-  try {
-    const dd = await duckduckgoSearch(query, { limit: Math.min(max, 100) });
-    out.push(...dd.map((r) => ({ source_type: "web", url: r.url, title: r.title, snippet: r.snippet })));
-  } catch (e) {
-    ceilingReason = `DuckDuckGo: ${e.message}`;
+  const ran = [];
+  const failed = [];
+
+  // Fan out across every web engine that is actually usable, and record which
+  // ones ran. An engine that was unreachable must never be indistinguishable
+  // from an engine that found nothing.
+  const attempts = [
+    ["duckduckgo", async () => ({ results: await duckduckgoSearch(query, { limit: Math.min(max, 100) }) })],
+    ["google", () => googleSearch(query, { limit: Math.min(max, 100) })],
+    ["marginalia", () => marginaliaSearch(query, { limit: Math.min(max, 40) })],
+    ["searxng", () => searxngSearch(query, { limit: Math.min(max, 50) })],
+  ];
+
+  for (const [name, fn] of attempts) {
+    try {
+      const r = await fn();
+      if (r.unavailable) {
+        failed.push(`${name}: ${r.unavailable}`);
+        continue;
+      }
+      const rows = r.results || [];
+      if (!rows.length) {
+        ran.push(`${name}: 0`);
+        continue;
+      }
+      ran.push(`${name}: ${rows.length}`);
+      out.push(...rows.map((x) => ({ source_type: "web", url: x.url, title: x.title, snippet: x.snippet })));
+    } catch (e) {
+      failed.push(`${name}: ${e.message}`);
+    }
   }
-  let googleNote = null;
-  try {
-    const g = await googleSearch(query, { limit: Math.min(max, 100) });
-    if (g.unavailable) googleNote = g.unavailable;
-    else out.push(...g.results.map((r) => ({ source_type: "web", url: r.url, title: r.title, snippet: r.snippet })));
-  } catch (e) {
-    googleNote = `Google: ${e.message}`;
-  }
+
   const seen = new Set();
-  const records = out.filter((r) => (seen.has(r.url) ? false : (seen.add(r.url), true)));
+  const records = out.filter((r) => r.url && (seen.has(r.url) ? false : (seen.add(r.url), true)));
+
   return {
     engine: "web",
     records,
@@ -705,10 +725,12 @@ export async function enumerateWeb(query, { max = 100 } = {}) {
     retrieved: records.length,
     exhausted: false, // never true for web search — say so rather than imply completeness
     hit_ceiling: true,
+    engines_ran: ran,
+    engines_unavailable: failed,
     ceiling_reason:
-      ceilingReason ||
-      googleNote ||
-      "Web search engines cap result depth (roughly 100–300 per query) and report no reliable total. Coverage on the open web comes from running more, narrower queries — never from paging deeper.",
+      (ran.length ? `ran — ${ran.join(", ")}. ` : "NO WEB ENGINE RAN. ") +
+      (failed.length ? `unavailable — ${failed.map((f) => f.slice(0, 90)).join(" | ")}. ` : "") +
+      "Web engines cap result depth and report no reliable total; coverage on the open web comes from more, narrower queries, never from paging deeper.",
   };
 }
 

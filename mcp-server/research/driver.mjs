@@ -50,6 +50,7 @@ import {
 } from "./corpus.mjs";
 import { expandQueryMatrix } from "./index-layer.mjs";
 import { quotaReport } from "./ratelimit.mjs";
+import { estimateProgress } from "./progress.mjs";
 import { storeSize } from "./corpus.mjs";
 
 /**
@@ -383,11 +384,19 @@ export function nextAction(project) {
   }
 
   // ----------------------------------------------------------------- 8. DONE
-  heartbeat(project, "DONE", { ...progress, state: "DONE" }, { deliverables: reports });
+  let doneTiming = null;
+  try {
+    const t = estimateProgress(project, cfg, "DONE");
+    doneTiming = { elapsed: t.elapsed_wall, elapsed_active: t.elapsed_active, idle: t.idle, completion: t.completion };
+  } catch {
+    /* ignore */
+  }
+  heartbeat(project, "DONE", { ...progress, state: "DONE" }, { deliverables: reports, timing: doneTiming });
   return {
     state: "DONE",
     done: true,
     progress,
+    timing: doneTiming,
     deliverables: reports,
     dataset_hint: "Run export_dataset to project this corpus into the versioned JSON dataset a website can consume.",
     unresolved_gaps: unresolved.map((g) => ({ gap: g.name, detail: g.detail })),
@@ -399,8 +408,26 @@ export function nextAction(project) {
 
   function act(state, prog, body) {
     const progress = { ...prog, state };
-    heartbeat(project, state, progress, { instruction: body.instruction, why_not_done: body.why_not_done });
-    return { state, done: false, progress, ...body };
+    // Elapsed + ETA travel with every step, so an operator watching a days-long
+    // run never has to ask a separate question to find out where it is.
+    let timing = null;
+    try {
+      const t = estimateProgress(project, cfg, state);
+      timing = {
+        elapsed: t.elapsed_wall,
+        elapsed_active: t.elapsed_active,
+        idle: t.idle,
+        estimated_remaining: t.estimate.remaining,
+        estimated_range: t.estimate.range || null,
+        eta_if_continuous: t.estimate.eta_if_continuous || null,
+        confidence: t.estimate.confidence || t.estimate.reason,
+        completion: t.completion,
+      };
+    } catch {
+      /* timing must never break the driver */
+    }
+    heartbeat(project, state, progress, { instruction: body.instruction, why_not_done: body.why_not_done, timing });
+    return { state, done: false, progress, timing, ...body };
   }
 }
 
