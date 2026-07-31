@@ -198,6 +198,9 @@ export async function duckduckgoSearch(query, { limit = 25, region = "wt-wt", ti
     if (page > 0) body.set("s", String(page * 25));
     let attempt;
     try {
+      // tries:2 — a search engine that is refusing will refuse again. Burning
+      // four retries at 8s each per page, before the breaker has even seen
+      // enough failures to open, stalled the whole indexing loop.
       attempt = await limited("duckduckgo", async () => {
       const res = await fetch("https://html.duckduckgo.com/html/", {
         method: "POST",
@@ -207,7 +210,7 @@ export async function duckduckgoSearch(query, { limit = 25, region = "wt-wt", ti
           "Content-Type": "application/x-www-form-urlencoded",
         },
         body: body.toString(),
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) {
         const e = new Error(`DuckDuckGo HTTP ${res.status}`);
@@ -216,7 +219,7 @@ export async function duckduckgoSearch(query, { limit = 25, region = "wt-wt", ti
         throw e;
       }
         return res.text();
-      });
+      }, { tries: 2, baseDelay: 500 });
     } catch (e) {
       return { unavailable: `DuckDuckGo: ${e.message}`, results };
     }
@@ -858,7 +861,7 @@ export async function marginaliaSearch(query, { limit = 20, index = 0 } = {}) {
   try {
     const data = await getJson(
       `https://api.marginalia.nu/public/search/${encodeURIComponent(query)}?index=${index}`,
-      { timeout: 25000 },
+      { timeout: 12000 },
     );
     return {
       results: (data.results || []).slice(0, limit).map((r) => ({

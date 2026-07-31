@@ -59,7 +59,7 @@ async function getJson(url, source = "default") {
   const r = await limited(source, async () => {
     const res = await fetch(url, {
       headers: { "User-Agent": UA, Accept: "application/json" },
-      signal: AbortSignal.timeout(45000),
+      signal: AbortSignal.timeout(20000),
     });
     if (!res.ok) {
       const err = new Error(`HTTP ${res.status}`);
@@ -689,8 +689,16 @@ export async function enumerateWeb(query, { max = 100 } = {}) {
   // Fan out across every web engine that is actually usable, and record which
   // ones ran. An engine that was unreachable must never be indistinguishable
   // from an engine that found nothing.
+  // DuckDuckGo is OFF by default. It has no API, blackholes connections
+  // intermittently, answers challenge pages rather than 429s, and on this
+  // network has returned nothing all session while costing ~25s per call —
+  // which stalls the indexing loop it sits inside. Set RESEARCH_ENABLE_DDG=1 to
+  // put it back. Its absence is recorded as a coverage gap either way, so the
+  // report never mistakes "not queried" for "found nothing".
   const attempts = [
-    ["duckduckgo", () => duckduckgoSearch(query, { limit: Math.min(max, 100) })],
+    ...(process.env.RESEARCH_ENABLE_DDG === "1"
+      ? [["duckduckgo", () => duckduckgoSearch(query, { limit: Math.min(max, 100) })]]
+      : []),
     ["google", () => googleSearch(query, { limit: Math.min(max, 100) })],
     ["marginalia", () => marginaliaSearch(query, { limit: Math.min(max, 40) })],
     ["searxng", () => searxngSearch(query, { limit: Math.min(max, 50) })],
@@ -717,6 +725,9 @@ export async function enumerateWeb(query, { max = 100 } = {}) {
 
   const seen = new Set();
   const records = out.filter((r) => r.url && (seen.has(r.url) ? false : (seen.add(r.url), true)));
+
+  if (process.env.RESEARCH_ENABLE_DDG !== "1")
+    failed.push("duckduckgo: disabled (RESEARCH_ENABLE_DDG is not set) — no API, unreliable on this network, and it stalls the indexing loop. Recorded as a coverage gap.");
 
   return {
     engine: "web",

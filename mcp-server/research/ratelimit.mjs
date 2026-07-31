@@ -32,17 +32,17 @@ import { CORPUS_DIR } from "./corpus.mjs";
  */
 export const LIMITS = {
   pubmed: { rps: () => (process.env.NCBI_API_KEY ? 8 : 2.5), daily: null, note: "NCBI E-utilities: 3/s without a key, 10/s with one. Kept below both." },
-  europepmc: { rps: () => 6, daily: null, note: "Europe PMC asks for considerate use; no published hard limit." },
+  europepmc: { rps: () => 3, daily: null, note: "Europe PMC asks for considerate use; no published hard limit. Kept slow on principle." },
   clinicaltrials: { rps: () => 5, daily: null, note: "ClinicalTrials.gov v2 has no published limit; kept modest." },
-  openalex: { rps: () => 8, daily: 90000, note: "OpenAlex polite pool: 10/s and 100k/day with a mailto. Kept under both." },
-  crossref: { rps: () => 8, daily: null, note: "Crossref polite pool with a mailto." },
+  openalex: { rps: () => 2, daily: 50000, note: "OpenAlex polite pool is 10/s and 100k/day, but that is a shared ceiling, not an entitlement — we earned a 429 at 8/s. A days-long run has no reason to sprint." },
+  crossref: { rps: () => 4, daily: null, note: "Crossref polite pool with a mailto." },
   openfda: { rps: () => 3, daily: 900, note: "openFDA: 240/min and 1000/day without a key." },
   duckduckgo: { rps: () => 0.5, daily: null, note: "No API; the HTML endpoint throttles aggressively and answers a challenge page rather than a 429. One request every two seconds, and a challenge page counts as a refusal so the breaker sees it." },
   google: { rps: () => 2, daily: 95, note: "Programmable Search free tier is 100 queries/day. Stops at 95 to leave headroom." },
   yandex: { rps: () => 1, daily: null, note: "Yandex Cloud Search API is billed per request." },
   baidu: { rps: () => 1, daily: null, note: "Via SerpAPI; billed per search." },
   serpapi: { rps: () => 2, daily: null, note: "Billed per search — the daily ceiling is the plan, not the API." },
-  marginalia: { rps: () => 1, daily: null, note: "Small volunteer-run index with a free public API. Kept gentle on principle." },
+  marginalia: { rps: () => 0.4, daily: null, note: "Small volunteer-run index, free public API. Kept deliberately gentle — it throttles quickly and it is a courtesy to a volunteer service." },
   web: { rps: () => 1.5, daily: null, note: "Arbitrary pages fetched by read_source, and the web fan-out." },
   default: { rps: () => 3, daily: null, note: "Unrecognised source." },
 };
@@ -66,7 +66,7 @@ const lastCall = new Map(); // source → ms timestamp
 // State persists to the quota file, so a crash-looping process cannot reset the
 // breaker and resume hammering a source that just asked it to stop.
 
-const BREAKER_TRIP_AFTER = Number(process.env.RESEARCH_BREAKER_TRIP || 4);
+const BREAKER_TRIP_AFTER = Number(process.env.RESEARCH_BREAKER_TRIP || 2);
 const BREAKER_COOLDOWNS_MS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000];
 
 const breakers = new Map(); // source → { fails, openUntil }

@@ -46,6 +46,7 @@ import {
 import { nextAction, getRunConfig, initRun } from "./driver.mjs";
 import { expandQueryMatrix, ENUMERATORS } from "./index-layer.mjs";
 import { europepmcFullText, fetchPage, fdaLabel, fdaAdverseEvents, integrityCheck } from "./fetchers.mjs";
+import { recordFailure, breakerOpen } from "./ratelimit.mjs";
 import { renderWhitePaper } from "./render-whitepaper.mjs";
 import { renderVisualReport } from "./render-visual.mjs";
 import { exportDataset } from "./export.mjs";
@@ -57,6 +58,18 @@ const DEPTH = process.env.RESEARCH_DEPTH || "exhaustive";
 const READ_BATCH = Number(process.env.RESEARCH_READ_BATCH || 6);
 const CLAUDE_BIN = process.env.CLAUDE_BIN || "/Users/macdaddyjoe/.local/bin/claude";
 const MAX_READ_FAILURES = 5;
+// Ceiling on how many documents will ever be sent to the model. Each is one
+// `claude -p` spawn, so this is the run's cost bound.
+const MAX_DOCUMENTS = Number(process.env.RESEARCH_MAX_DOCUMENTS || 1200);
+// No single source may stall the loop. Retries and per-request timeouts compose
+// badly — a 45s timeout with four retries is three minutes of silence for ONE
+// source on ONE query, and with ~1,264 queries that is days of dead time. This
+// is the outer bound: past it the source is abandoned for that query, the gap is
+// logged, and the loop moves on.
+const SOURCE_TIMEOUT_MS = Number(process.env.RESEARCH_SOURCE_TIMEOUT_MS || 60000);
+
+const withTimeout = (p, ms, label) =>
+  Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} exceeded ${ms / 1000}s — abandoned for this query`)), ms))]);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log(`[${new Date().toISOString()}]`, ...a);
@@ -94,18 +107,61 @@ function acquireLock() {
 async function runIndexBatch() {
   const cfg = getRunConfig(PROJECT);
   const matrix = expandQueryMatrix({ depth: cfg.depth, substances: cfg.substances });
-  const ran = new Set((await import("./corpus.mjs")).getSearches(PROJECT).map((q) => q.query));
-  const pending = matrix.queries.filter((q) => !ran.has(q.query));
+  // Completion is keyed on (engine, query), not query alone. Keying on the query
+  // meant one source erroring transiently marked the whole query done and that
+  // source's coverage was silently lost with no way to notice.
+  const searches = (await import("./corpus.mjs")).getSearches(PROJECT);
+  // A pair is "settled" if it succeeded OR failed in a way that cannot recover.
+  // Keying retries on transient failures only — otherwise a source that returns
+  // 400 for a query shape it will never understand keeps that query pending
+  // forever and the runner re-runs every source for it on every batch.
+  const TERMINAL = /HTTP 4(0[0-9]|1[0-9]|2[0-8])\b|unsupported|not configured|disabled/i;
+  const settled = new Set(
+    searches
+      .filter((q) => {
+        const n = q.notes || "";
+        if (!/^ERROR/.test(n)) return true;           // succeeded
+        return TERMINAL.test(n);                       // failed permanently
+      })
+      .map((q) => `${q.engine}::${q.query}`),
+  );
+  const okPairs = settled;
+  const SOURCES = ["pubmed", "europepmc", "clinicaltrials", "openalex", "web"];
+  const pubmedSyntax = (q) => /\[(MeSH Terms|tiab|Title\/Abstract|Substance Name|All Fields)\]/i.test(q);
+  const targetsFor = (q) => (pubmedSyntax(q) ? ["pubmed", "europepmc"] : SOURCES);
+  const pending = matrix.queries.filter((q) => targetsFor(q.query).some((src) => !okPairs.has(`${src}::${q.query}`)));
   if (!pending.length) return { done: true };
 
   const batch = pending.slice(0, 4);
-  const sources = ["pubmed", "europepmc", "clinicaltrials", "openalex", "web"];
+
+  // PubMed field tags ([MeSH Terms], [tiab]) are PubMed syntax. ClinicalTrials.gov
+  // answers 400 and OpenAlex treats them as literal text, so routing them there
+  // is a guaranteed wasted call.
+  const isPubmedSyntax = (q) => /\[(MeSH Terms|tiab|Title\/Abstract|Substance Name|All Fields)\]/i.test(q);
 
   for (const q of batch) {
-    for (const src of sources) {
+    const targets = isPubmedSyntax(q.query) ? ["pubmed", "europepmc"] : SOURCES;
+    for (const src of SOURCES) {
+      if (!targets.includes(src)) {
+        logSearch(PROJECT, { engine: src, query: q.query, intent: q.intent, result_count: 0, notes: "ERROR: unsupported query syntax for this source (PubMed field tags)" });
+        continue;
+      }
+      if (okPairs.has(`${src}::${q.query}`)) continue; // already succeeded
+      // Skip a source that is cooling down rather than paying its timeout again.
+      const br = breakerOpen(src);
+      if (br.open) {
+        logSearch(PROJECT, { engine: src, query: q.query, intent: q.intent, result_count: 0, notes: `cooling down (${br.seconds_left}s left)` });
+        continue;
+      }
+      const t0 = Date.now();
       try {
-        const r = await ENUMERATORS[src](q.query, { max: 400 });
+        const r = await withTimeout(ENUMERATORS[src](q.query, { max: 400 }), SOURCE_TIMEOUT_MS, src);
         const y = indexCandidates(PROJECT, r.records, { engine: src, query: q.query, intent: q.intent });
+        // Per-source logging: a query fans out across five sources, and without
+        // this the log is silent for however long the slowest one takes. On a
+        // run measured in days that is the difference between "working" and
+        // "apparently hung".
+        log(`  ${src.padEnd(15)} ${((Date.now() - t0) / 1000).toFixed(1)}s → ${r.retrieved} (${y.fresh} new)  "${q.query.slice(0, 42)}"`);
         logSearch(PROJECT, {
           engine: src, query: q.query, intent: q.intent,
           result_count: r.retrieved, reported_total: r.reported_total,
@@ -113,6 +169,11 @@ async function runIndexBatch() {
           marginal_yield: y.marginal_yield, notes: r.ceiling_reason,
         });
       } catch (e) {
+        // A source that blew the outer time budget is refusing in slow motion.
+        // Feed it to the breaker so it gets skipped for a cooldown instead of
+        // costing the full timeout on every remaining query.
+        if (/exceeded .*s — abandoned/.test(e.message)) recordFailure(src);
+        log(`  ${src.padEnd(15)} ${((Date.now() - t0) / 1000).toFixed(1)}s → ERROR ${String(e.message).slice(0, 70)}`);
         logSearch(PROJECT, { engine: src, query: q.query, intent: q.intent, result_count: 0, notes: `ERROR: ${e.message}` });
       }
     }
@@ -175,19 +236,58 @@ function claudeExtract(prompt) {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env },
     });
-    let out = "", err = "";
-    const timer = setTimeout(() => { p.kill("SIGKILL"); resolve(null); }, 300000);
+    let out = "", err = "", settled = false;
+    const done = (v) => { if (!settled) { settled = true; clearTimeout(timer); resolve(v); } };
+    const timer = setTimeout(() => { try { p.kill("SIGKILL"); } catch {} done(null); }, 300000);
+    // Without these, a spawn failure or a broken pipe is an uncaught exception
+    // that takes the whole runner down — and launchd KeepAlive turns that into a
+    // crash loop. A failure here must cost one document, never the run.
+    p.on("error", () => done(null));
+    p.stdin.on("error", () => {});
     p.stdout.on("data", (d) => (out += d));
     p.stderr.on("data", (d) => (err += d));
     p.on("close", () => {
-      clearTimeout(timer);
       const m = out.match(/\{[\s\S]*\}/);
-      if (!m) return resolve(null);
-      try { resolve(JSON.parse(m[0])); } catch { resolve(null); }
+      if (!m) return done(null);
+      try { done(JSON.parse(m[0])); } catch { done(null); }
     });
-    p.stdin.write(prompt);
-    p.stdin.end();
+    try { p.stdin.write(prompt); p.stdin.end(); } catch { done(null); }
   });
+}
+
+/**
+ * Normalise for quote comparison: collapse whitespace, unify curly quotes and
+ * dashes, drop case. Publishers vary these; a reader would still call it the
+ * same sentence.
+ */
+const normaliseForQuote = (t) =>
+  String(t || "")
+    .normalize("NFKC")
+    .replace(/[\u2018\u2019\u201B]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+/**
+ * Does this quote actually appear in the document?
+ *
+ * Nothing else in the pipeline checks this. The verbatim quote is the single
+ * mechanism that makes a claim checkable by a third party — if the model
+ * paraphrases instead of copying, every downstream guarantee is hollow and
+ * nothing would ever detect it. So the runner checks, and a quote that is not
+ * in the document is dropped rather than recorded.
+ */
+function quoteIsReal(quote, docText) {
+  const q = normaliseForQuote(quote);
+  if (q.length < 20) return false;
+  const hay = normaliseForQuote(docText);
+  if (hay.includes(q)) return true;
+  // Tolerate a trimmed tail (models often stop mid-sentence) but require a
+  // substantial contiguous prefix to be present verbatim.
+  const prefix = q.slice(0, Math.max(40, Math.floor(q.length * 0.6)));
+  return hay.includes(prefix);
 }
 
 /** Fetch a candidate's readable text by the best route available. */
@@ -216,13 +316,29 @@ async function fetchDoc(c) {
   return { unreachable: "no readable route (no PMC id, no abstract, no fetchable URL)" };
 }
 
-async function runReadBatch() {
+async function runReadBatch(driverQueue) {
   const idx = readIndex(PROJECT);
-  const queue = idx
-    .filter((c) => ["queued", "indexed"].includes(c.status))
-    .sort((a, b) => (b.priority || 0) - (a.priority || 0))
-    .slice(0, READ_BATCH);
+  const byKey = new Map(idx.map((c) => [c.key, c]));
+
+  // Prefer the driver's stratum-targeted queue: it aims at whichever quota is
+  // furthest behind, so null-result and safety literature get read rather than
+  // whatever sits highest on one global list. Falling back to the global list
+  // would read far more documents than the quotas actually require.
+  let queue = (driverQueue || []).map((q) => byKey.get(q.key)).filter(Boolean);
+  if (!queue.length) {
+    queue = idx
+      .filter((c) => ["queued", "indexed"].includes(c.status))
+      .sort((a, b) => (b.priority || 0) - (a.priority || 0));
+  }
+  queue = queue.slice(0, READ_BATCH);
   if (!queue.length) return { empty: true };
+
+  // Hard ceiling on model spend across the whole run.
+  const readSoFar = idx.filter((c) => ["read", "recorded", "rejected"].includes(c.status)).length;
+  if (readSoFar >= MAX_DOCUMENTS) {
+    log(`document budget reached (${readSoFar}/${MAX_DOCUMENTS}) — no further extraction`);
+    return { empty: true, budget_exhausted: true };
+  }
 
   let recorded = 0, failures = 0;
   for (const c of queue) {
@@ -234,9 +350,22 @@ async function runReadBatch() {
     }
 
     const parsed = await claudeExtract(extractionPrompt(doc));
-    if (!parsed) {
+
+    // A malformed response is a TRANSIENT failure, not a verdict on the document.
+    // Marking it "rejected" would be indistinguishable from a genuinely empty
+    // paper; leaving it untouched would re-select it every batch forever. So it
+    // gets an attempt counter and is retired only after repeated failures.
+    const wellFormed = parsed && Array.isArray(parsed.findings);
+    if (!wellFormed) {
       failures++;
-      log(`  extraction failed: ${(c.title || c.key).slice(0, 60)}`);
+      const attempts = (c.extract_attempts || 0) + 1;
+      updateCandidate(PROJECT, c.key, { extract_attempts: attempts });
+      if (attempts >= 3) {
+        updateCandidate(PROJECT, c.key, { status: "rejected", reason: `extraction failed ${attempts} times`, read_at: new Date().toISOString() });
+        log(`  giving up after ${attempts} extraction attempts: ${(c.title || c.key).slice(0, 55)}`);
+      } else {
+        log(`  extraction failed (attempt ${attempts}): ${(c.title || c.key).slice(0, 55)}`);
+      }
       if (failures >= MAX_READ_FAILURES) {
         log(`  ${failures} consecutive extraction failures — pausing this batch.`);
         break;
@@ -251,8 +380,15 @@ async function runReadBatch() {
       try { retracted = !(await integrityCheck({ doi: c.doi, pmid: c.pmid })).clean; } catch {}
     }
 
-    let got = 0;
-    for (const f of parsed.findings || []) {
+    let got = 0, fabricated = 0;
+    for (const f of parsed.findings) {
+      if (!f || typeof f !== "object") continue;
+      // The quote must actually be in the document. This is the check that keeps
+      // "verbatim" meaningful.
+      if (!quoteIsReal(f.verbatim_quote, doc.text)) {
+        fabricated++;
+        continue;
+      }
       const r = recordFinding(PROJECT, {
         ...f,
         retracted,
@@ -268,10 +404,10 @@ async function runReadBatch() {
     recorded += got;
     updateCandidate(PROJECT, c.key, {
       status: got ? "recorded" : "rejected",
-      reason: got ? null : parsed.no_findings_reason || "no checkable findings",
+      reason: got ? null : fabricated ? `${fabricated} quote(s) not found in the document` : parsed.no_findings_reason || "no checkable findings",
       read_at: new Date().toISOString(),
     });
-    log(`  read: ${(c.title || c.key).slice(0, 55)} → ${got} findings`);
+    log(`  read: ${(c.title || c.key).slice(0, 50)} → ${got} findings${fabricated ? ` (${fabricated} dropped: quote not in document)` : ""}`);
   }
   return { read: queue.length, recorded };
 }
@@ -356,7 +492,7 @@ async function main() {
         // nextAction performs triage itself; calling it again advances the state.
         break;
       case "READING": {
-        const r = await runReadBatch();
+        const r = await runReadBatch(a.read_queue);
         if (r.empty) {
           idleRounds++;
           log(`read queue empty but quotas unmet (round ${idleRounds}) — more indexing needed`);
@@ -387,7 +523,9 @@ async function main() {
         const html = renderVisualReport(PROJECT, { question: QUESTION });
         const dir = join(CORPUS_DIR, PROJECT, "reports");
         mkdirSync(dir, { recursive: true });
-        const file = join(dir, `visual-report-${new Date().toISOString().replace(/[:.]/g, "-")}.html`);
+        // Stable filename on purpose: a timestamped one meant a repeat wrote a
+        // new file every pass instead of overwriting, filling the directory.
+        const file = join(dir, "visual-report.html");
         writeFileSync(file, html, "utf8");
         log(`visual report written: ${file}`);
         break;

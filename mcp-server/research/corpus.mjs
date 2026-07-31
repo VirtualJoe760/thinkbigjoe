@@ -400,8 +400,18 @@ export function recordFinding(project, input) {
         "REJECTED: no resolvable source. A finding needs at least one of source.url, source.doi, source.pmid, source.nct. Unsourced claims cannot enter the corpus.",
     };
   }
-  if (!input.claim || input.claim.trim().length < 10) {
-    return { ok: false, error: "REJECTED: claim is missing or too short to be a factual statement." };
+  // Type-coerce rather than assume: a model returning a number or an object for
+  // a string field would otherwise throw out of here and, under launchd
+  // KeepAlive, crash-loop the whole runner over one malformed extraction.
+  if (typeof input.claim !== "string" || input.claim.trim().length < 10) {
+    return { ok: false, error: "REJECTED: claim is missing, not a string, or too short to be a factual statement." };
+  }
+  if (typeof input.verbatim_quote !== "string") {
+    return { ok: false, error: "REJECTED: verbatim_quote must be a string copied from the source." };
+  }
+  if (input.population_n != null && typeof input.population_n !== "number") {
+    const n = Number(input.population_n);
+    input = { ...input, population_n: Number.isFinite(n) ? n : null };
   }
   if (!DIRECTIONS.includes(input.direction)) {
     return {

@@ -27,6 +27,17 @@
  * rather than guessed at from characters.
  */
 
+/**
+ * Symbols that are ordinary English scientific writing, not evidence of another
+ * language. Biomedical text is saturated with them — "IC50 of 5 μM", "TNF-α",
+ * "β-catenin" — and treating a single Greek letter as a language signal rejects
+ * a large fraction of perfectly good English claims. They are stripped before
+ * any language test runs.
+ */
+const SCIENTIFIC_SYMBOLS = /[μµαβγδεζθκλνπρστφχψωΩΔΣΦΨ°±×÷≤≥≈≠∼‰′″]/g;
+
+const stripScientific = (t) => String(t || "").replace(SCIENTIFIC_SYMBOLS, " ");
+
 const SCRIPTS = [
   { code: "zh", name: "Chinese", re: /[一-鿿]/, min: 1 },
   { code: "ja", name: "Japanese", re: /[぀-ヿ]/, min: 1 },
@@ -34,20 +45,36 @@ const SCRIPTS = [
   { code: "ru", name: "Cyrillic (Russian/Ukrainian/etc.)", re: /[Ѐ-ӿ]/, min: 1 },
   { code: "ar", name: "Arabic", re: /[؀-ۿ]/, min: 1 },
   { code: "he", name: "Hebrew", re: /[֐-׿]/, min: 1 },
-  { code: "el", name: "Greek", re: /[Ͱ-Ͽ]/, min: 2 },
+  { code: "el", name: "Greek", re: /[Ͱ-Ͽ]/, min: 4 }, // only after SCIENTIFIC_SYMBOLS are stripped
   { code: "th", name: "Thai", re: /[฀-๿]/, min: 1 },
   { code: "hi", name: "Devanagari", re: /[ऀ-ॿ]/, min: 1 },
 ];
 
 /** Distinctive stopwords for Latin-script languages a script test cannot separate. */
+/**
+ * Distinctive stopwords for Latin-script languages a script test cannot separate.
+ *
+ * Every token here had to survive one question: could this appear in ordinary
+ * English biomedical prose? Tokens that could — "a", "as", "o", "per", "il"
+ * (as in IL-6), "la", "le", "en", "es", "patients" — are REMOVED, because they
+ * were matching English sentences and rejecting them as Portuguese or Italian.
+ * What is left is diacritic-bearing or genuinely language-specific.
+ *
+ * Scoring is a RATIO of marker hits to total tokens, not a raw count, so a long
+ * English paragraph cannot accumulate enough incidental hits to trip the test.
+ */
 const LATIN_MARKERS = [
-  { code: "es", name: "Spanish", words: /\b(el|la|los|las|de|del|que|para|con|una|por|se|es|en|estudio|pacientes|células|cáncer|tratamiento|resultados)\b/gi, threshold: 4 },
-  { code: "pt", name: "Portuguese", words: /\b(o|a|os|as|de|do|da|que|para|com|uma|por|se|é|em|estudo|pacientes|células|câncer|tratamento|resultados)\b/gi, threshold: 4 },
-  { code: "fr", name: "French", words: /\b(le|la|les|des|du|que|pour|avec|une|par|est|dans|étude|patients|cellules|traitement|résultats)\b/gi, threshold: 4 },
-  { code: "de", name: "German", words: /\b(der|die|das|und|von|mit|für|eine|ist|im|nicht|Studie|Patienten|Zellen|Behandlung|Ergebnisse)\b/g, threshold: 4 },
-  { code: "it", name: "Italian", words: /\b(il|la|le|dei|del|che|per|con|una|per|è|nel|studio|pazienti|cellule|trattamento|risultati)\b/gi, threshold: 4 },
-  { code: "tr", name: "Turkish", words: /\b(ve|bir|bu|için|ile|olarak|çalışma|hastalar|hücre|tedavi|sonuç)\b/gi, threshold: 3 },
+  { code: "es", name: "Spanish", words: /\b(los|las|del|que|para|con|una|por|estudio|pacientes|células|cáncer|tratamiento|resultados|fueron|este|esta|también)\b/gi },
+  { code: "pt", name: "Portuguese", words: /\b(dos|das|não|que|para|com|uma|foram|estudo|células|câncer|tratamento|resultados|este|esta|também)\b/gi },
+  { code: "fr", name: "French", words: /\b(les|des|une|pour|avec|dans|étude|cellules|traitement|résultats|cette|nous|été|sont)\b/gi },
+  { code: "de", name: "German", words: /\b(der|die|das|und|von|mit|für|eine|nicht|Studie|Patienten|Zellen|Behandlung|Ergebnisse|wurde|wurden)\b/g },
+  { code: "it", name: "Italian", words: /\b(dei|del|che|con|una|nel|studio|pazienti|cellule|trattamento|risultati|questo|sono|stato)\b/gi },
+  { code: "tr", name: "Turkish", words: /\b(bir|için|ile|olarak|çalışma|hastalar|hücre|tedavi|sonuç|ve|bu)\b/gi },
 ];
+
+/** Minimum share of tokens that must be language markers before we call it. */
+const LATIN_RATIO = 0.18;
+const LATIN_MIN_HITS = 4;
 
 /**
  * Detect the language of a string.
@@ -57,22 +84,35 @@ export function detectLanguage(text) {
   const s = String(text || "");
   if (!s.trim()) return { code: "und", name: "undetermined", english: true, confidence: "none" };
 
+  const clean = stripScientific(s);
+
   for (const sc of SCRIPTS) {
-    const hits = (s.match(new RegExp(sc.re.source, "g")) || []).length;
+    const hits = (clean.match(new RegExp(sc.re.source, "g")) || []).length;
     if (hits >= sc.min) return { code: sc.code, name: sc.name, english: false, confidence: "script" };
   }
 
+  const tokens = (clean.match(/\b[\p{L}]{1,}\b/gu) || []).length || 1;
   for (const m of LATIN_MARKERS) {
-    const hits = (s.match(m.words) || []).length;
-    if (hits >= m.threshold) return { code: m.code, name: m.name, english: false, confidence: "stopwords" };
+    const hits = (clean.match(m.words) || []).length;
+    if (hits >= LATIN_MIN_HITS && hits / tokens >= LATIN_RATIO)
+      return { code: m.code, name: m.name, english: false, confidence: "stopwords" };
   }
 
   return { code: "en", name: "English", english: true, confidence: "default" };
 }
 
-/** True when the string contains any non-Latin script — the hard signal. */
+/**
+ * True when the string is genuinely written in a non-Latin script.
+ *
+ * Deliberately counts occurrences against each script's own threshold rather
+ * than tripping on a single character — and strips scientific symbols first.
+ * The naive version rejected "IC50 of 5 μM" and "TNF-α" as non-English, which
+ * would have silently excluded a large share of biomedical findings and left a
+ * corpus biased toward whatever prose happens to avoid Greek letters.
+ */
 export function hasNonLatinScript(text) {
-  return SCRIPTS.some((sc) => sc.re.test(String(text || "")));
+  const clean = stripScientific(text);
+  return SCRIPTS.some((sc) => (clean.match(new RegExp(sc.re.source, "g")) || []).length >= sc.min);
 }
 
 /**

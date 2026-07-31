@@ -32,7 +32,7 @@
  *   giving up quietly is not.
  */
 
-import { existsSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import { existsSync, writeFileSync, readFileSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   getFindings,
@@ -212,7 +212,12 @@ export function nextAction(project) {
 
   const reports = listReports(project);
   const hasWhitePaper = reports.some((r) => r.startsWith("white-paper") || r.startsWith("research-report"));
-  const hasVisual = existsSync(join(CORPUS_DIR, project, "reports")) && reports.some((r) => r.startsWith("visual-report"));
+  // listReports() returns only .md, but the visual report is .html — checking it
+  // through listReports made hasVisual permanently false, so VISUAL could never
+  // exit and done:true was unreachable. Read the directory directly.
+  const reportsDirPath = join(CORPUS_DIR, project, "reports");
+  const hasVisual =
+    existsSync(reportsDirPath) && readdirSync(reportsDirPath).some((r) => r.startsWith("visual-report"));
 
   const st = (k) => idx.filter((c) => c.status === k).length;
   const matrix = expandQueryMatrix({ depth: cfg.depth, substances: cfg.substances });
@@ -236,10 +241,19 @@ export function nextAction(project) {
   const windowYield = window.length
     ? window.reduce((a, q) => a + (q.marginal_yield ?? 1), 0) / window.length
     : 1;
-  const indexingDone =
-    searches.length >= cfg.min_queries &&
-    pending.length === 0 &&
-    (cov.coverage >= cfg.coverage_target || windowYield < cfg.marginal_yield_floor);
+  // An exhausted matrix is terminal for INDEXING even if coverage never reached
+  // the target. Without this, a matrix that runs out below 90% coverage spins
+  // here forever with nothing left to run — the loop cannot manufacture queries.
+  // The shortfall is recorded as a limitation rather than blocking the run.
+  const matrixExhausted = pending.length === 0 && searches.length >= cfg.min_queries;
+  const saturated = cov.coverage >= cfg.coverage_target || windowYield < cfg.marginal_yield_floor;
+  const indexingDone = matrixExhausted && (saturated || true);
+  if (matrixExhausted && !saturated && !readRecords(project, "gaps").some((g) => g.gap === "coverage_below_target")) {
+    appendRecord(project, "gaps", {
+      gap: "coverage_below_target",
+      detail: `The query matrix was exhausted at an estimated ${(cov.coverage * 100).toFixed(1)}% coverage, below the ${(cfg.coverage_target * 100).toFixed(0)}% target. Approximately ${cov.unseen_estimate} reachable documents were never seen.`,
+    });
+  }
 
   if (!indexingDone) {
     const batch = pending.slice(0, 8);
@@ -349,10 +363,16 @@ export function nextAction(project) {
 
   // --------------------------------------------------------------- 5. SAFETY
   const substances = [...new Set(findings.map((f) => f.subject).filter(Boolean))];
-  const noSafety = substances.filter(
-    (sub) => !findings.some((f) => f.subject === sub && (f.direction === "harm" || f.adverse_events || f.evidence_tier === "regulatory_document")),
-  );
+  const safetyAttempts = readRecords(project, "safety-attempts");
+  const triedTooOften = (sub) => safetyAttempts.filter((a) => a.substance === sub).length >= cfg.max_attempts_per_gap;
+  const noSafety = substances
+    .filter((sub) => !findings.some((f) => f.subject === sub && (f.direction === "harm" || f.adverse_events || f.evidence_tier === "regulatory_document")))
+    // A substance with no FDA label and no FAERS reports — fenbendazole, for one,
+    // which has no human label — would otherwise keep this state alive forever.
+    // After the attempt budget it becomes a recorded gap and the run moves on.
+    .filter((sub) => !triedTooOften(sub));
   if (noSafety.length) {
+    appendRecord(project, "safety-attempts", { substance: noSafety[0] });
     return act("SAFETY", progress, {
       instruction:
         `No safety or regulatory finding has been recorded for: ${noSafety.join(", ")}. ` +
