@@ -93,7 +93,8 @@ const DISCONFIRM = [
 
 // ---------------------------------------------------------------------------
 
-const server = new Server(
+function buildServer() {
+  const server = new Server(
   { name: "research-mcp", version: "2.0.0" },
   {
     capabilities: { tools: {} },
@@ -145,6 +146,8 @@ the paper, read the full text, then walk its references backward to the primary
 source and its citations forward to the replications and rebuttals.`,
   },
 );
+  return server;
+}
 
 const P = (extra = {}) => ({
   project: { type: "string", description: "Project/corpus name, e.g. 'pancreatic-alt-agents'. All work is filed under it." },
@@ -153,7 +156,7 @@ const P = (extra = {}) => ({
 
 // ---------------------------------------------------------------------------
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
+const listToolsHandler = async () => ({
   tools: [
     // ================= DRIVER =================
     {
@@ -425,11 +428,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
   ],
-}));
+});
 
 // ---------------------------------------------------------------------------
 
-server.setRequestHandler(CallToolRequestSchema, async (req) => {
+const callToolHandler = async (req) => {
   const { name } = req.params;
   const a = req.params.arguments || {};
   const project = a.project;
@@ -817,10 +820,33 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   } catch (e) {
     return err(`❌ ${name} failed: ${e?.message || e}`);
   }
-});
+};
 
 // ---------------------------------------------------------------------------
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
-console.error(`research-mcp v2.0.0 ready · corpus: ${CORPUS_DIR}`);
+/**
+ * The server object is exported so the same tool definitions can be served over
+ * either transport: stdio for a local client, Streamable HTTP for a hosted one.
+ * Nothing about the tools differs between them.
+ */
+/**
+ * A FRESH SERVER PER CONNECTION. An MCP Server instance binds to exactly one
+ * transport, so a module-level singleton can serve exactly one client and every
+ * client after the first is refused. Over stdio that never showed, because there
+ * is only ever one. Over HTTP, where each session is its own connection, it is
+ * an immediate hard failure — so the server is built per connection instead.
+ * The tool handlers below are stateless: all state lives in the corpus on disk,
+ * which is what makes sharing them across servers safe.
+ */
+export function createServer() {
+  const server = buildServer();
+  server.setRequestHandler(ListToolsRequestSchema, listToolsHandler);
+  server.setRequestHandler(CallToolRequestSchema, callToolHandler);
+  return server;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const transport = new StdioServerTransport();
+  await createServer().connect(transport);
+  console.error(`research-mcp v2.0.0 (stdio) ready · corpus: ${CORPUS_DIR}`);
+}

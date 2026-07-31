@@ -268,6 +268,58 @@ than returning nothing**, and the gap is printed in the report's coverage
 section. That distinction matters: "Google found nothing" and "Google never ran"
 are not the same claim.
 
+## Hosting (the right shape for a long run)
+
+The servers run over **two transports from one definition**: stdio for a local client, and
+Streamable HTTP for a hosted one. The tools, the gates and the corpus are identical — only the
+transport differs.
+
+Hosting is not a workaround for a client that would not connect. It is the correct shape for this
+workload, for one reason above all: **a run that lasts days must not depend on a laptop staying
+awake.** Over stdio the research process is a child of whatever client spawned it — close the lid
+and the run dies mid-phase. Hosted, the corpus and the process live on a machine that stays up,
+and the client is just something that talks to it. Any client, from anywhere, including one that
+connects tomorrow.
+
+```bash
+RESEARCH_AUTH_TOKEN=$(openssl rand -hex 32) node http-server.mjs
+```
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /mcp` | the research server (24 tools) |
+| `POST /thesis` | the thesis server (8 tools) |
+| `GET /health` | liveness, run state, movement since last beat — **no auth**, exposes no corpus content |
+
+**Auth is mandatory.** The server refuses to start without a `RESEARCH_AUTH_TOKEN` of at least 16
+characters rather than starting insecurely — these tools spend quota-limited API budgets and write
+to a ledger, so an open endpoint is a real hazard, not a theoretical one.
+
+**A fresh MCP server is built per session.** An MCP `Server` instance binds to exactly one
+transport, so a module-level singleton serves exactly one client and refuses every one after it.
+Over stdio that never shows, because there is only ever one client. Over HTTP it is an immediate
+hard failure. The handlers are stateless — all state is in the corpus on disk — which is what makes
+building a server per connection safe.
+
+### Deployed as a service
+
+`deploy/` holds a launchd pair for an always-on Mac:
+
+| File | Role |
+|---|---|
+| `com.thinkbigjoe.research-mcp.plist` | runs the HTTP server, `KeepAlive` so it restarts if it dies |
+| `com.thinkbigjoe.research-tunnel.plist` | a Cloudflare quick tunnel giving a public HTTPS URL with no port forwarding |
+| `research-mcp.env` | the token and corpus path — chmod 600, gitignored |
+
+```bash
+cp deploy/*.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.thinkbigjoe.research-mcp.plist
+```
+
+> **The quick tunnel URL is ephemeral** — it changes whenever `cloudflared` restarts. That is fine
+> for getting going, and wrong for a client deliverable. A *named* tunnel on a Cloudflare account
+> gives a stable hostname (`research.yourdomain.com`) that survives restarts; it needs a one-time
+> `cloudflared tunnel login`.
+
 ## Register with an MCP client
 
 ```json

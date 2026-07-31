@@ -91,7 +91,8 @@ const GRADES = ["high", "moderate", "low", "very_low", "insufficient"];
 
 // ---------------------------------------------------------------------------
 
-const server = new Server(
+function buildServer() {
+  const server = new Server(
   { name: "thesis-mcp", version: "1.0.0" },
   {
     capabilities: { tools: {} },
@@ -120,13 +121,15 @@ Rules:
   advertisement, not a thesis.`,
   },
 );
+  return server;
+}
 
 const P = (extra = {}) => ({
   project: { type: "string", description: "The corpus project name used by research-mcp." },
   ...extra,
 });
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
+const listToolsHandler = async () => ({
   tools: [
     {
       name: "load_evidence",
@@ -250,11 +253,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
   ],
-}));
+});
 
 // ---------------------------------------------------------------------------
 
-server.setRequestHandler(CallToolRequestSchema, async (req) => {
+const callToolHandler = async (req) => {
   const { name } = req.params;
   const a = req.params.arguments || {};
   const project = a.project;
@@ -426,7 +429,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   } catch (e) {
     return err(`❌ ${name} failed: ${e?.message || e}`);
   }
-});
+};
 
 // ---------------------------------------------------------------------------
 
@@ -654,6 +657,16 @@ function renderThesis(project, a) {
 
 // ---------------------------------------------------------------------------
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
-console.error(`thesis-mcp v1.0.0 ready · corpus: ${CORPUS_DIR}`);
+/** A fresh server per connection — see the note in research-mcp.mjs. */
+export function createServer() {
+  const server = buildServer();
+  server.setRequestHandler(ListToolsRequestSchema, listToolsHandler);
+  server.setRequestHandler(CallToolRequestSchema, callToolHandler);
+  return server;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const transport = new StdioServerTransport();
+  await createServer().connect(transport);
+  console.error(`thesis-mcp v1.0.0 (stdio) ready · corpus: ${CORPUS_DIR}`);
+}

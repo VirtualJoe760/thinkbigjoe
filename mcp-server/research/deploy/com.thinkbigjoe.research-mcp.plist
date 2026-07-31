@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.thinkbigjoe.research-mcp</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>set -a; . /Users/macdaddyjoe/code/thinkbigjoe/mcp-server/research/deploy/research-mcp.env; set +a; exec /usr/local/bin/node /Users/macdaddyjoe/code/thinkbigjoe/mcp-server/research/http-server.mjs</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>WorkingDirectory</key><string>/Users/macdaddyjoe/code/thinkbigjoe/mcp-server/research</string>
+  <key>StandardOutPath</key><string>/Users/macdaddyjoe/Library/Logs/research-mcp/server.log</string>
+  <key>StandardErrorPath</key><string>/Users/macdaddyjoe/Library/Logs/research-mcp/server.err.log</string>
+</dict>
+</plist>

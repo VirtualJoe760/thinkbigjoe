@@ -59,3 +59,4 @@ windows-sender/*.log
 mcp-server/research/node_modules
 mcp-server/research/preview/
 mcp-server/research/cowork-plugin/
+mcp-server/research/deploy/*.env
