@@ -124,15 +124,26 @@ export const DEFAULT_TARGETS = {
   marginal_yield_window: 12, // queries in the rolling window
   marginal_yield_floor: 0.03, // below this, the window is saturated
   min_queries: 40, // never exit INDEXING on fewer than this
+  // Minimum documents READ per stratum before READING may exit.
+  //
+  // These are FLOORS, not the whole story — see read_quota_fraction. Absolute
+  // constants were the first run's central failure: quotas totalling 130
+  // documents were declared satisfied against an index of 68,314, so 99.8% of
+  // what was found was never opened and the report described 0.2% of its own
+  // corpus.
   read_quota: {
-    // minimum documents READ per stratum before READING may exit
     human_trial: 25,
-    disconfirming: 30, // deliberately high — this is the stratum a ranked list buries
-    safety: 15,
+    animal: 300, // raised deliberately: animal evidence is this phase's explicit focus
+    disconfirming: 40, // the stratum a ranked list buries
+    safety: 20,
     human_other: 20,
-    preclinical: 30,
-    grey: 10,
+    preclinical: 40,
+    grey: 15,
   },
+  // …and read at least this share of whatever each stratum actually holds, so a
+  // large index is read proportionally rather than sampled at a fixed depth.
+  read_quota_fraction: 0.02,
+  read_quota_cap: 400, // per stratum, so one huge stratum cannot eat the whole budget
   max_attempts_per_gap: 3,
 };
 
@@ -166,6 +177,9 @@ export function stratify(c) {
   // Reads the bounded hint flags the store maintains, not an unbounded
   // provenance array — this runs over every candidate on every triage pass.
   if (c.nct) return "human_trial";
+  // Animal before disconfirming: a species-axis query is a more specific signal
+  // than the intent tag, and animal work is what we are deliberately after.
+  if (c.hint_animal) return "animal";
   if (c.hint_disconfirming) return "disconfirming";
   if (c.hint_safety) return "safety";
   if (c.hint_grey || c.source_type === "web") return "grey";
@@ -199,6 +213,18 @@ export function priorityOf(candidate, strata) {
 // ---------------------------------------------------------------------------
 // The driver
 // ---------------------------------------------------------------------------
+
+/**
+ * How many documents of a stratum must actually be read.
+ *
+ * max(floor, fraction of what exists), capped, and never more than the stratum
+ * holds. A fixed floor alone under-reads a large corpus; a fraction alone
+ * under-reads a small one.
+ */
+export function effectiveQuota(floor, available, cfg = DEFAULT_TARGETS) {
+  const frac = Math.ceil(available * (cfg.read_quota_fraction ?? 0.02));
+  return Math.min(available, cfg.read_quota_cap ?? 400, Math.max(floor, frac));
+}
 
 export function nextAction(project) {
   const cfg = getRunConfig(project);
@@ -312,7 +338,7 @@ export function nextAction(project) {
   for (const k of Object.keys(cfg.read_quota)) {
     const inStrata = idx.filter((c) => c.strata === k);
     const doneN = inStrata.filter((c) => ["read", "recorded", "rejected", "unreachable"].includes(c.status)).length;
-    readByStrata[k] = { available: inStrata.length, read: doneN, quota: Math.min(cfg.read_quota[k], inStrata.length) };
+    readByStrata[k] = { available: inStrata.length, read: doneN, quota: effectiveQuota(cfg.read_quota[k], inStrata.length, cfg) };
   }
   const shortStrata = Object.entries(readByStrata).filter(([, v]) => v.read < v.quota);
 

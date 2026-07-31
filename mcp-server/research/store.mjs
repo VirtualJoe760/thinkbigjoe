@@ -88,6 +88,7 @@ function blank(key) {
     hint_disconfirming: false,
     hint_grey: false,
     hint_safety: false,
+    hint_animal: false,
     ts: null,
   };
 }
@@ -103,6 +104,7 @@ function applyRow(map, r) {
     if (r.i === "disconfirming") c.hint_disconfirming = true;
     else if (r.i === "grey") c.hint_grey = true;
     if (r.s) c.hint_safety = true;
+    if (r.a) c.hint_animal = true;
     return;
   }
   if (r._update) {

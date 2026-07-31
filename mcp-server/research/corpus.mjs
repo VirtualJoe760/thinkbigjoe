@@ -135,6 +135,10 @@ export function indexCandidates(project, candidates, provenance = {}) {
   const { map } = loadIndex(dir);
   const rows = [];
   const isSafetyQuery = /safety|toxic|interaction|contraindic|overdose|pharmacokinet|tolerab|residue/i.test(provenance.query || "");
+  // Animal work is what the species axis exists to find, and without its own
+  // stratum it lands in the "preclinical" catch-all and competes with 24,000
+  // other documents for a shared quota.
+  const isAnimalQuery = /xenograft|orthotopic|mouse|mice|murine|\brat\b|hamster|canine|\bdog\b|bovine|cattle|equine|horse|ovine|sheep|swine|porcine|primate|zebrafish|in vivo|animal|veterinary|KPC model|nude mice|chorioallantoic/i.test(provenance.query || "");
 
   let fresh = 0,
     rediscovered = 0;
@@ -150,7 +154,7 @@ export function indexCandidates(project, candidates, provenance = {}) {
       rediscovered++;
       // Overlap is signal, not noise — it is what the capture-recapture estimate
       // is computed from. Stored as a single compact row, not an appended array.
-      rows.push({ _seen: key, i: provenance.intent, ...(isSafetyQuery ? { s: 1 } : {}) });
+      rows.push({ _seen: key, i: provenance.intent, ...(isSafetyQuery ? { s: 1 } : {}), ...(isAnimalQuery ? { a: 1 } : {}) });
       continue;
     }
     const row = {
@@ -186,6 +190,7 @@ export function indexCandidates(project, candidates, provenance = {}) {
       hint_disconfirming: provenance.intent === "disconfirming",
       hint_grey: provenance.intent === "grey",
       hint_safety: isSafetyQuery,
+      hint_animal: isAnimalQuery,
     };
     rows.push(row);
     // Deliberately not inserted into the map here — appendIndexRows applies

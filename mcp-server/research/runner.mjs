@@ -126,7 +126,7 @@ async function runIndexBatch() {
       .map((q) => `${q.engine}::${q.query}`),
   );
   const okPairs = settled;
-  const SOURCES = ["pubmed", "europepmc", "clinicaltrials", "openalex", "web"];
+  const SOURCES = ["pubmed", "europepmc", "clinicaltrials", "openalex", "web", "yandex", "baidu"];
   const pubmedSyntax = (q) => /\[(MeSH Terms|tiab|Title\/Abstract|Substance Name|All Fields)\]/i.test(q);
   const targetsFor = (q) => (pubmedSyntax(q) ? ["pubmed", "europepmc"] : SOURCES);
   const pending = matrix.queries.filter((q) => targetsFor(q.query).some((src) => !okPairs.has(`${src}::${q.query}`)));

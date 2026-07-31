@@ -78,6 +78,38 @@ export const CONDITION_PROFILES = {
   },
 };
 
+/**
+ * Negation guard.
+ *
+ * The extracting model, doing exactly what it was told, writes honest
+ * indications like "COVID-19 (SARS-CoV-2 infection) — not pancreatic cancer"
+ * and "Zika virus infection — not pancreatic cancer". A naive regex for
+ * "pancreatic cancer" matches the NEGATION and files the finding as on-target.
+ * That inflated the headline number of the entire report — the model's honesty
+ * defeated the classifier.
+ *
+ * So a target term only counts if it is not immediately preceded by a negator.
+ */
+const NEGATORS = /\b(not|no|non|other than|excluding|rather than|unrelated to|besides|apart from|instead of)\b[^.;]{0,30}$/i;
+
+/** Is this match negated by text just before it? */
+function isNegated(haystack, matchIndex) {
+  const before = haystack.slice(Math.max(0, matchIndex - 60), matchIndex);
+  return NEGATORS.test(before);
+}
+
+/** Find the first NON-negated match of `re` in `text`. */
+function matchUnnegated(text, re) {
+  const s = String(text || "");
+  const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+  let m;
+  while ((m = g.exec(s))) {
+    if (!isNegated(s, m.index)) return m[0];
+    if (m.index === g.lastIndex) g.lastIndex++;
+  }
+  return null;
+}
+
 const CANCER_RE =
   /\b(cancer|carcinoma|adenocarcinoma|tumou?r|neoplas\w*|malignan\w*|oncolog\w*|metasta\w*|leukaemi\w*|leukemi\w*|lymphoma|sarcoma|melanoma|glioma|glioblastoma|myeloma|mesothelioma|chemotherap\w*)\b/i;
 
@@ -98,21 +130,26 @@ export function classifyRelevance(finding, conditionKey = "pancreatic_adenocarci
     .filter(Boolean)
     .join(" ");
 
+  // An explicit denial in the indication field is decisive: the extractor is
+  // telling us outright that this is not the target condition.
+  if (/\b(not|non|other than|rather than|unrelated to)\b[^.;]{0,30}(pancrea|PDAC)/i.test(indication))
+    return { relevance: matchUnnegated(indication, CANCER_RE) ? "other_cancer" : "non_cancer", matched: null, reason: "the indication explicitly states this is NOT the target condition" };
+
   for (const re of profile.target) {
-    const m = indication.match(re) || body.match(re);
-    if (m) return { relevance: "target", matched: m[0], reason: "matched a target-condition term" };
+    const m = matchUnnegated(indication, re) || matchUnnegated(body, re);
+    if (m) return { relevance: "target", matched: m, reason: "matched a target-condition term" };
   }
   for (const re of profile.adjacent) {
-    const m = indication.match(re) || body.match(re);
+    const m = matchUnnegated(indication, re) || matchUnnegated(body, re);
     if (m)
       return {
         relevance: "adjacent",
-        matched: m[0],
+        matched: m,
         reason: "matched an adjacent condition — a different disease that is commonly conflated with the target",
       };
   }
-  const cm = indication.match(CANCER_RE) || body.match(CANCER_RE);
-  if (cm) return { relevance: "other_cancer", matched: cm[0], reason: "about cancer, but not the target condition" };
+  const cm = matchUnnegated(indication, CANCER_RE) || matchUnnegated(body, CANCER_RE);
+  if (cm) return { relevance: "other_cancer", matched: cm, reason: "about cancer, but not the target condition" };
 
   if (indication || body) return { relevance: "non_cancer", matched: null, reason: "no oncology terms found" };
   return { relevance: "unclear", matched: null, reason: "nothing recorded to classify from" };
