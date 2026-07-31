@@ -126,7 +126,7 @@ async function runIndexBatch() {
       .map((q) => `${q.engine}::${q.query}`),
   );
   const okPairs = settled;
-  const SOURCES = ["pubmed", "europepmc", "clinicaltrials", "openalex", "web", "yandex", "baidu"];
+  const SOURCES = ["pubmed", "europepmc", "clinicaltrials", "openalex", "web", "nonenglish"];
   const pubmedSyntax = (q) => /\[(MeSH Terms|tiab|Title\/Abstract|Substance Name|All Fields)\]/i.test(q);
   const targetsFor = (q) => (pubmedSyntax(q) ? ["pubmed", "europepmc"] : SOURCES);
   const pending = matrix.queries.filter((q) => targetsFor(q.query).some((src) => !okPairs.has(`${src}::${q.query}`)));
@@ -138,9 +138,15 @@ async function runIndexBatch() {
   // answers 400 and OpenAlex treats them as literal text, so routing them there
   // is a guaranteed wasted call.
   const isPubmedSyntax = (q) => /\[(MeSH Terms|tiab|Title\/Abstract|Substance Name|All Fields)\]/i.test(q);
+  // The non-English layer makes seven sub-calls per query, so it is routed only
+  // to the axes where it pays: the core substance x indication spine, the
+  // species/veterinary axis, and the disconfirming axis. Running it against
+  // every mechanism and outcome permutation would multiply cost for little gain.
+  const wantsNonEnglish = (q) => ["core", "species", "disconfirming", "safety", "class"].includes(q.axis);
 
   for (const q of batch) {
-    const targets = isPubmedSyntax(q.query) ? ["pubmed", "europepmc"] : SOURCES;
+    const base = isPubmedSyntax(q.query) ? ["pubmed", "europepmc"] : SOURCES.filter((s) => s !== "nonenglish");
+    const targets = wantsNonEnglish(q) && !isPubmedSyntax(q.query) ? [...base, "nonenglish"] : base;
     for (const src of SOURCES) {
       if (!targets.includes(src)) {
         logSearch(PROJECT, { engine: src, query: q.query, intent: q.intent, result_count: 0, notes: "ERROR: unsupported query syntax for this source (PubMed field tags)" });
@@ -155,7 +161,10 @@ async function runIndexBatch() {
       }
       const t0 = Date.now();
       try {
-        const r = await withTimeout(ENUMERATORS[src](q.query, { max: 400 }), SOURCE_TIMEOUT_MS, src);
+        // The non-English layer is given the substance rather than the full
+        // query — see the note in enumerateNonEnglish.
+        const opts = src === "nonenglish" ? { max: 400, broaden: q.substance || q.query } : { max: 400 };
+        const r = await withTimeout(ENUMERATORS[src](q.query, opts), SOURCE_TIMEOUT_MS, src);
         const y = indexCandidates(PROJECT, r.records, { engine: src, query: q.query, intent: q.intent });
         // Per-source logging: a query fans out across five sources, and without
         // this the log is silent for however long the slowest one takes. On a

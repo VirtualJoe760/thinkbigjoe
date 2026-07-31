@@ -40,6 +40,8 @@ import {
   baiduSearch,
   marginaliaSearch,
   searxngSearch,
+  europepmcByLanguage,
+  cyberleninkaSearch,
 } from "./fetchers.mjs";
 import { SPECIES_QUERY_TERMS } from "./species.mjs";
 import { limited } from "./ratelimit.mjs";
@@ -777,6 +779,84 @@ export async function enumerateBaidu(query, { max = 50 } = {}) {
   };
 }
 
+/**
+ * The non-English layer.
+ *
+ * The first run queried IN Chinese and Russian and recovered nothing, because
+ * the scholarly indexes match on their own metadata, not on the language you
+ * type in. Asking them FOR a language instead of IN it works: Europe PMC's LANG
+ * field alone holds hundreds of records per language for these substances, and
+ * CyberLeninka carries Russian work that Western indexes do not.
+ *
+ * Both are keyless. Yandex and Baidu remain unavailable without paid keys and
+ * are reported as gaps rather than silently skipped.
+ */
+const LANGS = [
+  ["chi", "Chinese"],
+  ["rus", "Russian"],
+  ["jpn", "Japanese"],
+  ["ger", "German"],
+  ["fre", "French"],
+  ["spa", "Spanish"],
+];
+
+export async function enumerateNonEnglish(query, { max = 300, broaden } = {}) {
+  // Non-English work on the exact substance+indication pair is scarce; on the
+  // substance alone it is plentiful (530 Chinese / 521 Russian records for these
+  // four drugs). So the language-filtered pass searches the SUBSTANCE, and
+  // relevance is decided later by the classifier rather than by the query. This
+  // is the opposite of the English strategy on purpose: there, narrowing finds
+  // signal; here, narrowing finds nothing at all.
+  const langQuery = broaden || query;
+  const records = [];
+  const ran = [];
+  const failed = [];
+  const perLang = Math.max(20, Math.floor(max / (LANGS.length + 1)));
+
+  for (const [code, name] of LANGS) {
+    try {
+      const r = await europepmcByLanguage(langQuery, code, { limit: perLang });
+      if (r.records.length) ran.push(`${name}:${r.records.length}/${r.total}`);
+      records.push(...r.records);
+    } catch (e) {
+      failed.push(`${name}: ${e.message}`);
+    }
+  }
+
+  try {
+    const cl = await cyberleninkaSearch(langQuery, { limit: perLang });
+    if (cl.unavailable) failed.push(cl.unavailable);
+    else {
+      if (cl.results.length) ran.push(`CyberLeninka(ru):${cl.results.length}/${cl.total}`);
+      records.push(...cl.results.map((x) => ({ ...x, url: x.url })));
+    }
+  } catch (e) {
+    failed.push(`CyberLeninka: ${e.message}`);
+  }
+
+  const seen = new Set();
+  const uniq = records.filter((r) => {
+    const k = r.doi || r.pmid || r.url || r.title;
+    return k && !seen.has(k) && seen.add(k);
+  });
+
+  return {
+    engine: "nonenglish",
+    records: uniq,
+    reported_total: null,
+    retrieved: uniq.length,
+    exhausted: false,
+    hit_ceiling: true,
+    engines_ran: ran,
+    engines_unavailable: [
+      ...failed,
+      "yandex: needs YANDEX_API_KEY + YANDEX_FOLDER_ID (or SERPAPI_KEY) — the Russian-language open web is unreachable without it",
+      "baidu: needs SERPAPI_KEY — the Chinese-language open web is unreachable without it",
+    ],
+    ceiling_reason: `non-English layer — ${ran.join(", ") || "nothing returned"}. Scholarly indexes only; the Russian and Chinese open web still requires paid keys.`,
+  };
+}
+
 export const ENUMERATORS = {
   pubmed: enumeratePubmed,
   europepmc: enumerateEuropePMC,
@@ -785,4 +865,5 @@ export const ENUMERATORS = {
   web: enumerateWeb,
   yandex: enumerateYandex,
   baidu: enumerateBaidu,
+  nonenglish: enumerateNonEnglish,
 };

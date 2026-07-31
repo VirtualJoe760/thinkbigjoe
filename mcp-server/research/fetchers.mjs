@@ -909,3 +909,77 @@ export async function searxngSearch(query, { limit = 25, categories = "general",
     return { unavailable: `SearXNG at ${base}: ${e.message}`, results: [] };
   }
 }
+
+// ---------------------------------------------------------------------------
+// NON-ENGLISH LITERATURE — keyless routes
+// ---------------------------------------------------------------------------
+//
+// The first run issued 110 native-language queries (Chinese, Russian) and
+// recovered nothing: PubMed, OpenAlex, ClinicalTrials and web all returned zero
+// for every one, and Yandex/Baidu never ran because they need paid keys.
+//
+// The mistake was reaching for consumer search engines. The scholarly APIs
+// already index this literature and can be asked for it BY LANGUAGE, keylessly:
+// Europe PMC's LANG: field alone exposes 643 Chinese, 562 Russian, 187 Japanese,
+// 698 German, 696 French and 387 Spanish records for these substances. Querying
+// in-language was the wrong instrument; filtering by language is the right one.
+
+/** Europe PMC restricted to one language. `lang` is an ISO 639-2/B code. */
+export async function europepmcByLanguage(query, lang, { limit = 200 } = {}) {
+  const q = `(${query}) AND LANG:"${lang}"`;
+  const data = await getJson(
+    `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(q)}&format=json&resultType=core&pageSize=${Math.min(limit, 1000)}&email=${encodeURIComponent(CONTACT)}`,
+  );
+  return {
+    total: data.hitCount ?? 0,
+    records: (data.resultList?.result || []).map((r) => ({
+      source_type: "europepmc",
+      pmid: r.pmid || null,
+      pmcid: r.pmcid || null,
+      doi: r.doi || null,
+      title: r.title,
+      year: r.pubYear,
+      journal: r.journalInfo?.journal?.title || null,
+      language: lang,
+      full_text_available: !!r.pmcid,
+      url: r.doi ? `https://doi.org/${r.doi}` : `https://europepmc.org/article/${r.source}/${r.id}`,
+    })),
+  };
+}
+
+/**
+ * CyberLeninka — a large Russian open-access scientific library with a keyless
+ * search API. This is the practical route into Russian-language work that
+ * Western indexes carry thinly; a search for "ивермектин" returns hundreds of
+ * records that appear nowhere in PubMed.
+ */
+export async function cyberleninkaSearch(query, { limit = 50 } = {}) {
+  try {
+    const res = await limited("cyberleninka", async () => {
+      const r = await fetch("https://cyberleninka.ru/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "User-Agent": UA },
+        body: JSON.stringify({ mode: "articles", q: query, size: Math.min(limit, 100), from: 0 }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    });
+    if (!res.ok) return { unavailable: `CyberLeninka: ${res.error}`, results: [], total: 0 };
+    const data = res.value;
+    return {
+      total: data.found ?? 0,
+      results: (data.articles || []).map((a) => ({
+        source_type: "cyberleninka",
+        title: String(a.name || "").replace(/<[^>]+>/g, ""),
+        url: a.link ? `https://cyberleninka.ru${a.link}` : null,
+        year: a.year || null,
+        journal: a.journal || null,
+        language: "rus",
+        snippet: String(a.annotation || "").replace(/<[^>]+>/g, "").slice(0, 300),
+      })),
+    };
+  } catch (e) {
+    return { unavailable: `CyberLeninka: ${e.message}`, results: [], total: 0 };
+  }
+}

@@ -34,7 +34,12 @@ export const LIMITS = {
   pubmed: { rps: () => (process.env.NCBI_API_KEY ? 8 : 2.5), daily: null, note: "NCBI E-utilities: 3/s without a key, 10/s with one. Kept below both." },
   europepmc: { rps: () => 3, daily: null, note: "Europe PMC asks for considerate use; no published hard limit. Kept slow on principle." },
   clinicaltrials: { rps: () => 5, daily: null, note: "ClinicalTrials.gov v2 has no published limit; kept modest." },
-  openalex: { rps: () => 2, daily: 50000, note: "OpenAlex polite pool is 10/s and 100k/day, but that is a shared ceiling, not an entitlement — we earned a 429 at 8/s. A days-long run has no reason to sprint." },
+  // OpenAlex now bills per request against a daily allowance: exceeding it
+  // returns {"error":"Rate limit exceeded","message":"Insufficient budget …
+  // Resets at midnight UTC"} with a retryAfter of several hours. That is a
+  // budget, not a rate — pacing cannot fix it, only stopping can.
+  openalex: { rps: () => 2, daily: 900, note: "Billed per request against a daily allowance that resets at midnight UTC. Kept well under it; when it is spent the breaker holds off until reset." },
+  cyberleninka: { rps: () => 1, daily: null, note: "Russian open-access library, keyless search API. Kept gentle." },
   crossref: { rps: () => 4, daily: null, note: "Crossref polite pool with a mailto." },
   openfda: { rps: () => 3, daily: 900, note: "openFDA: 240/min and 1000/day without a key." },
   duckduckgo: { rps: () => 0.5, daily: null, note: "No API; the HTML endpoint throttles aggressively and answers a challenge page rather than a 429. One request every two seconds, and a challenge page counts as a refusal so the breaker sees it." },
