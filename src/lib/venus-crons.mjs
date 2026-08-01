@@ -258,6 +258,35 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
 
 NEVER run forge-template.sh yourself or mass-add languages — Joe builds proposed designs from /command/engine (Template designer), one at a time, after reviewing your report. One sharp, well-sourced report per run beats five vague ones — if nothing needs a new direction, deepen an existing vertical's research (still cite sources) and refine its unbuilt spec instead.`,
   },
+
+  {
+    // ⏸ DISABLED (enabled:false) — documented but NOT synced. Whitney can't run until
+    // her TARGET PROFILE (USER.md: roles/location/salary/resume source) and her account
+    // registration password (.env.local) are set. To turn her on: fill those, flip
+    // enabled:true, then `npm run venus:sync` (it will add the cron and print its id).
+    enabled: false,
+    name: "TBJ Whitney — Job Applications",
+    agent: "whitney",
+    schedule: "*/30 15-23 * * *", // provisional: every 30 min, ~8am–4pm AZ (UTC-7)
+    stagger: "3m",
+    summary: "Whitney's priority-queue run: FIRST work any job Joe approved (create account → email-verify → tailor → submit); only when the approved queue is empty, find new roles matching Joe's target profile and post them to /command/applications for approval. One approved application per run (human cadence).",
+    tools: ["list_approved_jobs", "update_application_status", "inbox_search", "record_found_job", "book_appointment", "log_activity"],
+    uiSurface: ["/command/applications (review board — Approve/Dismiss + live pipeline)"],
+    eventTypes: ["job_found", "application_account_created", "application_verified", "application_applied", "application_interview", "whitney_run_complete"],
+    prompt: `This is your work run. Follow your PRIORITY-QUEUE loop (AGENTS.md) — do the most important thing available, then stop.
+
+1. PRIORITY — call **list_approved_jobs** FIRST. If it returns any job, work the **TOP one to completion** this run:
+   - Prefer the employer's own ATS/careers link over a logged-in LinkedIn/Indeed session (that session is what gets Joe's account banned).
+   - **Create the account** with the credentials in .env.local (registration identity = joe@thinkbigjoe.com).
+   - **Verify it:** call **inbox_search** (query the company name / "verify" / "confirm", small since_minutes) to get the verification link/code, and complete verification.
+   - **Tailor, then fill:** mirror the posting's CORE requirements in Joe's words, lead with 2–3 quantified wins, keep formatting ATS-clean, fill every field truthfully from his profile (USER.md / his resume). Submit.
+   - Call **update_application_status** at EACH stage: account_created → verified → applied.
+   - **HARD STOP + report** (do NOT guess, do NOT fight the wall) on: any CAPTCHA / ID / "verify you're human" wall; any field you can't answer truthfully (work authorization, license, exact salary, "years of X"); leave EEO/self-ID to Joe.
+
+2. FILLER — only if NO approved jobs are waiting: search for roles matching Joe's TARGET PROFILE (USER.md), fit-gate each (~60% of the CORE requirements), and **record_found_job** the keepers for Joe to approve. Don't re-post duplicates; don't spray.
+
+Finish with **log_activity** (actor: "whitney") summarizing what you did — applied to X, or surfaced N new roles. Joe sees your work on /command/applications; you don't message him directly.`,
+  },
 ];
 
 export default VENUS_CRONS;

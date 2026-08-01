@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { prospects, outreach, followUps, conversations, meetingBriefs, agentTasks, forgeSites, newsletterContacts, contacts, newsletters, newsletterSends, voiceLines, voiceOnboarding, calls, voiceProvisionQueue, leads, organizations, agents, agentMessages } from "./schema";
+import { prospects, outreach, followUps, conversations, meetingBriefs, agentTasks, forgeSites, newsletterContacts, contacts, newsletters, newsletterSends, voiceLines, voiceOnboarding, calls, voiceProvisionQueue, leads, agentMessages, organizations, agents } from "./schema";
 
 export const outreachRelations = relations(outreach, ({one}) => ({
 	prospect: one(prospects, {
@@ -128,18 +128,6 @@ export const leadsRelations = relations(leads, ({one}) => ({
 	}),
 }));
 
-export const agentsRelations = relations(agents, ({one}) => ({
-	organization: one(organizations, {
-		fields: [agents.orgId],
-		references: [organizations.id]
-	}),
-}));
-
-export const organizationsRelations = relations(organizations, ({many}) => ({
-	agents: many(agents),
-	forgeSites: many(forgeSites),
-}));
-
 export const agentMessagesRelations = relations(agentMessages, ({one, many}) => ({
 	agentMessage: one(agentMessages, {
 		fields: [agentMessages.replyTo],
@@ -148,5 +136,17 @@ export const agentMessagesRelations = relations(agentMessages, ({one, many}) => 
 	}),
 	agentMessages: many(agentMessages, {
 		relationName: "agentMessages_replyTo_agentMessages_id"
+	}),
+}));
+
+export const organizationsRelations = relations(organizations, ({many}) => ({
+	forgeSites: many(forgeSites),
+	agents: many(agents),
+}));
+
+export const agentsRelations = relations(agents, ({one}) => ({
+	organization: one(organizations, {
+		fields: [agents.orgId],
+		references: [organizations.id]
 	}),
 }));

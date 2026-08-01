@@ -4,8 +4,12 @@
 export interface VenusCron {
   /** Human-readable job name. Unique — used as the sync match key. */
   name: string;
-  /** OpenClaw cron UUID (for reference; sync matches by name). */
-  id: string;
+  /** OpenClaw cron UUID (for reference; sync matches by name). Absent until first synced. */
+  id?: string;
+  /** Run AS this OpenClaw worker agent (agentTurn). Omit for a Venus main-session system event. */
+  agent?: string;
+  /** When false, the cron is documented in the manifest but NOT synced (stays cold). */
+  enabled?: boolean;
   /** 5-field cron expression. */
   schedule: string;
   /** Stagger window (e.g. "5m") or "exact" for no stagger. */

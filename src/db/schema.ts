@@ -685,29 +685,6 @@ export const leads = pgTable("leads", {
 		}),
 ]);
 
-export const agents = pgTable("agents", {
-	id: varchar({ length: 40 }).primaryKey().notNull(),
-	name: varchar({ length: 80 }).notNull(),
-	role: varchar({ length: 160 }).notNull(),
-	autonomyTier: varchar("autonomy_tier", { length: 16 }).default('draft').notNull(),
-	enabled: boolean().default(false).notNull(),
-	status: varchar({ length: 16 }).default('off').notNull(),
-	dailyCap: integer("daily_cap"),
-	cohort: jsonb(),
-	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	orgId: integer("org_id"),
-	model: text(),
-	workspace: text(),
-	archived: boolean().default(false).notNull(),
-}, (table) => [
-	foreignKey({
-			columns: [table.orgId],
-			foreignColumns: [organizations.id],
-			name: "agents_org_id_fkey"
-		}),
-]);
-
 export const organizations = pgTable("organizations", {
 	id: serial().primaryKey().notNull(),
 	name: text().notNull(),
@@ -836,4 +813,50 @@ export const forgeSites = pgTable("forge_sites", {
 			name: "forge_sites_org_id_fkey"
 		}),
 	unique("forge_sites_slug_key").on(table.slug),
+]);
+
+export const jobApplications = pgTable("job_applications", {
+	id: serial().primaryKey().notNull(),
+	company: text().notNull(),
+	role: text().notNull(),
+	platform: varchar({ length: 40 }),
+	url: text(),
+	location: text(),
+	pay: text(),
+	fitReason: text("fit_reason"),
+	status: varchar({ length: 24 }).default('found').notNull(),
+	priority: integer().default(0).notNull(),
+	notes: text(),
+	approvedAt: timestamp("approved_at", { withTimezone: true, mode: 'string' }),
+	appliedAt: timestamp("applied_at", { withTimezone: true, mode: 'string' }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("job_applications_created_at_idx").using("btree", table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
+	index("job_applications_priority_idx").using("btree", table.priority.desc().nullsFirst().op("int4_ops"), table.approvedAt.asc().nullsLast().op("int4_ops")),
+	index("job_applications_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+]);
+
+export const agents = pgTable("agents", {
+	id: varchar({ length: 40 }).primaryKey().notNull(),
+	name: varchar({ length: 80 }).notNull(),
+	role: varchar({ length: 160 }).notNull(),
+	autonomyTier: varchar("autonomy_tier", { length: 16 }).default('draft').notNull(),
+	enabled: boolean().default(false).notNull(),
+	status: varchar({ length: 16 }).default('off').notNull(),
+	dailyCap: integer("daily_cap"),
+	cohort: jsonb(),
+	lastRunAt: timestamp("last_run_at", { withTimezone: true, mode: 'string' }),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	orgId: integer("org_id"),
+	model: text(),
+	workspace: text(),
+	archived: boolean().default(false).notNull(),
+	paused: boolean().default(false).notNull(),
+}, (table) => [
+	foreignKey({
+			columns: [table.orgId],
+			foreignColumns: [organizations.id],
+			name: "agents_org_id_fkey"
+		}),
 ]);

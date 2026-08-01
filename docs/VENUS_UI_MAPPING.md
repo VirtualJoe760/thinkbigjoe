@@ -28,7 +28,7 @@ never used · cron with no UI → work happens with no way to review it.
 
 ---
 
-## Command-center nav (7 tabs)
+## Command-center nav (8 tabs)
 
 The nav follows the funnel: **Build → Prospect → Sell.**
 
@@ -39,6 +39,7 @@ The nav follows the funnel: **Build → Prospect → Sell.**
 | **Prospecting** | `/command/prospects` | The pipeline: web-dev leads (find → review → **Built**, gated behind marketing approval) + the showroom preview/outreach dials. Cross-links to the call room. |
 | **Leads** | `/command/leads` | The **contact book** — every site approved for marketing OR built, INCLUDING the ones that claimed + signed up (kept visible as "User"/"Customer" so conversions are tracked, not lost). A **"Signed up" scoreboard** (acct #, plan, paying-count) sits above the call list. Each contact card shows the site we built, reviews, an **Online-presence pill row** (their current site · Google Business · Instagram/Facebook/LinkedIn, all clickable), the AI's fit-reason, a ready calling script, click-to-call/text/email, and — for signed-up users — a **User Profile block** (account #, plan, real subscription/billing state, receptionist + domain status). Cross-links back to Prospecting. |
 | **Appointments** | `/command/appointments` | DB-enriched booked-call detail (role/industry/team-size/timeline, calendar links). |
+| **Whitney** | `/command/applications` | **Joe's job-application board** — the `whitney` agent posts candidate roles here (`job_applications` table, status `found`); Joe **Approves/Dismisses** (the human gate: `approveJob`/`dismissJob` in `applications/actions.ts`), and the approved ones flow through the live pipeline (`approved → account_created → verified → applied → interview`) as Whitney works them. Also here: a **Pause/Resume** control (`setWhitneyPaused` → `agents.paused`; her MCP tools honor it). See OPENCLAW.md's `whitney` row. Cold until her profile + `.env.local` password are set. |
 | **Venus** | `/command/crons` (+ sub-nav: Crons / Audit log / Team) | Cron manifest + last-run, the audit log (`activity_log`), and the OpenClaw team roster. |
 | **Settings** | `/command/settings` | Automation on/off, calendar connection, analytics link. |
 
@@ -220,6 +221,7 @@ tool, and cron are all thin callers. Previews cost ~$0 and expire after 14 days 
 | TBJ Forge Follow-up | outreach | daily | `list_forge_followup_due` (now preview-aware), `save_forge_outreach_draft` | Same — touches 2–3, re-shares the preview link |
 | TBJ SMS Comms | outreach | 3×/day (10a/1p/4p PT) | `check_outreach_window`, `list_sms_replies_pending`, `list_sms_followup_due`, `send_sms(site_id, purpose)`, `book_appointment` | `/command/messages` threads + `/command/leads` timeline. **Autonomous SMS**: answers waiting replies with the sales doctrine, then sends cadence follow-ups (~2×/week per lead until reply/claim/booking, 6-mo cap, **≤15/day** number-warming cap). Safeguards (ai_paused, opt-out, declined, window, master switch) enforced inside the tools. |
 | TBJ Forge Reschedule Nudge | outreach | 2×/day (3pm + 7pm) | `list_forge_reschedule_due`, `send_sms`, `save_forge_outreach_draft` | `/command/leads` **Reschedule** stage — Joe sets it by hand when a near-won client bails on the setup/payment call; setting it also un-pauses the AI for that client. Warmest leads; low-pressure "your site's ready, rebook in 2 min" nudge. |
+| TBJ Whitney — Job Applications | whitney | **⏸ DISABLED** (`enabled:false` — cold until her target profile + `.env.local` password are set; provisional `*/30 15-23 UTC`) | `list_approved_jobs`, `update_application_status`, `inbox_search`, `record_found_job`, `book_appointment` | `/command/applications`. **Priority-queue**: applies to the top approved job (create account → email-verify → tailor → submit), and only *fills* by finding new roles when the approved queue is empty. |
 
 Full prompts, exact schedules, and the "ship full-stack" checklist for adding a cron live in
 `src/lib/venus-crons.mjs` itself (the file header) and [OPENCLAW.md](OPENCLAW.md).

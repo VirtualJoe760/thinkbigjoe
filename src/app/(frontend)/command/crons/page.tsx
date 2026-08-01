@@ -89,6 +89,11 @@ export default async function CronsPage() {
                     <span className="rounded-full bg-brand-tint px-2 py-0.5 text-xs font-medium text-brand">
                       {humanSchedule(cron.schedule)}
                     </span>
+                    {cron.enabled === false && (
+                      <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-semibold text-ink-soft">
+                        ⏸ disabled — not synced
+                      </span>
+                    )}
                     <span className="ml-auto text-xs text-ink-soft whitespace-nowrap">
                       last ran {relativeTime(last)}
                     </span>

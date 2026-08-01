@@ -56,7 +56,19 @@ const byName = new Map(current.map((c) => [c.name, c]));
 // --- Reconcile --------------------------------------------------------------
 let added = 0, updated = 0, ok = 0;
 
+let skipped = 0;
+
 for (const cron of VENUS_CRONS) {
+  // A cron declared `enabled: false` is documented in the manifest but NOT synced —
+  // it stays cold until someone flips the flag. Used to land a full-stack feature's
+  // schedule in-repo before its prerequisites (e.g. an agent's credentials/profile)
+  // are set, without it firing. Flip to true (or remove the flag) + re-sync to activate.
+  if (cron.enabled === false) {
+    console.log(`⏸ skip  ${cron.name}  (disabled in manifest — not synced)`);
+    skipped++;
+    continue;
+  }
+
   const existing = byName.get(cron.name);
 
   if (!existing) {
@@ -128,6 +140,6 @@ for (const o of orphans) {
 console.log("");
 console.log(
   `${DRY ? "[dry] " : ""}Sync complete — ${ok} in sync, ${updated} ${DRY ? "to update" : "updated"}, ` +
-  `${added} ${DRY ? "to add" : "added"}, ${orphans.length} orphan(s).`,
+  `${added} ${DRY ? "to add" : "added"}, ${skipped} disabled/skipped, ${orphans.length} orphan(s).`,
 );
 if (DRY) console.log("Re-run without --dry to apply.");

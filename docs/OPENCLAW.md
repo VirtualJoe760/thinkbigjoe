@@ -22,6 +22,7 @@ Agents are named for **what they do**, with one exception:
 | `prospector` | find + enrich | Finds local businesses needing a website (`add_forge_prospect`), and now also does contact enrichment + call-prep research (`enrich_forge_contact`, `save_forge_callprep`) — see [FORGE.md](FORGE.md). |
 | `outreach` | draft | Drafts the "we built you a site" first-touch and follow-up emails. Never sends — Joe approves & sends. |
 | `researcher` | solo | Studies how other AI agents make money, for agency positioning. Not part of the marketing pipeline. |
+| `whitney` | apply | **Joe's personal job-application agent** (📮), not part of the marketing pipeline. Priority-queue worker: applies to jobs Joe approved (creates the account, verifies it via `inbox_search` on joe@thinkbigjoe.com, tailors + submits), and *fills* by finding new roles. Human gate + live pipeline at **`/command/applications`**, which also has a **Pause/Resume control** (writes `agents.paused`; her `list_approved_jobs`/`record_found_job` tools stand down when paused — survives roster sync). **Cold** until her target profile (USER.md) + registration password (.env.local) are set — her cron in `venus-crons.mjs` is `enabled:false`. Tools: `record_found_job`, `list_approved_jobs`, `update_application_status`, `inbox_search`, `book_appointment`. |
 
 Every worker's persona is 5 files at `~/.openclaw/agents/<id>/`:
 `IDENTITY.md` (the card — name/vibe/emoji) · `SOUL.md` (character, no rules) · `USER.md`

@@ -38,6 +38,8 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import pg from "pg";
+import { ImapFlow } from "imapflow";
+import { simpleParser } from "mailparser";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -82,15 +84,28 @@ async function query(sql, params = []) {
 // manual log_activity rollups. Never throws: a logging failure must not break
 // the underlying action.
 // ---------------------------------------------------------------------------
-async function audit(action, summary, { prospectId = null, target = null, detail = null } = {}) {
+async function audit(action, summary, { prospectId = null, target = null, detail = null, actor = "venus" } = {}) {
   try {
     await query(
       `INSERT INTO activity_log (actor, event_type, summary, metadata)
-       VALUES ('venus', $1, $2, $3::jsonb)`,
-      [action, summary, JSON.stringify({ auto: true, prospectId, target, detail })],
+       VALUES ($1, $2, $3, $4::jsonb)`,
+      [actor, action, summary, JSON.stringify({ auto: true, prospectId, target, detail })],
     );
   } catch (err) {
     console.error(`[audit] failed to log ${action}:`, err?.message || err);
+  }
+}
+
+// Is an agent paused from the dashboard? (agents.paused — set by the Pause/Resume
+// control on /command/applications; survives roster sync.) The agent's cron may
+// still fire, but its loop-entry tools honor this and stand down. Fail-open: a
+// lookup error must not wedge the agent.
+async function isAgentPaused(agentId) {
+  try {
+    const r = await query(`SELECT paused FROM agents WHERE id = $1`, [agentId]);
+    return r.rows[0]?.paused === true;
+  } catch {
+    return false;
   }
 }
 
@@ -1266,13 +1281,166 @@ async function toolMarkSent({ outreach_id, notes }) {
 // ---------------------------------------------------------------------------
 // New tool handlers
 // ---------------------------------------------------------------------------
-async function toolLogActivity({ event_type, summary, metadata }) {
+async function toolLogActivity({ event_type, summary, metadata, actor }) {
   const res = await query(
-    `INSERT INTO activity_log (actor, event_type, summary, metadata) VALUES ('venus', $1, $2, $3::jsonb) RETURNING id`,
-    [event_type, summary, metadata ? JSON.stringify(metadata) : null],
+    `INSERT INTO activity_log (actor, event_type, summary, metadata) VALUES ($1, $2, $3, $4::jsonb) RETURNING id`,
+    [actor || "venus", event_type, summary, metadata ? JSON.stringify(metadata) : null],
   );
   const id = res.rows[0].id;
   return { content: [{ type: "text", text: `✅ Activity logged (#${id}).` }] };
+}
+
+// ---------------------------------------------------------------------------
+// Whitney — job-application tools. Every state change logs as actor='whitney'
+// so her work is attributable on the dashboard (roster "Last:" + /command/jobs).
+// The board she writes to (job_applications) is reviewed at /command/applications;
+// Joe's Approve/Dismiss is the human gate between "found" and "apply".
+// ---------------------------------------------------------------------------
+const APPLICATION_STATUSES = [
+  "found", "approved", "dismissed", "account_created", "verified", "applied", "interview", "rejected", "closed",
+];
+
+async function toolRecordFoundJob({ company, role, platform, url, location, pay, fit_reason }) {
+  if (await isAgentPaused("whitney")) {
+    return { content: [{ type: "text", text: "⏸ Whitney is PAUSED by Joe. Stand down — do not find or post jobs. End your turn without acting." }] };
+  }
+  if (!company || !role) {
+    return { content: [{ type: "text", text: "❌ company and role are required." }], isError: true };
+  }
+  // Dedup: same company + role already on the board (any status) → don't re-add.
+  const dup = await query(
+    `SELECT id, status FROM job_applications WHERE lower(company) = lower($1) AND lower(role) = lower($2) LIMIT 1`,
+    [company, role],
+  );
+  if (dup.rows.length) {
+    return { content: [{ type: "text", text: `⏭️ Already on the board: ${role} @ ${company} (#${dup.rows[0].id}, status: ${dup.rows[0].status}). Not re-added.` }] };
+  }
+  const res = await query(
+    `INSERT INTO job_applications (company, role, platform, url, location, pay, fit_reason, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'found') RETURNING id`,
+    [company, role, platform || null, url || null, location || null, pay || null, fit_reason || null],
+  );
+  const id = res.rows[0].id;
+  await audit("job_found", `Found: ${role} @ ${company}${location ? ` (${location})` : ""}`, {
+    actor: "whitney", target: company, detail: { role, platform, url, pay, fit_reason },
+  });
+  return { content: [{ type: "text", text: `✅ Posted to the review board: **${role} @ ${company}** (#${id}). Awaiting Joe's approval.` }] };
+}
+
+async function toolListApprovedJobs() {
+  if (await isAgentPaused("whitney")) {
+    return { content: [{ type: "text", text: "⏸ Whitney is PAUSED by Joe. Stand down — do NOT apply to anything and do NOT find new jobs. Log nothing and end your turn." }] };
+  }
+  const res = await query(
+    `SELECT id, company, role, platform, url, location, pay, fit_reason, priority, approved_at
+     FROM job_applications
+     WHERE status = 'approved'
+     ORDER BY priority DESC, approved_at ASC NULLS LAST, created_at ASC
+     LIMIT 25`,
+  );
+  if (!res.rows.length) {
+    return { content: [{ type: "text", text: "📭 No approved jobs waiting. Nothing to apply to — switch to your filler role: find new jobs and record_found_job them for Joe to approve." }] };
+  }
+  const lines = [`📬 **${res.rows.length} approved job(s) waiting** (top of queue first):`, ""];
+  for (const r of res.rows) {
+    lines.push(`**#${r.id} — ${r.role} @ ${r.company}**${r.location ? ` · ${r.location}` : ""}${r.pay ? ` · ${r.pay}` : ""}`);
+    if (r.platform) lines.push(`Platform: ${r.platform}`);
+    if (r.url) lines.push(`Apply: ${r.url}`);
+    if (r.fit_reason) lines.push(`Why it fits: ${r.fit_reason}`);
+    lines.push("");
+  }
+  lines.push("_Work the TOP one to completion: create account → verify by email (inbox_search) → tailor → submit, calling update_application_status at each stage. One approved job per turn._");
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolUpdateApplicationStatus({ id, status, notes }) {
+  if (!APPLICATION_STATUSES.includes(status)) {
+    return { content: [{ type: "text", text: `❌ Invalid status "${status}". Allowed: ${APPLICATION_STATUSES.join(", ")}.` }], isError: true };
+  }
+  const cur = await query(`SELECT company, role, status FROM job_applications WHERE id = $1`, [id]);
+  if (!cur.rows.length) {
+    return { content: [{ type: "text", text: `❌ No job_application #${id}.` }], isError: true };
+  }
+  const stamp =
+    status === "approved" ? ", approved_at = COALESCE(approved_at, now())"
+    : status === "applied" ? ", applied_at = COALESCE(applied_at, now())"
+    : "";
+  await query(
+    `UPDATE job_applications SET status = $1, notes = COALESCE($2, notes), updated_at = now()${stamp} WHERE id = $3`,
+    [status, notes || null, id],
+  );
+  const prev = cur.rows[0].status;
+  const { company, role } = cur.rows[0];
+  await audit(`application_${status}`, `${role} @ ${company}: ${prev} → ${status}`, {
+    actor: "whitney", target: company, detail: { id, from: prev, to: status, notes },
+  });
+  return { content: [{ type: "text", text: `✅ #${id} ${role} @ ${company}: ${prev} → **${status}**.` }] };
+}
+
+// Read joe@thinkbigjoe.com (Zoho IMAP, same creds as SMTP) for a SPECIFIC purpose:
+// the verification link/code for an account Whitney just created, or an interview
+// invite. BODY.PEEK — never marks mail read. Not a general inbox browser.
+async function toolInboxSearch({ query: q, from, since_minutes, limit }) {
+  const USER = process.env.SMTP_USER, PASS = process.env.SMTP_PASS;
+  if (!USER || !PASS) {
+    return { content: [{ type: "text", text: "❌ Inbox not configured (SMTP_USER/SMTP_PASS missing in .env.local)." }], isError: true };
+  }
+  const sinceMin = Number.isFinite(since_minutes) ? since_minutes : 1440; // default: last 24h
+  const max = Math.min(Number(limit) || 10, 25);
+  const since = new Date(Date.now() - sinceMin * 60 * 1000);
+  const needle = (q || "").toLowerCase();
+  const fromNeedle = (from || "").toLowerCase();
+
+  const client = new ImapFlow({ host: "imap.zoho.com", port: 993, secure: true, auth: { user: USER, pass: PASS }, logger: false });
+  const hits = [];
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock("INBOX");
+    try {
+      const uids = await client.search({ since }, { uid: true });
+      const scan = (uids || []).slice(-80).reverse(); // newest first, cap the scan
+      for (const uid of scan) {
+        if (hits.length >= max) break;
+        let parsed = null;
+        for await (const msg of client.fetch(uid, { source: true, envelope: true }, { uid: true })) {
+          try { parsed = await simpleParser(msg.source); } catch { parsed = null; }
+        }
+        if (!parsed) continue;
+        const fromAddr = (parsed.from?.text || "").toLowerCase();
+        const subject = parsed.subject || "";
+        const bodyText = parsed.text || "";
+        const hay = `${subject}\n${fromAddr}\n${bodyText}`.toLowerCase();
+        if (needle && !hay.includes(needle)) continue;
+        if (fromNeedle && !fromAddr.includes(fromNeedle)) continue;
+        const links = Array.from(new Set(bodyText.match(/https?:\/\/[^\s<>()"']+/g) || [])).slice(0, 12);
+        hits.push({
+          date: parsed.date ? parsed.date.toISOString() : null,
+          from: parsed.from?.text || "",
+          subject,
+          snippet: bodyText.replace(/\s+/g, " ").trim().slice(0, 600),
+          links,
+        });
+      }
+    } finally {
+      lock.release();
+    }
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Inbox search failed: ${err?.message || err}` }], isError: true };
+  } finally {
+    try { await client.logout(); } catch { /* ignore */ }
+  }
+  if (!hits.length) {
+    return { content: [{ type: "text", text: `📭 No messages in the last ${sinceMin} min matching ${q ? `"${q}"` : "(any)"}${from ? ` from "${from}"` : ""}.` }] };
+  }
+  const lines = [`📨 **${hits.length} match(es)** (newest first):`, ""];
+  for (const h of hits) {
+    lines.push(`**${h.subject || "(no subject)"}**`);
+    lines.push(`From: ${h.from}${h.date ? ` · ${h.date}` : ""}`);
+    if (h.links.length) lines.push(`Links: ${h.links.join("  ")}`);
+    lines.push(h.snippet);
+    lines.push("");
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
 async function toolScheduleFollowup({ prospect_id, touch_number, days_from_now, body }) {
@@ -1953,7 +2121,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.33.0" },
+  { name: "tbj-mcp", version: "2.35.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -2355,14 +2523,63 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "record_found_job",
+      description: "Whitney: post a candidate job to Joe's review board (/command/applications) at status 'found'. Only surface roles that clear the fit-gate (~60% of the CORE requirements) per the target profile. Dedups on company+role. Joe then Approves or Dismisses each card — that approval is the trigger for you to actually apply.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          company: { type: "string", description: "Employer / company name." },
+          role: { type: "string", description: "Job title as posted." },
+          platform: { type: "string", description: "Where it lives: 'linkedin' | 'indeed' | 'greenhouse' | 'lever' | 'workday' | 'direct' | other." },
+          url: { type: "string", description: "Posting or apply URL." },
+          location: { type: "string", description: "Location + arrangement, e.g. 'Remote (US)' or 'Phoenix, AZ · hybrid'." },
+          pay: { type: "string", description: "Comp as posted, if any (freeform)." },
+          fit_reason: { type: "string", description: "One line: why this fits Joe against the CORE requirements. Joe reads this to approve." },
+        },
+        required: ["company", "role"],
+      },
+    },
+    {
+      name: "list_approved_jobs",
+      description: "Whitney's PRIORITY QUEUE: jobs Joe approved that haven't been applied to yet, top-of-queue first (priority, then oldest approval). CHECK THIS FIRST every turn — if it returns any job, apply to the TOP one to completion this turn; only if it's empty do you fall back to finding new jobs.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "update_application_status",
+      description: "Whitney: advance a job through its stages so the board shows live progress. Stages: found → approved/dismissed → account_created → verified → applied → interview → (rejected/closed). Call it at EACH step as you work an approved job (account_created after signup, verified after the email link, applied after submit).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "number", description: "The job_applications row id (from list_approved_jobs)." },
+          status: { type: "string", enum: ["found", "approved", "dismissed", "account_created", "verified", "applied", "interview", "rejected", "closed"], description: "New stage." },
+          notes: { type: "string", description: "Optional note (e.g. why stopped, what was tailored, interview time)." },
+        },
+        required: ["id", "status"],
+      },
+    },
+    {
+      name: "inbox_search",
+      description: "Whitney: read joe@thinkbigjoe.com for a SPECIFIC purpose — the verification link/code for an account you just created, or an interview invite. Returns matching messages newest-first with sender, subject, a snippet, and any links extracted (the verification link is usually among them). BODY.PEEK: never marks mail read. Not for browsing his mail.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Text to match in subject/sender/body, e.g. the company name, 'verify', 'confirm your email', 'interview'." },
+          from: { type: "string", description: "Optional: only messages whose sender contains this (e.g. 'greenhouse.io', 'workday')." },
+          since_minutes: { type: "number", description: "How far back to look, in minutes (default 1440 = 24h). Use a small number right after triggering a verification email." },
+          limit: { type: "number", description: "Max messages to return (default 10, cap 25)." },
+        },
+      },
+    },
+    {
       name: "log_activity",
-      description: "Log a Venus cron activity to the activity_log table. Call this when a cron job finishes to record what happened.",
+      description: "Log a cron/agent activity to the activity_log table. Call this when a job finishes to record what happened. Pass actor to attribute it (e.g. 'whitney'); defaults to 'venus'.",
       inputSchema: {
         type: "object",
         properties: {
           event_type: { type: "string", description: "Event type slug, e.g. 'outreach_sent', 'scout_complete', 'followup_sent', 'booking_made', 'enrichment_complete', 'inbox_checked'." },
           summary: { type: "string", description: "Human-readable summary of what happened." },
           metadata: { type: "object", description: "Optional structured data about the event (counts, names, etc.)." },
+          actor: { type: "string", description: "Who did the work — the agent id (e.g. 'whitney'). Defaults to 'venus'." },
         },
         required: ["event_type", "summary"],
       },
@@ -2593,6 +2810,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "update_prospect": return toolUpdateProspect(args);
     case "list_approved_for_outreach": return toolListApprovedForOutreach();
     case "mark_sent": return toolMarkSent(args);
+    case "record_found_job": return toolRecordFoundJob(args);
+    case "list_approved_jobs": return toolListApprovedJobs();
+    case "update_application_status": return toolUpdateApplicationStatus(args);
+    case "inbox_search": return toolInboxSearch(args);
     case "log_activity": return toolLogActivity(args);
     case "schedule_followup": return toolScheduleFollowup(args);
     case "list_incomplete_followup_sequences": return toolListIncompleteFollowupSequences();

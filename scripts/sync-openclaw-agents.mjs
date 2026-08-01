@@ -37,6 +37,7 @@ const ROLES = {
   "marketing-manager": "Runs the marketing team, digests activity for Joe",
   researcher: "Deep research on prospects + markets",
   "brand-lead": "Design research + brand direction for the forge",
+  whitney: "Finds jobs for Joe + applies once he approves (creates accounts, verifies by email, tailors)",
 };
 
 const env = loadEnv(path.join(REPO, ".env.local"));
