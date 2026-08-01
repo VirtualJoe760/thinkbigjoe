@@ -36,12 +36,12 @@
  */
 
 import { spawn } from "node:child_process";
-import { writeFileSync, readFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync, unlinkSync, mkdirSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
   getFindings, recordFinding, readIndex, updateCandidate, indexStats,
-  corpusStats, logSearch, indexCandidates, saveReport, CORPUS_DIR,
+  corpusStats, logSearch, indexCandidates, saveReport, updateCandidates, CORPUS_DIR,
 } from "./corpus.mjs";
 import { nextAction, getRunConfig, initRun } from "./driver.mjs";
 import { expandQueryMatrix, ENUMERATORS } from "./index-layer.mjs";
@@ -72,7 +72,20 @@ const withTimeout = (p, ms, label) =>
   Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} exceeded ${ms / 1000}s — abandoned for this query`)), ms))]);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const log = (...a) => console.log(`[${new Date().toISOString()}]`, ...a);
+
+const LOG_FILE = process.env.RESEARCH_LOG_FILE || "/Users/macdaddyjoe/Library/Logs/research-mcp/runner.log";
+/**
+ * Synchronous logging on purpose. console.log into a launchd-redirected file is
+ * buffered, so a hung process and a merely quiet one look identical from the
+ * outside — the log froze mid-buffer while the process sat wedged, and told us
+ * nothing. A log that is trusted for diagnosis has to be written when it is called.
+ */
+const log = (...a) => {
+  const line = `[${new Date().toISOString()}] ${a.join(" ")}\n`;
+  // Written synchronously to the file only — launchd redirects stdout to this
+  // same path, so also writing to stdout duplicates every line.
+  try { appendFileSync(LOG_FILE, line); } catch { /* never let logging kill the run */ }
+};
 
 // ---------------------------------------------------------------------------
 // Single-instance lock. Two runners on one corpus would run the same queries
@@ -235,7 +248,7 @@ SCHEMA:
 ${EXTRACT_SCHEMA}
 
 DOCUMENT (${doc.label}):
-${doc.text.slice(0, 45000)}`;
+${doc.text.slice(0, 14000)}`;
 }
 
 /** Run claude headless as a one-shot extractor. Returns parsed JSON or null. */
@@ -247,7 +260,7 @@ function claudeExtract(prompt) {
     });
     let out = "", err = "", settled = false;
     const done = (v) => { if (!settled) { settled = true; clearTimeout(timer); resolve(v); } };
-    const timer = setTimeout(() => { try { p.kill("SIGKILL"); } catch {} done(null); }, 300000);
+    const timer = setTimeout(() => { try { p.kill("SIGKILL"); } catch {} done(null); }, 140000);
     // Without these, a spawn failure or a broken pipe is an uncaught exception
     // that takes the whole runner down — and launchd KeepAlive turns that into a
     // crash loop. A failure here must cost one document, never the run.
@@ -304,7 +317,8 @@ async function fetchDoc(c) {
   if (c.pmcid) {
     try {
       const ft = await europepmcFullText(c.pmcid);
-      if (ft.text?.length > 500) return { text: ft.text, label: `${c.title || c.pmcid} (full text)` };
+      // Skip the reference list — it is a third of a paper and contains no findings.
+      if (ft.text?.length > 500) return { text: ft.text.slice(0, 20000), label: `${c.title || c.pmcid} (full text)` };
     } catch {}
   }
   if (c.pmid) {
@@ -351,14 +365,49 @@ async function runReadBatch(driverQueue) {
 
   let recorded = 0, failures = 0;
   for (const c of queue) {
-    const doc = await fetchDoc(c);
+    const label = String(c.title || c.key).slice(0, 55);
+
+    // CLAIM THE DOCUMENT BEFORE TOUCHING IT.
+    //
+    // A document that hangs the process is re-selected on the next start,
+    // because nothing recorded that it was ever attempted — so it hangs again,
+    // forever, and the run never advances past it. One such document ("The Role
+    // of Dog Population Management in Rabies Elimination") wedged four
+    // consecutive restarts. Marking it "reading" first takes it out of the queue,
+    // so a hang costs one restart rather than the entire run; after three
+    // attempts it is retired as unreachable and the gap is recorded.
+    const attempts = (c.extract_attempts || 0) + 1;
+    if (attempts > 3) {
+      updateCandidate(PROJECT, c.key, {
+        status: "unreachable",
+        reason: `abandoned after ${attempts - 1} attempts — reading this document hung the runner`,
+        read_at: new Date().toISOString(),
+      });
+      log(`  ✗ retired after ${attempts - 1} hung attempts: ${label}`);
+      continue;
+    }
+    updateCandidate(PROJECT, c.key, { status: "reading", extract_attempts: attempts });
+    log(`  ▸ ${c.strata || "?"} · ${label}${attempts > 1 ? ` (attempt ${attempts})` : ""}`);
+    let doc;
+    try {
+      doc = await withTimeout(fetchDoc(c), 90000, `fetch ${label}`);
+    } catch (e) {
+      updateCandidate(PROJECT, c.key, { status: "unreachable", reason: e.message, read_at: new Date().toISOString() });
+      log(`    fetch timed out — marked unreachable`);
+      continue;
+    }
     if (doc.unreachable) {
       updateCandidate(PROJECT, c.key, { status: "unreachable", reason: doc.unreachable, read_at: new Date().toISOString() });
       log(`  unreachable: ${(c.title || c.key).slice(0, 60)} — ${doc.unreachable.slice(0, 60)}`);
       continue;
     }
 
-    const parsed = await claudeExtract(extractionPrompt(doc));
+    let parsed = null;
+    try {
+      parsed = await withTimeout(claudeExtract(extractionPrompt(doc)), 150000, `extract ${label}`);
+    } catch {
+      parsed = null; // treated as a transient failure by the block below
+    }
 
     // A malformed response is a TRANSIENT failure, not a verdict on the document.
     // Marking it "rejected" would be indistinguishable from a genuinely empty
@@ -463,8 +512,68 @@ async function runSafety(substances) {
 // The loop
 // ---------------------------------------------------------------------------
 
+/**
+ * Progress watchdog.
+ *
+ * A days-long unattended run will eventually wedge on something no specific
+ * timeout anticipated — a socket that never closes, a child that never exits, a
+ * promise that never settles. Rather than keep adding guards for each new way to
+ * hang, this watches the only thing that matters: whether the corpus is growing.
+ * If nothing has been processed in WATCHDOG_MS, the process exits non-zero and
+ * launchd starts a fresh one. State lives in the corpus, so a restart costs a
+ * few seconds and loses nothing.
+ */
+const WATCHDOG_MS = Number(process.env.RESEARCH_WATCHDOG_MS || 12 * 60 * 1000);
+
+function startWatchdog() {
+  let lastCount = -1;
+  let lastChange = Date.now();
+  setInterval(() => {
+    let n = 0;
+    try {
+      n = readIndex(PROJECT).filter((c) => ["read", "recorded", "rejected", "unreachable"].includes(c.status)).length
+        + getFindings(PROJECT).length;
+    } catch {
+      return;
+    }
+    if (n !== lastCount) {
+      lastCount = n;
+      lastChange = Date.now();
+      return;
+    }
+    const stalledFor = Date.now() - lastChange;
+    if (stalledFor > WATCHDOG_MS) {
+      log(`WATCHDOG: no progress in ${Math.round(stalledFor / 60000)} minutes (counter stuck at ${n}). Exiting so launchd restarts a clean process.`);
+      try { unlinkSync(LOCK); } catch {}
+      process.exit(1);
+    }
+  }, 60000).unref();
+}
+
+/** Return documents abandoned mid-read by a previous crash to the queue. */
+function recoverStuckReads() {
+  const stuck = readIndex(PROJECT).filter((c) => c.status === "reading");
+  if (!stuck.length) return;
+  updateCandidates(
+    PROJECT,
+    stuck.map((c) => {
+      const attempts = (c.extract_attempts || 0) + 1; // the crash IS the attempt
+      return {
+        key: c.key,
+        patch:
+          attempts >= 3
+            ? { status: "unreachable", reason: `hung the runner ${attempts} times — retired`, read_at: new Date().toISOString(), extract_attempts: attempts }
+            : { status: "queued", extract_attempts: attempts },
+      };
+    }),
+  );
+  log(`recovered ${stuck.length} document(s) left mid-read by a previous run`);
+}
+
 async function main() {
   if (!acquireLock()) process.exit(0);
+  recoverStuckReads();
+  startWatchdog();
   initRun(PROJECT, { question: QUESTION, depth: DEPTH });
   log(`runner up · project=${PROJECT} · depth=${DEPTH} · corpus=${CORPUS_DIR}`);
 

@@ -166,7 +166,19 @@ export function initRun(project, cfg = {}) {
 
 export function getRunConfig(project) {
   const rows = readRecords(project, "run-config");
-  return rows.length ? { ...DEFAULT_TARGETS, ...rows[rows.length - 1] } : { ...DEFAULT_TARGETS, depth: "standard" };
+  if (!rows.length) return { ...DEFAULT_TARGETS, depth: "standard" };
+  const stored = rows[rows.length - 1];
+
+  // read_quota is DEEP-merged, not replaced.
+  //
+  // A shallow merge means a config written before a stratum existed silently
+  // deletes it: the phase-1 row had no `animal` key, so after the animal
+  // stratum shipped the driver never checked it and 4,590 animal documents —
+  // the entire point of the phase — sat unread while the run reported itself
+  // healthy. A stratum added in code must survive an older stored config.
+  const read_quota = { ...DEFAULT_TARGETS.read_quota, ...(stored.read_quota || {}) };
+
+  return { ...DEFAULT_TARGETS, ...stored, read_quota };
 }
 
 // ---------------------------------------------------------------------------
