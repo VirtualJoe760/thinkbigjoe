@@ -269,8 +269,9 @@ NEVER run forge-template.sh yourself or mass-add languages — Joe builds propos
     name: "TBJ Whitney — Job Applications",
     id: "9cb191fe-5ec2-4414-ac45-756501b8cc5d",
     agent: "whitney",
-    schedule: "*/30 15-23 * * *", // provisional: every 30 min, ~8am–4pm AZ (UTC-7)
-    stagger: "3m",
+    schedule: "*/15 * * * *", // "always looking" — every 15 min, 24/7 (96 runs/day). Draws the
+                              // shared claude-cli Max weekly cap (see below) — dial back if it bites.
+    stagger: "2m",
     summary: "Whitney's priority-queue run: FIRST work any job Joe approved (create account → email-verify → tailor → submit); only when the approved queue is empty, find new roles matching Joe's target profile and post them to /command/applications for approval. One approved application per run (human cadence).",
     tools: ["list_approved_jobs", "update_application_status", "inbox_search", "record_found_job", "book_appointment", "log_activity"],
     uiSurface: ["/command/applications (review board — Approve/Dismiss + live pipeline)"],
