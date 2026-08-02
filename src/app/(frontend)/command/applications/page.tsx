@@ -236,7 +236,7 @@ export default async function ApplicationsPage() {
               Nothing waiting. When Whitney finds a fitting role, it lands here for your approval.
             </div>
           ) : (
-            <div className="mt-3 space-y-3">
+            <div className="mt-3 grid grid-cols-1 items-start gap-3 md:grid-cols-2">
               {review.map((job) => (
                 <div key={job.id} className="rounded-2xl border border-line bg-background p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -293,7 +293,7 @@ export default async function ApplicationsPage() {
               No applications in progress yet.
             </div>
           ) : (
-            <div className="mt-3 space-y-2">
+            <div className="mt-3 grid grid-cols-1 items-start gap-2 md:grid-cols-2">
               {[...queued, ...working, ...done].map((job) => (
                 <div key={job.id} className="rounded-2xl border border-line bg-background px-4 py-3">
                   <div className="flex items-start gap-3">
