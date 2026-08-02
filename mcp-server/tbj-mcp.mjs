@@ -1473,6 +1473,76 @@ async function toolInboxSearch({ query: q, from, since_minutes, limit }) {
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
+// Whitney ↔ Joe question loop. When Whitney can't proceed truthfully (a field she can't
+// answer, a judgment call), she records a question against the job instead of guessing or
+// silently stopping. Joe answers on /command/applications; she reads the answer next run and
+// resumes. This is how "escalate rather than fabricate" becomes a resumable loop.
+async function toolRecordQuestion({ application_id, question }) {
+  if (!question) return { content: [{ type: "text", text: "❌ question is required." }], isError: true };
+  let appLabel = "";
+  if (application_id) {
+    const a = await query(`SELECT company, role FROM job_applications WHERE id = $1`, [application_id]);
+    if (a.rows.length) appLabel = ` about ${a.rows[0].role} @ ${a.rows[0].company}`;
+  }
+  const res = await query(
+    `INSERT INTO agent_questions (application_id, agent, question, status) VALUES ($1, 'whitney', $2, 'open') RETURNING id`,
+    [application_id || null, question],
+  );
+  const id = res.rows[0].id;
+  await audit("agent_question", `Whitney asked${appLabel}: ${String(question).slice(0, 160)}`, {
+    actor: "whitney", detail: { question_id: id, application_id: application_id || null },
+  });
+  return { content: [{ type: "text", text: `✅ Question posted for Joe (#${id})${appLabel}. He answers it on the board; I'll pick up the answer next run via list_answered_questions and resume.` }] };
+}
+
+async function toolListAnsweredQuestions() {
+  const res = await query(
+    `SELECT q.id, q.application_id, q.question, q.answer, q.answered_at,
+            j.company, j.role, j.status AS job_status
+     FROM agent_questions q
+     LEFT JOIN job_applications j ON j.id = q.application_id
+     WHERE q.status = 'answered'
+     ORDER BY q.answered_at ASC NULLS LAST
+     LIMIT 25`,
+  );
+  if (!res.rows.length) return { content: [{ type: "text", text: "📭 No answered questions waiting. Nothing to resume from Joe's side." }] };
+  const lines = [`💡 **${res.rows.length} answered question(s) from Joe** — act on these, then mark_question_resolved each:`, ""];
+  for (const r of res.rows) {
+    const where = r.application_id ? `#${r.application_id} ${r.role} @ ${r.company} (job: ${r.job_status})` : "(general)";
+    lines.push(`**Q#${r.id} · ${where}**`);
+    lines.push(`Q: ${r.question}`);
+    lines.push(`A: ${r.answer}`);
+    lines.push("");
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolMarkQuestionResolved({ id }) {
+  const r = await query(`UPDATE agent_questions SET status = 'resolved' WHERE id = $1 RETURNING application_id`, [id]);
+  if (!r.rows.length) return { content: [{ type: "text", text: `❌ No question #${id}.` }], isError: true };
+  return { content: [{ type: "text", text: `✅ Question #${id} resolved — I've used Joe's answer.` }] };
+}
+
+// Joe's resume + LinkedIn — Whitney's source of truth for his history. She NEVER claims anything
+// not backed by this. Reads RESUME_PATH (a file) + LINKEDIN_URL from .env.local.
+async function toolGetCandidateProfile() {
+  const linkedin = process.env.LINKEDIN_URL || null;
+  const resumePath = process.env.RESUME_PATH || null;
+  let resumeText = null, note = null;
+  if (resumePath) {
+    try { resumeText = readFileSync(resumePath, "utf8"); }
+    catch (e) { note = `⚠️ Could not read RESUME_PATH (${resumePath}): ${e?.message || e}`; }
+  }
+  if (!resumeText && !linkedin) {
+    return { content: [{ type: "text", text: "⚠️ No candidate profile configured yet (RESUME_PATH / LINKEDIN_URL not set in .env.local). I can FIND and score jobs, but I can't TAILOR or truthfully APPLY without Joe's resume — record_question to Joe or hold applying until he provides it." }] };
+  }
+  const lines = ["📄 **Joe's candidate profile — SOURCE OF TRUTH. Never claim anything not backed by this.**", ""];
+  if (linkedin) lines.push(`LinkedIn: ${linkedin}`);
+  if (resumeText) lines.push("", "--- RESUME ---", resumeText.slice(0, 12000));
+  if (note) lines.push("", note);
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
 async function toolScheduleFollowup({ prospect_id, touch_number, days_from_now, body }) {
   const existing = await query(
     `SELECT id FROM follow_ups WHERE prospect_id = $1 AND touch_number = $2 LIMIT 1`,
@@ -2151,7 +2221,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.36.0" },
+  { name: "tbj-mcp", version: "2.37.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -2610,6 +2680,37 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "record_question",
+      description: "Whitney: when you can't proceed truthfully on a job — a form field you can't answer from Joe's profile, a judgment call, missing info — post a QUESTION for Joe instead of guessing or silently stopping. It shows on /command/applications for him to answer; you read the answer next run (list_answered_questions) and resume. This is how you escalate without fabricating.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          application_id: { type: "number", description: "The job_applications id this question is about (omit for a general question)." },
+          question: { type: "string", description: "The specific question for Joe — be concrete so he can answer fast (e.g. 'This asks for years of Swift experience — what should I put?')." },
+        },
+        required: ["question"],
+      },
+    },
+    {
+      name: "list_answered_questions",
+      description: "Whitney: questions Joe has ANSWERED, waiting for you to act on. Check this at the start of a run — his answers are how you resume a blocked application. After you use an answer, call mark_question_resolved.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "mark_question_resolved",
+      description: "Whitney: close a question after you've used Joe's answer, so it doesn't come back next run.",
+      inputSchema: {
+        type: "object",
+        properties: { id: { type: "number", description: "The question id from list_answered_questions." } },
+        required: ["id"],
+      },
+    },
+    {
+      name: "get_candidate_profile",
+      description: "Whitney: Joe's resume + LinkedIn — your SOURCE OF TRUTH for his work history. Call this before tailoring, filling an application, or scoring fit, and never claim anything about Joe not backed by it. Returns his resume text + LinkedIn URL (from .env.local RESUME_PATH / LINKEDIN_URL).",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
       name: "log_activity",
       description: "Log a cron/agent activity to the activity_log table. Call this when a job finishes to record what happened. Pass actor to attribute it (e.g. 'whitney'); defaults to 'venus'.",
       inputSchema: {
@@ -2853,6 +2954,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "list_approved_jobs": return toolListApprovedJobs();
     case "update_application_status": return toolUpdateApplicationStatus(args);
     case "inbox_search": return toolInboxSearch(args);
+    case "record_question": return toolRecordQuestion(args);
+    case "list_answered_questions": return toolListAnsweredQuestions();
+    case "mark_question_resolved": return toolMarkQuestionResolved(args);
+    case "get_candidate_profile": return toolGetCandidateProfile();
     case "log_activity": return toolLogActivity(args);
     case "schedule_followup": return toolScheduleFollowup(args);
     case "list_incomplete_followup_sequences": return toolListIncompleteFollowupSequences();

@@ -260,12 +260,14 @@ NEVER run forge-template.sh yourself or mass-add languages — Joe builds propos
   },
 
   {
-    // ⏸ DISABLED (enabled:false) — documented but NOT synced. Whitney can't run until
-    // her TARGET PROFILE (USER.md: roles/location/salary/resume source) and her account
-    // registration password (.env.local) are set. To turn her on: fill those, flip
-    // enabled:true, then `npm run venus:sync` (it will add the cron and print its id).
-    enabled: false,
+    // ✅ ENABLED for the FIND loop (target profile set 2026-08). She surfaces roles to
+    // /command/applications for Joe's approval. APPLYING is still gated on two things not yet
+    // wired: Joe's resume/history (USER.md) and a signup password (.env.local) — until those
+    // exist she finds/surfaces only and escalates rather than applying. Don't approve jobs for
+    // her to apply to until that's set up.
+    enabled: true,
     name: "TBJ Whitney — Job Applications",
+    id: "9cb191fe-5ec2-4414-ac45-756501b8cc5d",
     agent: "whitney",
     schedule: "*/30 15-23 * * *", // provisional: every 30 min, ~8am–4pm AZ (UTC-7)
     stagger: "3m",

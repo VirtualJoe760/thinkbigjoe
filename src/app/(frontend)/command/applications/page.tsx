@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { desc, eq } from "drizzle-orm";
 
-import { db, jobApplications, agents } from "@/db";
+import { db, jobApplications, agents, agentQuestions } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
-import { approveJob, dismissJob, reopenJob, bumpPriority, setWhitneyPaused } from "./actions";
+import { approveJob, dismissJob, reopenJob, bumpPriority, setWhitneyPaused, answerQuestion } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -158,8 +158,15 @@ function JobDetails({ job }: { job: Job }) {
   );
 }
 
-export default async function ApplicationsPage() {
+const REVIEW_PAGE_SIZE = 12;
+
+export default async function ApplicationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   await requireAdmin();
+  const { page: pageParam } = await searchParams;
 
   const jobs = (await db
     .select()
@@ -175,11 +182,28 @@ export default async function ApplicationsPage() {
   const registered = whit.length > 0;
   const paused = whit[0]?.paused === true;
 
+  const openQuestions = await db
+    .select({
+      id: agentQuestions.id,
+      question: agentQuestions.question,
+      createdAt: agentQuestions.createdAt,
+      company: jobApplications.company,
+      role: jobApplications.role,
+    })
+    .from(agentQuestions)
+    .leftJoin(jobApplications, eq(agentQuestions.applicationId, jobApplications.id))
+    .where(eq(agentQuestions.status, "open"))
+    .orderBy(desc(agentQuestions.createdAt));
+
   const review = jobs.filter((j) => j.status === "found");
   const queued = jobs.filter((j) => j.status === "approved");
   const working = jobs.filter((j) => j.status === "account_created" || j.status === "verified");
   const done = jobs.filter((j) => j.status === "applied" || j.status === "interview");
   const archived = jobs.filter((j) => ["dismissed", "rejected", "closed"].includes(j.status));
+
+  const reviewPageCount = Math.max(1, Math.ceil(review.length / REVIEW_PAGE_SIZE));
+  const reviewPage = Math.min(Math.max(1, parseInt(pageParam ?? "1", 10) || 1), reviewPageCount);
+  const reviewItems = review.slice((reviewPage - 1) * REVIEW_PAGE_SIZE, reviewPage * REVIEW_PAGE_SIZE);
 
   return (
     <div className="px-6 py-8">
@@ -228,6 +252,43 @@ export default async function ApplicationsPage() {
           <span className="rounded-full bg-green-50 px-3 py-1 font-semibold text-green-700">{done.length} applied</span>
         </div>
 
+        {/* NEEDS YOUR INPUT — Whitney is blocked and asked a question */}
+        {openQuestions.length > 0 && (
+          <section className="mt-7">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-amber-700">
+              Needs your input — Whitney asked ({openQuestions.length})
+            </h2>
+            <div className="mt-3 space-y-3">
+              {openQuestions.map((q) => (
+                <div key={q.id} className="rounded-2xl border border-amber-300 bg-amber-50/50 p-4">
+                  <p className="text-sm font-semibold text-ink">
+                    {q.role ? (
+                      <>{q.role} <span className="font-normal text-ink-soft">@ {q.company}</span></>
+                    ) : (
+                      "General question"
+                    )}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-ink">
+                    <span className="font-semibold text-amber-700">Whitney asked:</span> {q.question}
+                  </p>
+                  <form action={answerQuestion.bind(null, q.id)} className="mt-2">
+                    <textarea
+                      name="answer"
+                      rows={2}
+                      required
+                      placeholder="Your answer — she'll read it next run and resume this application."
+                      className="w-full rounded-lg border border-line bg-background px-3 py-2 text-xs text-ink outline-none focus:border-brand"
+                    />
+                    <button className="mt-2 rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90">
+                      Send answer
+                    </button>
+                  </form>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* NEEDS REVIEW — the human gate */}
         <section className="mt-7">
           <h2 className="text-sm font-bold uppercase tracking-wide text-ink-soft">Needs your review</h2>
@@ -237,7 +298,7 @@ export default async function ApplicationsPage() {
             </div>
           ) : (
             <div className="mt-3 grid grid-cols-1 items-start gap-3 md:grid-cols-2">
-              {review.map((job) => (
+              {reviewItems.map((job) => (
                 <div key={job.id} className="rounded-2xl border border-line bg-background p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -281,6 +342,21 @@ export default async function ApplicationsPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+          {review.length > REVIEW_PAGE_SIZE && (
+            <div className="mt-4 flex items-center justify-center gap-3 text-xs">
+              {reviewPage > 1 ? (
+                <a href={`?page=${reviewPage - 1}`} className="rounded-lg bg-surface px-3 py-1.5 font-semibold text-ink-soft transition-colors hover:text-ink">← Prev</a>
+              ) : (
+                <span className="rounded-lg px-3 py-1.5 font-semibold text-ink-soft opacity-40">← Prev</span>
+              )}
+              <span className="text-ink-soft">Page {reviewPage} of {reviewPageCount}</span>
+              {reviewPage < reviewPageCount ? (
+                <a href={`?page=${reviewPage + 1}`} className="rounded-lg bg-surface px-3 py-1.5 font-semibold text-ink-soft transition-colors hover:text-ink">Next →</a>
+              ) : (
+                <span className="rounded-lg px-3 py-1.5 font-semibold text-ink-soft opacity-40">Next →</span>
+              )}
             </div>
           )}
         </section>

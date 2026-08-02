@@ -3,7 +3,7 @@
 import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
-import { db, jobApplications, activityLog, agents } from "@/db";
+import { db, jobApplications, activityLog, agents, agentQuestions } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
 
 // Joe's human gate. Whitney posts jobs at status 'found'; these actions are how
@@ -65,6 +65,24 @@ export async function bumpPriority(id: number): Promise<void> {
     .update(jobApplications)
     .set({ priority: sql`${jobApplications.priority} + 1`, updatedAt: new Date().toISOString() })
     .where(eq(jobApplications.id, id));
+  revalidatePath("/command/applications");
+}
+
+/** Answer a question Whitney posted. She reads it next run (list_answered_questions) and resumes. */
+export async function answerQuestion(questionId: number, formData: FormData): Promise<void> {
+  await assertAdmin();
+  const answer = String(formData.get("answer") || "").trim();
+  if (!answer) return;
+  await db
+    .update(agentQuestions)
+    .set({ answer, status: "answered", answeredAt: new Date().toISOString() })
+    .where(eq(agentQuestions.id, questionId));
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "agent_question_answered",
+    summary: `Answered Whitney's question #${questionId}`,
+    metadata: { questionId, via: "/command/applications" },
+  });
   revalidatePath("/command/applications");
 }
 
