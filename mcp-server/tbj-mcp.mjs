@@ -1300,7 +1300,12 @@ const APPLICATION_STATUSES = [
   "found", "approved", "dismissed", "account_created", "verified", "applied", "interview", "rejected", "closed",
 ];
 
-async function toolRecordFoundJob({ company, role, platform, url, location, pay, fit_reason }) {
+async function toolRecordFoundJob({
+  company, role, platform, url, location, pay,
+  fit_reason, fit_score, interest_match, interest_score,
+  job_description, company_about, company_address, company_website,
+  company_reviews, contact_info,
+}) {
   if (await isAgentPaused("whitney")) {
     return { content: [{ type: "text", text: "⏸ Whitney is PAUSED by Joe. Stand down — do not find or post jobs. End your turn without acting." }] };
   }
@@ -1315,16 +1320,33 @@ async function toolRecordFoundJob({ company, role, platform, url, location, pay,
   if (dup.rows.length) {
     return { content: [{ type: "text", text: `⏭️ Already on the board: ${role} @ ${company} (#${dup.rows[0].id}, status: ${dup.rows[0].status}). Not re-added.` }] };
   }
+  const clampScore = (n) => (Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : null);
   const res = await query(
-    `INSERT INTO job_applications (company, role, platform, url, location, pay, fit_reason, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'found') RETURNING id`,
-    [company, role, platform || null, url || null, location || null, pay || null, fit_reason || null],
+    `INSERT INTO job_applications
+       (company, role, platform, url, location, pay, fit_reason, fit_score,
+        interest_match, interest_score, job_description, company_about,
+        company_address, company_website, company_reviews, contact_info, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16::jsonb,'found')
+     RETURNING id`,
+    [
+      company, role, platform || null, url || null, location || null, pay || null,
+      fit_reason || null, clampScore(fit_score),
+      interest_match || null, clampScore(interest_score),
+      job_description || null, company_about || null, company_address || null, company_website || null,
+      company_reviews ? JSON.stringify(company_reviews) : null,
+      contact_info ? JSON.stringify(contact_info) : null,
+    ],
   );
   const id = res.rows[0].id;
   await audit("job_found", `Found: ${role} @ ${company}${location ? ` (${location})` : ""}`, {
-    actor: "whitney", target: company, detail: { role, platform, url, pay, fit_reason },
+    actor: "whitney", target: company,
+    detail: { role, platform, url, pay, fit_score: clampScore(fit_score), interest_score: clampScore(interest_score) },
   });
-  return { content: [{ type: "text", text: `✅ Posted to the review board: **${role} @ ${company}** (#${id}). Awaiting Joe's approval.` }] };
+  const scoreNote = [
+    clampScore(fit_score) != null ? `fit ${clampScore(fit_score)}%` : null,
+    clampScore(interest_score) != null ? `interest ${clampScore(interest_score)}%` : null,
+  ].filter(Boolean).join(" · ");
+  return { content: [{ type: "text", text: `✅ Posted to the review board: **${role} @ ${company}** (#${id})${scoreNote ? ` — ${scoreNote}` : ""}. Awaiting Joe's approval.` }] };
 }
 
 async function toolListApprovedJobs() {
@@ -1332,7 +1354,8 @@ async function toolListApprovedJobs() {
     return { content: [{ type: "text", text: "⏸ Whitney is PAUSED by Joe. Stand down — do NOT apply to anything and do NOT find new jobs. Log nothing and end your turn." }] };
   }
   const res = await query(
-    `SELECT id, company, role, platform, url, location, pay, fit_reason, priority, approved_at
+    `SELECT id, company, role, platform, url, location, pay, fit_reason, priority, approved_at,
+            job_description, company_website, contact_info
      FROM job_applications
      WHERE status = 'approved'
      ORDER BY priority DESC, approved_at ASC NULLS LAST, created_at ASC
@@ -1346,7 +1369,14 @@ async function toolListApprovedJobs() {
     lines.push(`**#${r.id} — ${r.role} @ ${r.company}**${r.location ? ` · ${r.location}` : ""}${r.pay ? ` · ${r.pay}` : ""}`);
     if (r.platform) lines.push(`Platform: ${r.platform}`);
     if (r.url) lines.push(`Apply: ${r.url}`);
+    if (r.company_website) lines.push(`Company site: ${r.company_website}`);
+    if (r.contact_info) {
+      const c = typeof r.contact_info === "string" ? JSON.parse(r.contact_info) : r.contact_info;
+      const bits = [c.recruiter_name, c.email, c.phone, c.careers_url].filter(Boolean).join(" · ");
+      if (bits) lines.push(`Contact: ${bits}`);
+    }
     if (r.fit_reason) lines.push(`Why it fits: ${r.fit_reason}`);
+    if (r.job_description) lines.push(`JD: ${String(r.job_description).replace(/\s+/g, " ").slice(0, 500)}${r.job_description.length > 500 ? "…" : ""}`);
     lines.push("");
   }
   lines.push("_Work the TOP one to completion: create account → verify by email (inbox_search) → tailor → submit, calling update_application_status at each stage. One approved job per turn._");
@@ -2121,7 +2151,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.35.0" },
+  { name: "tbj-mcp", version: "2.36.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -2524,7 +2554,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "record_found_job",
-      description: "Whitney: post a candidate job to Joe's review board (/command/applications) at status 'found'. Only surface roles that clear the fit-gate (~60% of the CORE requirements) per the target profile. Dedups on company+role. Joe then Approves or Dismisses each card — that approval is the trigger for you to actually apply.",
+      description: "Whitney: post a candidate job to Joe's review board (/command/applications) at status 'found'. Only surface roles that clear the fit-gate (~60% of the CORE requirements) per the target profile. Dedups on company+role. Joe then Approves or Dismisses each card — that approval is the trigger for you to actually apply. RESEARCH THE ROLE BEFORE POSTING: Joe wants a card he can decide on without leaving the page — capture the full job description, the company (what they do, HQ address, website), REAL sourced reviews of the company (Glassdoor/Indeed/Google — with rating + source URL), a point of contact, and BOTH a skills-fit and a personal-interest read. Missing data is fine (pass what you can find), but the more complete the card, the better Joe can approve.",
       inputSchema: {
         type: "object",
         properties: {
@@ -2532,9 +2562,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           role: { type: "string", description: "Job title as posted." },
           platform: { type: "string", description: "Where it lives: 'linkedin' | 'indeed' | 'greenhouse' | 'lever' | 'workday' | 'direct' | other." },
           url: { type: "string", description: "Posting or apply URL." },
-          location: { type: "string", description: "Location + arrangement, e.g. 'Remote (US)' or 'Phoenix, AZ · hybrid'." },
-          pay: { type: "string", description: "Comp as posted, if any (freeform)." },
-          fit_reason: { type: "string", description: "One line: why this fits Joe against the CORE requirements. Joe reads this to approve." },
+          location: { type: "string", description: "JOB location + arrangement, e.g. 'Remote (US)' or 'Phoenix, AZ · hybrid'." },
+          pay: { type: "string", description: "Comp as posted, if any (freeform, e.g. '$170k–200k')." },
+          job_description: { type: "string", description: "The FULL job description (or a faithful, substantial summary) — responsibilities, requirements, must-haves. This is what Joe reviews to decide." },
+          company_about: { type: "string", description: "1–3 sentences on what the company does — industry, size, what they build." },
+          company_address: { type: "string", description: "The company's HQ / office address (street, city, state) — separate from the job's work arrangement." },
+          company_website: { type: "string", description: "The company's own website (not the job board)." },
+          company_reviews: { type: "array", description: "REAL sourced reviews of the company as an employer. Each: { source (e.g. 'Glassdoor'), rating (number, e.g. 4.1), count (number of reviews), url, summary (what employees say — pros/cons in a sentence) }. Source these by searching; do not invent. Empty array if none found.", items: { type: "object", properties: { source: { type: "string" }, rating: { type: "number" }, count: { type: "number" }, url: { type: "string" }, summary: { type: "string" } } } },
+          contact_info: { type: "object", description: "A way to reach the company/recruiter: { recruiter_name, email, phone, careers_url, linkedin }. Whatever you can find from the posting or the company site.", properties: { recruiter_name: { type: "string" }, email: { type: "string" }, phone: { type: "string" }, careers_url: { type: "string" }, linkedin: { type: "string" } } },
+          fit_reason: { type: "string", description: "One line: why Joe fits against the CORE requirements (skills/experience)." },
+          fit_score: { type: "number", description: "0–100 skills/experience fit against the CORE requirements." },
+          interest_match: { type: "string", description: "One line: why this matches JOE'S PERSONAL INTERESTS (mission, domain, tech, culture) per his target profile — not just whether he's qualified." },
+          interest_score: { type: "number", description: "0–100 how well the role matches Joe's stated personal interests." },
         },
         required: ["company", "role"],
       },
