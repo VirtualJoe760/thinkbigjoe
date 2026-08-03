@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 
-import { db, jobApplications, agents, agentQuestions } from "@/db";
+import { db, jobApplications, agents, agentQuestions, candidateFacts } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { approveJob, dismissJob, reopenJob, bumpPriority, setWhitneyPaused, answerQuestion } from "./actions";
 import { type Job, StageBadge, ScoreChip, MetaRow, relativeTime, abbreviate } from "./parts";
@@ -130,6 +130,7 @@ export default async function ApplicationsPage({
     .select({
       id: agentQuestions.id,
       question: agentQuestions.question,
+      options: agentQuestions.options,
       createdAt: agentQuestions.createdAt,
       company: jobApplications.company,
       role: jobApplications.role,
@@ -138,6 +139,11 @@ export default async function ApplicationsPage({
     .leftJoin(jobApplications, eq(agentQuestions.applicationId, jobApplications.id))
     .where(eq(agentQuestions.status, "open"))
     .orderBy(desc(agentQuestions.createdAt));
+
+  const facts = await db
+    .select({ topic: candidateFacts.topic, fact: candidateFacts.fact })
+    .from(candidateFacts)
+    .orderBy(candidateFacts.topic);
 
   const review = jobs.filter((j) => j.status === "found");
   const queued = jobs.filter((j) => j.status === "approved");
@@ -216,13 +222,24 @@ export default async function ApplicationsPage({
                     <span className="font-semibold text-amber-700">Whitney asked:</span> {q.question}
                   </p>
                   <form action={answerQuestion.bind(null, q.id)} className="mt-2">
-                    <textarea
-                      name="answer"
-                      rows={2}
-                      required
-                      placeholder="Your answer — she'll read it next run and resume this application."
-                      className="w-full rounded-lg border border-line bg-background px-3 py-2 text-xs text-ink outline-none focus:border-brand"
-                    />
+                    {Array.isArray(q.options) && (q.options as string[]).length > 0 ? (
+                      <div className="space-y-1.5">
+                        {(q.options as string[]).map((opt) => (
+                          <label key={opt} className="flex items-center gap-2 text-xs text-ink">
+                            <input type="radio" name="answer" value={opt} required className="accent-brand" />
+                            {opt}
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <textarea
+                        name="answer"
+                        rows={2}
+                        required
+                        placeholder="Your answer — she'll read it next run and resume this application."
+                        className="w-full rounded-lg border border-line bg-background px-3 py-2 text-xs text-ink outline-none focus:border-brand"
+                      />
+                    )}
                     <button className="mt-2 rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90">
                       Send answer
                     </button>
@@ -230,6 +247,24 @@ export default async function ApplicationsPage({
                 </div>
               ))}
             </div>
+          </section>
+        )}
+
+        {/* WHAT WHITNEY KNOWS — durable facts, reused so she never re-asks */}
+        {facts.length > 0 && (
+          <section className="mt-6 rounded-2xl border border-line bg-background p-4">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-ink-soft">What Whitney knows about you</h2>
+            <p className="mt-1 text-[11px] text-ink-soft">
+              Learned from your answers — she fills screening questions from these automatically and won&apos;t ask again.
+            </p>
+            <ul className="mt-2 space-y-1">
+              {facts.map((f) => (
+                <li key={f.topic} className="text-xs text-ink">
+                  <span className="font-semibold capitalize">{f.topic.replace(/_/g, " ")}:</span>{" "}
+                  <span className="text-ink-soft">{f.fact}</span>
+                </li>
+              ))}
+            </ul>
           </section>
         )}
 

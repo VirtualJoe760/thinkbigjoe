@@ -673,25 +673,6 @@ export const jobApplications = pgTable("job_applications", {
 	index("job_applications_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
 ]);
 
-export const agentQuestions = pgTable("agent_questions", {
-	id: serial().primaryKey().notNull(),
-	applicationId: integer("application_id"),
-	agent: varchar({ length: 40 }).default('whitney').notNull(),
-	question: text().notNull(),
-	answer: text(),
-	status: varchar({ length: 16 }).default('open').notNull(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	answeredAt: timestamp("answered_at", { withTimezone: true, mode: 'string' }),
-}, (table) => [
-	index("agent_questions_application_idx").using("btree", table.applicationId.asc().nullsLast().op("int4_ops")),
-	index("agent_questions_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
-	foreignKey({
-			columns: [table.applicationId],
-			foreignColumns: [jobApplications.id],
-			name: "agent_questions_application_id_fkey"
-		}).onDelete("cascade"),
-]);
-
 export const leads = pgTable("leads", {
 	id: serial().primaryKey().notNull(),
 	name: varchar().notNull(),
@@ -865,6 +846,15 @@ export const forgeSites = pgTable("forge_sites", {
 	unique("forge_sites_slug_key").on(table.slug),
 ]);
 
+export const candidateFacts = pgTable("candidate_facts", {
+	id: serial().primaryKey().notNull(),
+	topic: varchar({ length: 60 }).notNull(),
+	fact: text().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	unique("candidate_facts_topic_key").on(table.topic),
+]);
+
 export const agents = pgTable("agents", {
 	id: varchar({ length: 40 }).primaryKey().notNull(),
 	name: varchar({ length: 80 }).notNull(),
@@ -887,4 +877,25 @@ export const agents = pgTable("agents", {
 			foreignColumns: [organizations.id],
 			name: "agents_org_id_fkey"
 		}),
+]);
+
+export const agentQuestions = pgTable("agent_questions", {
+	id: serial().primaryKey().notNull(),
+	applicationId: integer("application_id"),
+	agent: varchar({ length: 40 }).default('whitney').notNull(),
+	question: text().notNull(),
+	answer: text(),
+	status: varchar({ length: 16 }).default('open').notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	answeredAt: timestamp("answered_at", { withTimezone: true, mode: 'string' }),
+	options: jsonb(),
+	topic: varchar({ length: 60 }),
+}, (table) => [
+	index("agent_questions_application_idx").using("btree", table.applicationId.asc().nullsLast().op("int4_ops")),
+	index("agent_questions_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+	foreignKey({
+			columns: [table.applicationId],
+			foreignColumns: [jobApplications.id],
+			name: "agent_questions_application_id_fkey"
+		}).onDelete("cascade"),
 ]);

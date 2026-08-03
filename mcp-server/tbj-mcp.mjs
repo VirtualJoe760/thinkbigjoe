@@ -1505,16 +1505,24 @@ async function toolInboxSearch({ query: q, from, since_minutes, limit }) {
 // answer, a judgment call), she records a question against the job instead of guessing or
 // silently stopping. Joe answers on /command/applications; she reads the answer next run and
 // resumes. This is how "escalate rather than fabricate" becomes a resumable loop.
-async function toolRecordQuestion({ application_id, question }) {
+async function toolRecordQuestion({ application_id, question, options, topic }) {
   if (!question) return { content: [{ type: "text", text: "❌ question is required." }], isError: true };
+  // Ask-once: if this maps to a durable fact I already learned, don't ask Joe again.
+  if (topic) {
+    const known = await query(`SELECT fact FROM candidate_facts WHERE topic = $1`, [topic]);
+    if (known.rows.length) {
+      return { content: [{ type: "text", text: `✅ Already known — ${topic}: ${known.rows[0].fact}\nUse this to answer; do NOT ask Joe again.` }] };
+    }
+  }
   let appLabel = "";
   if (application_id) {
     const a = await query(`SELECT company, role FROM job_applications WHERE id = $1`, [application_id]);
     if (a.rows.length) appLabel = ` about ${a.rows[0].role} @ ${a.rows[0].company}`;
   }
   const res = await query(
-    `INSERT INTO agent_questions (application_id, agent, question, status) VALUES ($1, 'whitney', $2, 'open') RETURNING id`,
-    [application_id || null, question],
+    `INSERT INTO agent_questions (application_id, agent, question, status, options, topic)
+     VALUES ($1, 'whitney', $2, 'open', $3::jsonb, $4) RETURNING id`,
+    [application_id || null, question, Array.isArray(options) && options.length ? JSON.stringify(options) : null, topic || null],
   );
   const id = res.rows[0].id;
   await audit("agent_question", `Whitney asked${appLabel}: ${String(question).slice(0, 160)}`, {
@@ -1568,6 +1576,33 @@ async function toolGetCandidateProfile() {
   if (linkedin) lines.push(`LinkedIn: ${linkedin}`);
   if (resumeText) lines.push("", "--- RESUME ---", resumeText.slice(0, 12000));
   if (note) lines.push("", note);
+  const facts = await query(`SELECT topic, fact FROM candidate_facts ORDER BY topic`);
+  if (facts.rows.length) {
+    lines.push("", "--- REMEMBERED FACTS (answer screening questions from these; never re-ask) ---");
+    for (const f of facts.rows) lines.push(`• ${f.topic}: ${f.fact}`);
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+// Whitney's durable memory about Joe — recurring application facts (work authorization, relocation,
+// clearance, etc.). Learn once, then answer screening questions truthfully without re-asking.
+async function toolRememberFact({ topic, fact }) {
+  if (!topic || !fact) return { content: [{ type: "text", text: "❌ topic and fact are required." }], isError: true };
+  const key = String(topic).trim().toLowerCase().replace(/\s+/g, "_").slice(0, 60);
+  await query(
+    `INSERT INTO candidate_facts (topic, fact) VALUES ($1, $2)
+     ON CONFLICT (topic) DO UPDATE SET fact = EXCLUDED.fact, updated_at = now()`,
+    [key, fact],
+  );
+  await audit("candidate_fact", `Remembered "${key}"`, { actor: "whitney", detail: { topic: key } });
+  return { content: [{ type: "text", text: `🧠 Remembered — ${key}: ${fact}\nI'll answer this from memory and won't ask Joe again.` }] };
+}
+
+async function toolGetCandidateFacts() {
+  const r = await query(`SELECT topic, fact FROM candidate_facts ORDER BY topic`);
+  if (!r.rows.length) return { content: [{ type: "text", text: "No remembered facts about Joe yet." }] };
+  const lines = ["🧠 **What I remember about Joe** (answer screening questions from these; never re-ask):", ""];
+  for (const f of r.rows) lines.push(`• ${f.topic}: ${f.fact}`);
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
@@ -2260,7 +2295,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.38.0" },
+  { name: "tbj-mcp", version: "2.39.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -2720,15 +2755,34 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "record_question",
-      description: "Whitney: when you can't proceed truthfully on a job — a form field you can't answer from Joe's profile, a judgment call, missing info — post a QUESTION for Joe instead of guessing or silently stopping. It shows on /command/applications for him to answer; you read the answer next run (list_answered_questions) and resume. This is how you escalate without fabricating.",
+      description: "Whitney: when you can't proceed truthfully — a form field you can't answer from Joe's profile/facts, a judgment call — post a QUESTION for Joe instead of guessing or stopping. It shows on /command/applications; you read the answer next run (list_answered_questions) and resume. For RECURRING facts (work authorization, sponsorship, relocation, security clearance, notice period), pass a `topic` slug: Joe's answer becomes a permanent fact you'll reuse — and if you pass a topic you ALREADY know, this refuses and hands you the known fact so you never ask twice. For multiple-choice, pass `options` and Joe answers with a radio button.",
       inputSchema: {
         type: "object",
         properties: {
           application_id: { type: "number", description: "The job_applications id this question is about (omit for a general question)." },
-          question: { type: "string", description: "The specific question for Joe — be concrete so he can answer fast (e.g. 'This asks for years of Swift experience — what should I put?')." },
+          question: { type: "string", description: "The specific question for Joe — concrete so he can answer fast." },
+          options: { type: "array", items: { type: "string" }, description: "For a multiple-choice question, the answer choices (Joe picks one via radio buttons)." },
+          topic: { type: "string", description: "A short slug for a DURABLE fact about Joe (e.g. 'work_authorization', 'relocation', 'security_clearance'). When set, Joe's answer is remembered permanently and you never ask it again. Check get_candidate_facts / get_candidate_profile first." },
         },
         required: ["question"],
       },
+    },
+    {
+      name: "remember_fact",
+      description: "Whitney: permanently remember a fact about Joe so you can answer recurring screening questions truthfully without asking again (e.g. topic 'work_authorization' → 'US citizen, no sponsorship needed'). Upserts by topic. Realize when a question is a durable fact and store it.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          topic: { type: "string", description: "Short slug, e.g. 'work_authorization', 'relocation', 'notice_period'." },
+          fact: { type: "string", description: "The durable answer, in Joe's truth (e.g. 'US citizen — authorized to work in the US, no visa sponsorship needed')." },
+        },
+        required: ["topic", "fact"],
+      },
+    },
+    {
+      name: "get_candidate_facts",
+      description: "Whitney: everything you've remembered about Joe (work authorization, relocation, etc.). CHECK THIS before asking any recurring screening question — if the answer is here, use it and don't ask. Also included in get_candidate_profile.",
+      inputSchema: { type: "object", properties: {} },
     },
     {
       name: "list_answered_questions",
@@ -3002,6 +3056,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "list_answered_questions": return toolListAnsweredQuestions();
     case "mark_question_resolved": return toolMarkQuestionResolved(args);
     case "get_candidate_profile": return toolGetCandidateProfile();
+    case "get_candidate_facts": return toolGetCandidateFacts();
+    case "remember_fact": return toolRememberFact(args);
     case "get_signup_credentials": return toolGetSignupCredentials();
     case "log_activity": return toolLogActivity(args);
     case "schedule_followup": return toolScheduleFollowup(args);

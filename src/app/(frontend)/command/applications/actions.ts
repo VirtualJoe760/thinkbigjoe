@@ -3,7 +3,7 @@
 import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
-import { db, jobApplications, activityLog, agents, agentQuestions } from "@/db";
+import { db, jobApplications, activityLog, agents, agentQuestions, candidateFacts } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
 
 // Joe's human gate. Whitney posts jobs at status 'found'; these actions are how
@@ -68,20 +68,33 @@ export async function bumpPriority(id: number): Promise<void> {
   revalidatePath("/command/applications");
 }
 
-/** Answer a question Whitney posted. She reads it next run (list_answered_questions) and resumes. */
+/**
+ * Answer a question Whitney posted. She reads it next run (list_answered_questions) and resumes.
+ * If the question carried a `topic` (a durable fact — work authorization, relocation, …), the
+ * answer is remembered permanently so Whitney answers it herself next time and never re-asks.
+ */
 export async function answerQuestion(questionId: number, formData: FormData): Promise<void> {
   await assertAdmin();
   const answer = String(formData.get("answer") || "").trim();
   if (!answer) return;
-  await db
+  const now = new Date().toISOString();
+  const rows = await db
     .update(agentQuestions)
-    .set({ answer, status: "answered", answeredAt: new Date().toISOString() })
-    .where(eq(agentQuestions.id, questionId));
+    .set({ answer, status: "answered", answeredAt: now })
+    .where(eq(agentQuestions.id, questionId))
+    .returning({ topic: agentQuestions.topic });
+  const topic = rows[0]?.topic;
+  if (topic) {
+    await db
+      .insert(candidateFacts)
+      .values({ topic, fact: answer })
+      .onConflictDoUpdate({ target: candidateFacts.topic, set: { fact: answer, updatedAt: now } });
+  }
   await db.insert(activityLog).values({
     actor: "joe",
     eventType: "agent_question_answered",
-    summary: `Answered Whitney's question #${questionId}`,
-    metadata: { questionId, via: "/command/applications" },
+    summary: `Answered Whitney's question #${questionId}${topic ? ` (remembered: ${topic})` : ""}`,
+    metadata: { questionId, topic, via: "/command/applications" },
   });
   revalidatePath("/command/applications");
 }
