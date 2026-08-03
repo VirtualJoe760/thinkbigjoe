@@ -41,6 +41,68 @@ function sortReview(list: Job[], sort: string): Job[] {
   return arr;
 }
 
+function InFlightCard({ job }: { job: Job }) {
+  return (
+    <div className="rounded-2xl border border-line bg-background px-4 py-3">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-ink">
+            <span className="font-semibold">{job.role}</span>{" "}
+            <span className="text-ink-soft">@ {job.company}</span>
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <StageBadge status={job.status} />
+            {job.status === "approved" && job.priority > 0 && (
+              <span className="text-[11px] font-semibold text-blue-700">priority {job.priority}</span>
+            )}
+            <ScoreChip label="Fit" score={job.fitScore} />
+            <ScoreChip label="Interest" score={job.interestScore} />
+            <MetaRow job={job} />
+          </div>
+          {job.notes && <p className="mt-1 text-[11px] text-ink-soft">{job.notes}</p>}
+          <Link
+            href={`/command/applications/${job.id}`}
+            className="mt-1 inline-block text-xs font-semibold text-brand hover:underline"
+          >
+            See full job →
+          </Link>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="whitespace-nowrap text-[11px] text-ink-soft">
+            {relativeTime(job.appliedAt ?? job.approvedAt ?? job.updatedAt)}
+          </span>
+          {job.status === "approved" && (
+            <form action={bumpPriority.bind(null, job.id)}>
+              <button
+                title="Bump to front of Whitney's queue"
+                className="rounded-md bg-surface px-2 py-1 text-[11px] font-semibold text-ink-soft transition-colors hover:text-ink"
+              >
+                ↑ bump
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PipelineGroup({ title, jobs }: { title: string; jobs: Job[] }) {
+  if (jobs.length === 0) return null;
+  return (
+    <div className="mt-4">
+      <h3 className="text-xs font-bold uppercase tracking-wide text-ink-soft">
+        {title} ({jobs.length})
+      </h3>
+      <div className="mt-2 grid grid-cols-1 items-start gap-2 md:grid-cols-2">
+        {jobs.map((job) => (
+          <InFlightCard key={job.id} job={job} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default async function ApplicationsPage({
   searchParams,
 }: {
@@ -229,7 +291,7 @@ export default async function ApplicationsPage({
                     </form>
                     <form action={dismissJob.bind(null, job.id)}>
                       <button className="rounded-lg bg-surface px-3 py-1.5 text-xs font-semibold text-ink-soft transition-colors hover:text-ink">
-                        Dismiss
+                        Decline
                       </button>
                     </form>
                     <Link
@@ -268,50 +330,11 @@ export default async function ApplicationsPage({
               No applications in progress yet.
             </div>
           ) : (
-            <div className="mt-3 grid grid-cols-1 items-start gap-2 md:grid-cols-2">
-              {[...queued, ...working, ...done].map((job) => (
-                <div key={job.id} className="rounded-2xl border border-line bg-background px-4 py-3">
-                  <div className="flex items-start gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm text-ink">
-                        <span className="font-semibold">{job.role}</span>{" "}
-                        <span className="text-ink-soft">@ {job.company}</span>
-                      </p>
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <StageBadge status={job.status} />
-                        {job.status === "approved" && job.priority > 0 && (
-                          <span className="text-[11px] font-semibold text-blue-700">priority {job.priority}</span>
-                        )}
-                        <ScoreChip label="Fit" score={job.fitScore} />
-                        <ScoreChip label="Interest" score={job.interestScore} />
-                      </div>
-                      {job.notes && <p className="mt-1 text-[11px] text-ink-soft">{job.notes}</p>}
-                      <Link
-                        href={`/command/applications/${job.id}`}
-                        className="mt-1 inline-block text-xs font-semibold text-brand hover:underline"
-                      >
-                        See full job →
-                      </Link>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className="whitespace-nowrap text-[11px] text-ink-soft">
-                        {relativeTime(job.appliedAt ?? job.approvedAt ?? job.updatedAt)}
-                      </span>
-                      {job.status === "approved" && (
-                        <form action={bumpPriority.bind(null, job.id)}>
-                          <button
-                            title="Bump to front of Whitney's queue"
-                            className="rounded-md bg-surface px-2 py-1 text-[11px] font-semibold text-ink-soft transition-colors hover:text-ink"
-                          >
-                            ↑ bump
-                          </button>
-                        </form>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <>
+              <PipelineGroup title="Queued to apply" jobs={queued} />
+              <PipelineGroup title="In progress" jobs={working} />
+              <PipelineGroup title="Applied" jobs={done} />
+            </>
           )}
         </section>
 
@@ -319,7 +342,7 @@ export default async function ApplicationsPage({
         {archived.length > 0 && (
           <section className="mt-8">
             <h2 className="text-sm font-bold uppercase tracking-wide text-ink-soft">
-              Dismissed &amp; closed ({archived.length})
+              Declined &amp; closed ({archived.length})
             </h2>
             <div className="mt-3 divide-y divide-line rounded-2xl border border-line bg-background">
               {archived.slice(0, 40).map((job) => (

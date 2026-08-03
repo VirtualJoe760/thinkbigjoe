@@ -12,7 +12,7 @@ export const STAGE: Record<string, { label: string; cls: string }> = {
   verified: { label: "Verified", cls: "bg-indigo-50 text-indigo-700" },
   applied: { label: "Applied", cls: "bg-green-50 text-green-700" },
   interview: { label: "Interview", cls: "bg-green-100 text-green-800" },
-  dismissed: { label: "Dismissed", cls: "bg-surface text-ink-soft" },
+  dismissed: { label: "Declined", cls: "bg-surface text-ink-soft" },
   rejected: { label: "Rejected", cls: "bg-surface text-ink-soft" },
   closed: { label: "Closed", cls: "bg-surface text-ink-soft" },
 };

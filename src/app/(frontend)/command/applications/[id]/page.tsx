@@ -79,7 +79,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               </form>
               <form action={dismissJob.bind(null, job.id)}>
                 <button className="rounded-lg bg-surface px-4 py-2 text-sm font-semibold text-ink-soft transition-colors hover:text-ink">
-                  Dismiss
+                  Decline
                 </button>
               </form>
             </>

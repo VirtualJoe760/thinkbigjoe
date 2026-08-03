@@ -109,6 +109,27 @@ async function isAgentPaused(agentId) {
   }
 }
 
+// Text Joe (ALERT_SMS_TO) via Twilio — e.g. when Whitney finishes an application. Fail-open.
+async function notifyJoeSms(body) {
+  const sid = process.env.TWILIO_ACCOUNT_SID, token = process.env.TWILIO_AUTH_TOKEN, mgSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+  const to = normalizeUsPhone(process.env.ALERT_SMS_TO);
+  if (!sid || !token || !mgSid || !to) return false;
+  try {
+    const form = new URLSearchParams({ MessagingServiceSid: mgSid, To: to, Body: String(body).slice(0, 1000) });
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: "POST",
+      headers: { Authorization: "Basic " + Buffer.from(`${sid}:${token}`).toString("base64"), "Content-Type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+// The review board's opportunity cap — how many 'found' roles can wait for Joe at once.
+const REVIEW_CAP = 100;
+
 // ---------------------------------------------------------------------------
 // Shared constants
 // ---------------------------------------------------------------------------
@@ -1312,6 +1333,10 @@ async function toolRecordFoundJob({
   if (!company || !role) {
     return { content: [{ type: "text", text: "❌ company and role are required." }], isError: true };
   }
+  const capCheck = await query(`SELECT count(*)::int n FROM job_applications WHERE status = 'found'`);
+  if (capCheck.rows[0].n >= REVIEW_CAP) {
+    return { content: [{ type: "text", text: `🧢 The review board is at its ${REVIEW_CAP}-opportunity cap (${capCheck.rows[0].n} awaiting review). Stop finding — Joe needs to approve or decline some before you surface more.` }] };
+  }
   // Dedup: same company + role already on the board (any status) → don't re-add.
   const dup = await query(
     `SELECT id, status FROM job_applications WHERE lower(company) = lower($1) AND lower(role) = lower($2) LIMIT 1`,
@@ -1404,6 +1429,9 @@ async function toolUpdateApplicationStatus({ id, status, notes }) {
   await audit(`application_${status}`, `${role} @ ${company}: ${prev} → ${status}`, {
     actor: "whitney", target: company, detail: { id, from: prev, to: status, notes },
   });
+  if (status === "applied") {
+    await notifyJoeSms(`📮 Whitney just applied: ${role} @ ${company} (#${id}). Review it on /command/applications.`);
+  }
   return { content: [{ type: "text", text: `✅ #${id} ${role} @ ${company}: ${prev} → **${status}**.` }] };
 }
 
@@ -1541,6 +1569,17 @@ async function toolGetCandidateProfile() {
   if (resumeText) lines.push("", "--- RESUME ---", resumeText.slice(0, 12000));
   if (note) lines.push("", note);
   return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+// Login/signup credentials Whitney uses to CREATE accounts on job sites. Sourced from .env.local
+// (never persona/DB). If no password is set, she must NOT fabricate one — hold + ask Joe.
+async function toolGetSignupCredentials() {
+  const email = process.env.JOB_SIGNUP_EMAIL || "joe@thinkbigjoe.com";
+  const password = process.env.JOB_SIGNUP_PASSWORD || null;
+  if (!password) {
+    return { content: [{ type: "text", text: "⚠️ No signup password is set yet (JOB_SIGNUP_PASSWORD missing in .env.local). I can't create an account — record_question for Joe and HOLD this application until he provides it. Do not invent a password." }] };
+  }
+  return { content: [{ type: "text", text: `Registration identity for creating job-site accounts:\nEmail: ${email}\nPassword: ${password}\n\nUse these ONLY in a site's signup/login form, verify the account via inbox_search on joe@thinkbigjoe.com, then continue. Never paste these anywhere else.` }] };
 }
 
 async function toolScheduleFollowup({ prospect_id, touch_number, days_from_now, body }) {
@@ -2221,7 +2260,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.37.0" },
+  { name: "tbj-mcp", version: "2.38.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -2711,6 +2750,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: { type: "object", properties: {} },
     },
     {
+      name: "get_signup_credentials",
+      description: "Whitney: the email + password to CREATE accounts on job sites, when applying to an approved job. Call this right before signing up. If it returns 'no password set', do NOT invent one — record_question for Joe and hold the application.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
       name: "log_activity",
       description: "Log a cron/agent activity to the activity_log table. Call this when a job finishes to record what happened. Pass actor to attribute it (e.g. 'whitney'); defaults to 'venus'.",
       inputSchema: {
@@ -2958,6 +3002,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "list_answered_questions": return toolListAnsweredQuestions();
     case "mark_question_resolved": return toolMarkQuestionResolved(args);
     case "get_candidate_profile": return toolGetCandidateProfile();
+    case "get_signup_credentials": return toolGetSignupCredentials();
     case "log_activity": return toolLogActivity(args);
     case "schedule_followup": return toolScheduleFollowup(args);
     case "list_incomplete_followup_sequences": return toolListIncompleteFollowupSequences();
