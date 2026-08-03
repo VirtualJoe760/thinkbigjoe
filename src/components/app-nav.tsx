@@ -19,6 +19,7 @@ export type NavLink = {
   icon?: string; // optional SVG path data (command uses icons)
   match?: string[]; // extra path prefixes that also mark this link active
   exact?: boolean; // active only on an exact path (roots like /portal, /command)
+  group?: string; // optional drawer section header (command groups its dense nav)
 };
 
 function linkActive(l: NavLink, path: string): boolean {
@@ -28,7 +29,7 @@ function linkActive(l: NavLink, path: string): boolean {
 
 function NavIcon({ d }: { d: string }) {
   return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
       <path d={d} />
     </svg>
   );
@@ -94,11 +95,15 @@ export function AppHeader({
   }, [open]);
 
   const drawerLinkCls = (l: NavLink) =>
-    `flex items-center gap-3 rounded-xl px-3 py-3 text-base font-medium transition-colors ${
+    `flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
       highlightActive && linkActive(l, path)
         ? "bg-brand-tint text-brand"
         : "text-ink hover:bg-surface"
     }`;
+
+  // Preserve first-seen group order; links without a group render flat (portal/public).
+  const groupOrder = Array.from(new Set(links.map((l) => l.group ?? "")));
+  const linksByGroup = (g: string) => links.filter((l) => (l.group ?? "") === g);
 
   const desktopLinkCls = (l: NavLink) =>
     highlightActive
@@ -175,14 +180,23 @@ export function AppHeader({
             </div>
 
             <nav className="flex-1 overflow-y-auto p-3">
-              <div className="flex flex-col gap-1">
-                {links.map((l) => (
-                  <Link key={l.href} href={l.href} onClick={() => setOpen(false)} className={drawerLinkCls(l)}>
-                    {l.icon && <NavIcon d={l.icon} />}
-                    {l.label}
-                  </Link>
-                ))}
-              </div>
+              {groupOrder.map((g) => (
+                <div key={g || "_"} className={g ? "mt-3 first:mt-0" : ""}>
+                  {g && (
+                    <p className="px-3 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-ink-soft/70">
+                      {g}
+                    </p>
+                  )}
+                  <div className="flex flex-col gap-0.5">
+                    {linksByGroup(g).map((l) => (
+                      <Link key={l.href} href={l.href} onClick={() => setOpen(false)} className={drawerLinkCls(l)}>
+                        {l.icon && <NavIcon d={l.icon} />}
+                        {l.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </nav>
 
             {drawerFooter && (
