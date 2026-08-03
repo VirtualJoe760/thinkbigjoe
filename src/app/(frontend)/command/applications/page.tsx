@@ -15,13 +15,40 @@ export const metadata: Metadata = {
 
 const REVIEW_PAGE_SIZE = 12;
 
+const SORTS: { key: string; label: string }[] = [
+  { key: "newest", label: "Newest" },
+  { key: "interest", label: "Most interesting" },
+  { key: "fit", label: "Best fit" },
+  { key: "remote", label: "Remote first" },
+  { key: "pay", label: "Highest pay" },
+];
+
+const isRemote = (j: Job) => /remote|anywhere/i.test(j.location ?? "");
+const payValue = (j: Job) => {
+  const nums = (j.pay ?? "").replace(/[,k]/gi, (m) => (m.toLowerCase() === "k" ? "000" : "")).match(/\d+/g);
+  return nums ? Math.max(...nums.map(Number)) : -1;
+};
+
+function sortReview(list: Job[], sort: string): Job[] {
+  const byInterest = (a: Job, b: Job) => (b.interestScore ?? -1) - (a.interestScore ?? -1);
+  const byFit = (a: Job, b: Job) => (b.fitScore ?? -1) - (a.fitScore ?? -1);
+  const arr = [...list];
+  if (sort === "interest") arr.sort(byInterest);
+  else if (sort === "fit") arr.sort(byFit);
+  else if (sort === "pay") arr.sort((a, b) => payValue(b) - payValue(a) || byInterest(a, b));
+  else if (sort === "remote") arr.sort((a, b) => Number(isRemote(b)) - Number(isRemote(a)) || byInterest(a, b));
+  // "newest" keeps the query order (priority desc, createdAt desc)
+  return arr;
+}
+
 export default async function ApplicationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; sort?: string }>;
 }) {
   await requireAdmin();
-  const { page: pageParam } = await searchParams;
+  const { page: pageParam, sort: sortParam } = await searchParams;
+  const sort = SORTS.some((s) => s.key === sortParam) ? (sortParam as string) : "newest";
 
   const jobs = (await db
     .select()
@@ -56,9 +83,10 @@ export default async function ApplicationsPage({
   const done = jobs.filter((j) => j.status === "applied" || j.status === "interview");
   const archived = jobs.filter((j) => ["dismissed", "rejected", "closed"].includes(j.status));
 
-  const reviewPageCount = Math.max(1, Math.ceil(review.length / REVIEW_PAGE_SIZE));
+  const sortedReview = sortReview(review, sort);
+  const reviewPageCount = Math.max(1, Math.ceil(sortedReview.length / REVIEW_PAGE_SIZE));
   const reviewPage = Math.min(Math.max(1, parseInt(pageParam ?? "1", 10) || 1), reviewPageCount);
-  const reviewItems = review.slice((reviewPage - 1) * REVIEW_PAGE_SIZE, reviewPage * REVIEW_PAGE_SIZE);
+  const reviewItems = sortedReview.slice((reviewPage - 1) * REVIEW_PAGE_SIZE, reviewPage * REVIEW_PAGE_SIZE);
 
   return (
     <div className="px-6 py-8">
@@ -145,7 +173,25 @@ export default async function ApplicationsPage({
 
         {/* NEEDS REVIEW — the human gate */}
         <section className="mt-7">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-ink-soft">Needs your review</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-ink-soft">Needs your review</h2>
+            {review.length > 1 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-ink-soft">Sort:</span>
+                {SORTS.map((s) => (
+                  <Link
+                    key={s.key}
+                    href={s.key === "newest" ? "/command/applications" : `?sort=${s.key}`}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                      sort === s.key ? "bg-brand text-white" : "bg-surface text-ink-soft hover:text-ink"
+                    }`}
+                  >
+                    {s.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
           {review.length === 0 ? (
             <div className="mt-3 rounded-2xl border border-line bg-background p-8 text-center text-sm text-ink-soft">
               Nothing waiting. When Whitney finds a fitting role, it lands here for your approval.
@@ -200,13 +246,13 @@ export default async function ApplicationsPage({
           {review.length > REVIEW_PAGE_SIZE && (
             <div className="mt-4 flex items-center justify-center gap-3 text-xs">
               {reviewPage > 1 ? (
-                <a href={`?page=${reviewPage - 1}`} className="rounded-lg bg-surface px-3 py-1.5 font-semibold text-ink-soft transition-colors hover:text-ink">← Prev</a>
+                <a href={`?sort=${sort}&page=${reviewPage - 1}`} className="rounded-lg bg-surface px-3 py-1.5 font-semibold text-ink-soft transition-colors hover:text-ink">← Prev</a>
               ) : (
                 <span className="rounded-lg px-3 py-1.5 font-semibold text-ink-soft opacity-40">← Prev</span>
               )}
               <span className="text-ink-soft">Page {reviewPage} of {reviewPageCount}</span>
               {reviewPage < reviewPageCount ? (
-                <a href={`?page=${reviewPage + 1}`} className="rounded-lg bg-surface px-3 py-1.5 font-semibold text-ink-soft transition-colors hover:text-ink">Next →</a>
+                <a href={`?sort=${sort}&page=${reviewPage + 1}`} className="rounded-lg bg-surface px-3 py-1.5 font-semibold text-ink-soft transition-colors hover:text-ink">Next →</a>
               ) : (
                 <span className="rounded-lg px-3 py-1.5 font-semibold text-ink-soft opacity-40">Next →</span>
               )}
