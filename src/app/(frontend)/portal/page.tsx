@@ -63,6 +63,9 @@ export default async function PortalPage({
   const firstName = user.name?.split(" ")[0] || "there";
   const isAdmin = isAdminEmail(user.email);
   const accountNumber = (user as { accountNumber?: string | null }).accountNumber || null;
+  // Does this user already have live agents? (Today only admins manage the OpenClaw org roster;
+  // extend this when customer-owned agents go live.) Drives Build- vs Manage-agents copy.
+  const hasAgents = isAdmin;
 
   const mySites = await db
     .select({
@@ -549,14 +552,15 @@ export default async function PortalPage({
             >
               <span className="text-2xl">🤖</span>
               <h3 className="mt-2 text-xl font-bold tracking-tight group-hover:text-brand">
-                Build your agents
+                {hasAgents ? "Manage your agents" : "Build your agents"}
               </h3>
               <p className="mt-2 leading-relaxed text-ink-soft">
-                Custom AI agents built around how your business actually works — to
-                solve problems, scale the work, and close more sales.
+                {hasAgents
+                  ? "Your AI team — review their work, message them, and open each one's dashboard."
+                  : "Custom AI agents built around how your business actually works — to solve problems, scale the work, and close more sales."}
               </p>
               <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand">
-                Call Ivy to get started
+                {hasAgents ? "Open your agents" : "Call Ivy to get started"}
                 <span aria-hidden>→</span>
               </span>
             </Link>

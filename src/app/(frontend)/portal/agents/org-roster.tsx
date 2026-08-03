@@ -36,6 +36,9 @@ export async function OrgRoster({ orgSlug = "thinkbigjoe" }: { orgSlug?: string 
   ).rows as Array<{ agent: string; summary: string; created_at: string }>;
   const lastByAgent = new Map(activity.map((a) => [a.agent, a]));
 
+  // Agents that have their own work dashboard, reachable from here.
+  const DASHBOARDS: Record<string, string> = { whitney: "/command/applications" };
+
   return (
     <section className="mt-10">
       <div className="flex items-baseline justify-between">
@@ -74,6 +77,14 @@ export async function OrgRoster({ orgSlug = "thinkbigjoe" }: { orgSlug?: string 
                   <span className="font-semibold text-ink">Last: </span>
                   {act.summary}
                 </p>
+              )}
+              {DASHBOARDS[a.id] && (
+                <Link
+                  href={DASHBOARDS[a.id]}
+                  className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand hover:underline"
+                >
+                  Open {a.name}&apos;s dashboard →
+                </Link>
               )}
               <AgentChat agentId={a.id} agentName={a.name} />
             </div>
