@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 
-import { db, jobApplications, agents, agentQuestions, candidateFacts } from "@/db";
+import { db, jobApplications, agents, agentQuestions } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { approveJob, dismissJob, reopenJob, bumpPriority, setWhitneyPaused, answerQuestion } from "./actions";
 import { type Job, StageBadge, ScoreChip, MetaRow, relativeTime, abbreviate } from "./parts";
@@ -140,11 +140,6 @@ export default async function ApplicationsPage({
     .where(eq(agentQuestions.status, "open"))
     .orderBy(desc(agentQuestions.createdAt));
 
-  const facts = await db
-    .select({ topic: candidateFacts.topic, fact: candidateFacts.fact })
-    .from(candidateFacts)
-    .orderBy(candidateFacts.topic);
-
   const review = jobs.filter((j) => j.status === "found");
   const queued = jobs.filter((j) => j.status === "approved");
   const working = jobs.filter((j) => j.status === "account_created" || j.status === "verified");
@@ -247,24 +242,6 @@ export default async function ApplicationsPage({
                 </div>
               ))}
             </div>
-          </section>
-        )}
-
-        {/* WHAT WHITNEY KNOWS — durable facts, reused so she never re-asks */}
-        {facts.length > 0 && (
-          <section className="mt-6 rounded-2xl border border-line bg-background p-4">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-ink-soft">What Whitney knows about you</h2>
-            <p className="mt-1 text-[11px] text-ink-soft">
-              Learned from your answers — she fills screening questions from these automatically and won&apos;t ask again.
-            </p>
-            <ul className="mt-2 space-y-1">
-              {facts.map((f) => (
-                <li key={f.topic} className="text-xs text-ink">
-                  <span className="font-semibold capitalize">{f.topic.replace(/_/g, " ")}:</span>{" "}
-                  <span className="text-ink-soft">{f.fact}</span>
-                </li>
-              ))}
-            </ul>
           </section>
         )}
 
