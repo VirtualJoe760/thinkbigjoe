@@ -128,7 +128,8 @@ async function notifyJoeSms(body) {
 }
 
 // The review board's opportunity cap — how many 'found' roles can wait for Joe at once.
-const REVIEW_CAP = 100;
+// Rolling: Whitney stops finding at the cap and resumes once Joe works the queue below it.
+const REVIEW_CAP = 25;
 
 // ---------------------------------------------------------------------------
 // Shared constants
@@ -2295,7 +2296,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.39.0" },
+  { name: "tbj-mcp", version: "2.40.0" },
   { capabilities: { tools: {} } },
 );
 
