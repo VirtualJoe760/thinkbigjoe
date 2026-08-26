@@ -34,8 +34,17 @@
 //     window too (they spend Apify credit).
 // ---------------------------------------------------------------------------
 
+// ⏸ PROSPECTING PAUSE (2026-08-26, Joe): Twilio account depleted — all prospecting/outbound
+// is paused. The 7 entries below are `enabled: false` AND their live crons are disabled in
+// OpenClaw; the launchd jobs leadengine / smsoutreach / vmtextsend / voicemailoutreach are
+// disabled + booted out. Still running: Email Inbox (draft-only replies), Whitney, Tom,
+// Brand Lead. TO RESUME: flip the flags to true, run `openclaw cron enable <id>` per cron
+// (sync does NOT re-enable a disabled live cron), and `launchctl enable gui/$UID/<job>` +
+// `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/<job>.plist` for the launchd four.
+
 export const VENUS_CRONS = [
   {
+    enabled: false, // ⏸ paused 2026-08-26 — Twilio depleted (see PROSPECTING PAUSE above)
     name: "TBJ Forge Prospect Scout",
     id: "f35d15ce-4f67-489b-aef3-fe426b3aa007",
     agent: "prospector",
@@ -69,6 +78,7 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
   },
 
   {
+    enabled: false, // ⏸ paused 2026-08-26 — Twilio depleted (see PROSPECTING PAUSE above)
     name: "TBJ Forge Contact Enrichment",
     id: "eb7d66fe-8347-452e-bde7-53df7455f886",
     agent: "prospector",
@@ -102,6 +112,7 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
   },
 
   {
+    enabled: false, // ⏸ paused 2026-08-26 — Twilio depleted (see PROSPECTING PAUSE above)
     name: "TBJ Forge Outreach",
     id: "d9818115-bb73-4d74-8f65-46f8b5ebcc36",
     agent: "outreach",
@@ -130,6 +141,7 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
   },
 
   {
+    enabled: false, // ⏸ paused 2026-08-26 — Twilio depleted (see PROSPECTING PAUSE above)
     name: "TBJ Forge Follow-up",
     id: "97e8158f-5445-48a1-b276-72e777893ac9",
     agent: "outreach",
@@ -152,6 +164,7 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
   },
 
   {
+    enabled: false, // ⏸ paused 2026-08-26 — Twilio depleted (see PROSPECTING PAUSE above)
     name: "TBJ SMS Comms",
     id: "3aa5c37b-b6e2-47be-ac1c-d32ce862cbed",
     agent: "outreach",
@@ -198,6 +211,7 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
   },
 
   {
+    enabled: false, // ⏸ paused 2026-08-26 — Twilio depleted (see PROSPECTING PAUSE above)
     name: "TBJ Forge Reschedule Nudge",
     id: "cf0edd0c-9419-424f-a816-e04476ac0226",
     agent: "outreach",
@@ -220,6 +234,7 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
   },
 
   {
+    enabled: false, // ⏸ paused 2026-08-26 — Twilio depleted (see PROSPECTING PAUSE above)
     name: "TBJ Marketing Manager",
     id: "c7e4a1b8-2f63-4d90-a5c1-8b9e0d2f3a4c",
     agent: "marketing-manager",
