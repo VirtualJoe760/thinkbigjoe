@@ -308,7 +308,7 @@ NEVER run forge-template.sh yourself or mass-add languages — Joe builds propos
 
 2. FILLER — only if NO approved jobs are waiting: search for roles matching Joe's TARGET PROFILE (USER.md), fit-gate each (~60% of the CORE requirements), and **record_found_job** the keepers for Joe to approve. Don't re-post duplicates; don't spray.
 
-Finish with **log_activity** (actor: "whitney") summarizing what you did — applied to X, or surfaced N new roles. Joe sees your work on /command/applications; you don't message him directly.`,
+Finish with **log_activity** (actor: "whitney") summarizing what you did — **name the role + company** for anything you applied to or advanced (e.g. "Applied: Senior Solutions Consultant @ Northgate Capital"), or "surfaced N new roles". Venus reads these notes into Joe's Telegram job-hunt debrief, so a bare count is useless to him — he wants the names. You still don't message Joe directly; Venus does the debriefing.`,
   },
   {
     // ❄️ SHIPS COLD with Edward (2026-08-26): flip to true + `npm run venus:sync` to go live.
@@ -361,6 +361,58 @@ Hard rules, always: you never send or schedule mail yourself — email_request_s
 📝 WAITING — drafts/questions that need Joe's word, with exactly what you need from him.
 If Edward hasn't filed a report, say so plainly — that's a signal his sweep didn't run.
 No filler, no "hope you're well" — Joe reads this three times a day.`,
+  },
+  {
+    // ✅ ENABLED — this is how Joe hears about the job hunt. Agentless = system event on Venus's
+    // main session; channel/to puts her debrief straight into Joe's Telegram (chat allowlisted in
+    // ~/.openclaw/openclaw.json). Independent of Edward's inbox cron on purpose: that one ships
+    // cold, and the job hunt shouldn't wait on it.
+    //
+    // Note the division of labour — URGENT vs DIGEST. A question Whitney is BLOCKED on pings Joe
+    // instantly from the MCP tool (record_question → notifyJoeTelegram); this cron is the periodic
+    // rollup, so it stays at 2×/day and doesn't burn the shared claude-cli weekly cap.
+    enabled: true,
+    name: "TBJ Venus — Job Hunt Debrief",
+    id: "1fe8fab0-1040-4663-8e49-de2f21be9a8a",
+    schedule: "30 12,19 * * *",
+    tz: "America/Phoenix",
+    stagger: "exact",
+    // ⚠️ `agent: "main"` is load-bearing — this is Venus, but she must be targeted as an
+    // AGENT TURN, not as an agentless cron. An agentless entry makes the sync script emit
+    // `--system-event`, and a systemEvent on Venus's main session (a) is refused delivery
+    // flags outright ("--announce/--no-deliver require a non-main agentTurn or command
+    // session target") and (b) never records a run at all — verified: two manual `cron run`
+    // calls left lastRunAt null and produced no activity. With `agent: "main"` it's an
+    // agentTurn, which runs and accepts an explicit route.
+    //
+    // `channel`+`to` must ALSO be explicit. The CLI's default is `--channel last`, which
+    // fail-closes on this machine because discord AND telegram are both configured
+    // ("Channel is required when multiple channels are configured") — that's why several
+    // other crons read `announce -> last (no route, will fail-closed)` in `cron list`.
+    // Belt and braces: she also calls send_telegram_update, so the message lands even if
+    // the announce route regresses again.
+    agent: "main",
+    channel: "telegram",
+    to: "6338621557",
+    summary: "Venus's midday + evening job-hunt debrief to Joe on Telegram: what Whitney applied to (titles + companies), interview-stage roles, and every question still pending on Joe.",
+    tools: ["get_job_hunt_report", "send_telegram_update", "log_activity"],
+    uiSurface: ["/command/applications"],
+    eventTypes: ["job_hunt_debrief"],
+    prompt: `Job-hunt debrief (midday + evening). You DELIVER this yourself with **send_telegram_update** — your final text is NOT auto-delivered (OpenClaw can't route a main-session cron), so if you don't call that tool, Joe hears nothing.
+
+1. **get_job_hunt_report** — set since_hours to cover the gap since your last debrief: about **18** on the 12:30 run (it reaches back through the night), about **8** on the 19:30 run. Those numbers come from the tables, so trust them over Whitney's own notes if they disagree — and say so if they do.
+
+2. Write the debrief, in this order, tight enough to read on a phone lock screen:
+📮 **APPLIED** — every role she applied to in the window, **by title and company** (that's the part Joe actually wants; a bare count tells him nothing). "No applications this window" is a fine, complete line if that's the truth.
+🎉 **INTERVIEW** — anything that reached interview stage. Lead with this if it exists; it's the only thing here that's genuinely good news.
+⏳ **PENDING ON YOU** — how many questions are waiting on Joe, and what each one actually asks. Remind him he can **answer or decline** each on /command/applications, and that **declining cancels that application** — that's the point of the button, it's how he clears a question he doesn't want to answer.
+📋 **QUEUE** — one line: approved-and-waiting vs found-and-awaiting-his-approval.
+
+3. **send_telegram_update** with the finished text. One call, the whole update. If it returns an error, Joe did NOT receive it — say so in your log instead of assuming it landed.
+
+4. **log_activity** (actor "venus", event_type "job_hunt_debrief") with a one-line record of what you sent.
+
+If the report is empty across the board — nothing applied, nothing pending, nothing queued — say exactly that in one line and stop. Don't pad it. And if she applied to nothing for a whole day while approved jobs were sitting in her queue, that's a signal worth flagging to Joe, not smoothing over.`,
   },
 ];
 

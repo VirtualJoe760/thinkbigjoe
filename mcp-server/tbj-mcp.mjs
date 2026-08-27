@@ -1895,6 +1895,104 @@ async function toolMarkQuestionResolved({ id }) {
   return { content: [{ type: "text", text: `✅ Question #${id} resolved — I've used Joe's answer.` }] };
 }
 
+// VENUS: deliver a composed update to Joe's Telegram herself.
+//
+// Why this exists instead of OpenClaw's --announce: a cron on Venus's MAIN session is refused
+// delivery flags outright ("--announce/--no-deliver require a non-main agentTurn or command
+// session target"), and the agent-cron path defaults to `--channel last`, which fail-closes on
+// this machine because BOTH discord and telegram are configured ("Channel is required when
+// multiple channels are configured"). Rather than demote Venus to a worker agent just to get a
+// delivery route, she composes the message and calls this to send it. She still decides every
+// word — the tool is only the wire.
+async function toolSendTelegramUpdate({ text }) {
+  if (!text || !String(text).trim()) {
+    return { content: [{ type: "text", text: "❌ text is required — compose the update, then send it." }], isError: true };
+  }
+  // Telegram HTML mode: escape first (a stray < or & in agent-written text fails the whole
+  // send), then re-introduce only the markup we control. Markdown-style **bold** is what an
+  // agent naturally writes, so translate it rather than leaving asterisks on Joe's screen.
+  const body = tgEscape(String(text))
+    .replace(/\*\*(.+?)\*\*/gs, "<b>$1</b>")
+    .replace(/(^|[\s(])_(?!_)(.+?)_(?=[\s.,!?)]|$)/gs, "$1<i>$2</i>");
+
+  const ok = await notifyJoeTelegram(body);
+  if (!ok) {
+    return { content: [{ type: "text", text: "❌ Telegram send FAILED (token/chat not configured, or the API rejected it). Joe did NOT receive this. Do not pretend it went out — say so in your run log." }], isError: true };
+  }
+  await audit("telegram_update_sent", String(text).replace(/\s+/g, " ").slice(0, 200), { actor: "venus" });
+  return { content: [{ type: "text", text: "📨 Sent to Joe's Telegram. That was the delivery — you're done; don't also 'report' it somewhere else." }] };
+}
+
+// VENUS: the job-hunt rollup she reads for Joe's Telegram debrief. Deliberately computed
+// from the TABLES, not from Whitney's self-reported log_activity summaries — same principle as
+// the audit trail: the debrief should say what actually happened, not what she said happened.
+// Her own run notes ride along underneath as colour, clearly labelled as self-reported.
+async function toolGetJobHuntReport({ since_hours } = {}) {
+  const hours = Math.max(1, Math.min(Number(since_hours) || 12, 168));
+  const label = (r) => `${r.role} @ ${r.company}`;
+
+  const [applied, interview, working, blocked, queued, review, notes] = await Promise.all([
+    query(`SELECT id, company, role, applied_at FROM job_applications
+           WHERE status IN ('applied','interview') AND applied_at > now() - ($1 || ' hours')::interval
+           ORDER BY applied_at DESC`, [String(hours)]),
+    query(`SELECT id, company, role FROM job_applications WHERE status = 'interview' ORDER BY updated_at DESC`),
+    query(`SELECT id, company, role, status FROM job_applications
+           WHERE status IN ('account_created','verified') ORDER BY updated_at DESC`),
+    query(`SELECT q.id, q.question, q.created_at, j.company, j.role, j.id AS job_id
+           FROM agent_questions q LEFT JOIN job_applications j ON j.id = q.application_id
+           WHERE q.agent = 'whitney' AND q.status = 'open' ORDER BY q.created_at ASC`),
+    query(`SELECT count(*)::int n FROM job_applications WHERE status = 'approved'`),
+    query(`SELECT count(*)::int n FROM job_applications WHERE status = 'found'`),
+    query(`SELECT summary, created_at FROM activity_log
+           WHERE actor = 'whitney' AND created_at > now() - ($1 || ' hours')::interval
+           ORDER BY created_at DESC LIMIT 8`, [String(hours)]),
+  ]);
+
+  const lines = [`📮 **Job hunt — last ${hours}h** (from the tables, not self-reported)`, ""];
+
+  lines.push(`**APPLIED (${applied.rows.length}):**`);
+  if (applied.rows.length) for (const r of applied.rows) lines.push(`• #${r.id} ${label(r)}`);
+  else lines.push("• none in this window");
+  lines.push("");
+
+  if (interview.rows.length) {
+    lines.push(`**🎉 INTERVIEW STAGE (${interview.rows.length}):**`);
+    for (const r of interview.rows) lines.push(`• #${r.id} ${label(r)}`);
+    lines.push("");
+  }
+
+  if (working.rows.length) {
+    lines.push(`**IN PROGRESS (${working.rows.length}):**`);
+    for (const r of working.rows) lines.push(`• #${r.id} ${label(r)} — ${r.status}`);
+    lines.push("");
+  }
+
+  // The half Joe asked for by name: what is STUCK on him, and what she asked.
+  lines.push(`**⏳ PENDING ON JOE — open questions (${blocked.rows.length}):**`);
+  if (blocked.rows.length) {
+    for (const r of blocked.rows) {
+      const where = r.job_id ? `${label(r)} (job #${r.job_id})` : "general";
+      lines.push(`• Q#${r.id} · ${where}`);
+      lines.push(`  "${String(r.question).replace(/\s+/g, " ").slice(0, 200)}"`);
+    }
+  } else lines.push("• none — nothing is blocked on him");
+  lines.push("");
+
+  lines.push(`**QUEUE:** ${queued.rows[0].n} approved waiting for her · ${review.rows[0].n} found waiting for Joe's approval`);
+
+  if (notes.rows.length) {
+    lines.push("", "_Whitney's own run notes (self-reported):_");
+    for (const n of notes.rows) lines.push(`• ${String(n.summary).replace(/\s+/g, " ").slice(0, 180)}`);
+  }
+
+  lines.push(
+    "",
+    "_For Joe's Telegram debrief: lead with what she APPLIED to (titles + companies — he wants the names, not just a count), then anything at INTERVIEW stage, then how many questions are PENDING on him and what they are. Each pending question he can answer or DECLINE on /command/applications — declining cancels that application. If nothing applied and nothing is pending, say so in one line rather than padding._",
+  );
+
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
 // Joe's resume + LinkedIn — Whitney's source of truth for his history. She NEVER claims anything
 // not backed by this. Reads RESUME_PATH (a file) + LINKEDIN_URL from .env.local.
 async function toolGetCandidateProfile() {
@@ -2631,7 +2729,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.42.0" },
+  { name: "tbj-mcp", version: "2.44.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -3170,6 +3268,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "send_telegram_update",
+      description: "VENUS: send a message you composed to Joe's Telegram. This is how your debriefs actually reach him — OpenClaw's cron delivery can't route your main session, so nothing you write is delivered unless you call this. Compose the full update first, then send it once. **bold** and _italic_ are translated for you. If it returns an error, Joe did NOT get it — say so rather than assuming.",
+      inputSchema: {
+        type: "object",
+        properties: { text: { type: "string", description: "The complete message for Joe, exactly as he should read it." } },
+        required: ["text"],
+      },
+    },
+    {
+      name: "get_job_hunt_report",
+      description: "VENUS: the job-hunt rollup for Joe's Telegram debrief — what Whitney APPLIED to in the window (with job titles + companies, not just a count), anything at interview stage, what's mid-application, and every question still PENDING on Joe (with the question text). Computed from the tables, so it's what actually happened, not Whitney's self-report. Use it at the top of each job-hunt debrief run, then write Joe's update from it.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          since_hours: { type: "number", description: "Look-back window for 'applied' (default 12, max 168). Match it to the gap since your last debrief." },
+        },
+      },
+    },
+    {
       name: "get_inbox_report",
       description: "VENUS: Edward's latest filed inbox report plus every send awaiting your approval, in one call. Use at the top of each inbox-update run (6:00/12:00/18:00) — review pending sends (approve/reject each), then compose Joe's Telegram update from the report.",
       inputSchema: { type: "object", properties: {} },
@@ -3494,6 +3611,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "email_approve_send": return toolEmailApproveSend(args);
     case "email_reject_send": return toolEmailRejectSend(args);
     case "get_inbox_report": return toolGetInboxReport();
+    case "get_job_hunt_report": return toolGetJobHuntReport(args);
+    case "send_telegram_update": return toolSendTelegramUpdate(args);
     case "record_question": return toolRecordQuestion(args);
     case "list_answered_questions": return toolListAnsweredQuestions();
     case "mark_question_resolved": return toolMarkQuestionResolved(args);

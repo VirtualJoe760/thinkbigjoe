@@ -121,6 +121,15 @@ tool-by-tool → UI-surface map):
     outcome, not a failure: a question she can't get past is an application she can't finish.
     She reads the decline, resolves it, and moves to the next job — no re-asking, no rewording,
     no applying anyway. Reversible via `reopenJob` from the board's archive.
+- **Job-hunt debrief (Venus)** (v2.43.0 / v2.44.0): `get_job_hunt_report` + `send_telegram_update`.
+  `get_job_hunt_report` is the rollup behind Joe's 12:30/19:30 Telegram debrief — applications
+  submitted in the window **with titles + companies**, interview-stage roles, work in progress,
+  and every open question still pending on him. It reads the **tables**, deliberately, so the
+  debrief reports what happened rather than what Whitney said happened; her own `log_activity`
+  notes ride along underneath, labelled as self-reported.
+  `send_telegram_update` is how Venus actually delivers it. That is not a redundancy —
+  see [OPENCLAW.md](OPENCLAW.md)'s **Cron delivery** section: OpenClaw's own `--announce`
+  routing is fragile enough here that the message is sent by tool call as well.
 - **Every state-changing tool in every group calls `audit(...)`** — the mechanism behind
   `/command/jobs`'s "verified" rows. See VENUS_UI_MAPPING.md's Audit log section.
 

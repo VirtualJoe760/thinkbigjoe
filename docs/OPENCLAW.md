@@ -131,6 +131,46 @@ openclaw agents add/delete <id>       # roster management
 
 ---
 
+## Cron delivery — why a cron "runs fine" and Joe still hears nothing
+
+Getting a scheduled message to actually reach Joe's Telegram has **three** independent traps.
+All three were hit live on 2026-08-27 building the Job Hunt Debrief; `cron list` reported
+healthy-looking rows the whole time. Check this section before debugging an agent.
+
+**1. An agentless cron on Venus's main session never runs a turn.**
+A manifest entry with no `agent:` makes `sync-venus-crons.mjs` emit `--system-event`, which
+targets Venus's `main` session. That cron is accepted, appears in `cron list`, and reports
+`ok` — but `openclaw cron get <id>` shows `lastRunAt: null` after a manual `cron run`, and no
+activity is produced. **Set `agent: "main"`** to get a real agent turn as Venus.
+
+**2. A main cron cannot be edit-converted — it must be deleted and re-added.**
+Changing an existing agentless cron to `agent: "main"` fails with
+`invalid cron.update params: main cron jobs require payload.kind="systemEvent"`.
+The sync script only passes payload args on ADD, so: `openclaw cron delete <id>`, drop the stale
+`id:` from the manifest, re-run `npm run venus:sync`, paste the new id back.
+
+**3. `--announce` needs an EXPLICIT channel — the default fail-closes on this machine.**
+`deliveryArgs()` only passes `--channel` when the manifest entry sets `channel`. Without it the
+CLI default is `--channel last`, which errors here because **both discord and telegram are
+configured**: `Channel is required when multiple channels are configured: discord, telegram`.
+In `cron list` this reads `announce -> last (last -> no route, will fail-closed: Channel...)`.
+Always set both `channel: "telegram"` and `to: "<chat id>"`.
+
+> ⚠️ **Other crons are currently in this state.** As of 2026-08-27, `TBJ Whitney — Job
+> Applications` and `TBJ Email Inbox` both show `announce -> last (… will fail-closed)`. Whitney's
+> is harmless *by design* — she is not supposed to message Joe, and her escalation goes out through
+> `record_question`'s own Telegram call instead of the cron route. The others have simply never had
+> a working route. `TBJ Venus — Inbox Update` (Edward's briefing, ships cold) is declared agentless
+> **and** with a channel, which is trap #1 + #3 together — **it will not deliver as written**; give
+> it `agent: "main"` before enabling it.
+
+**The durable workaround:** the Job Hunt Debrief also calls **`send_telegram_update`**, an MCP tool
+that posts straight to the Telegram Bot API. Belt and braces — the announce route is configured
+*and* Venus sends the text herself, so the message lands even if announce regresses again. Prefer
+that pattern for anything Joe must not miss.
+
+---
+
 ## MCP tools — how agents actually touch the database
 
 Agents don't get raw DB access. They call **named tools** in `mcp-server/tbj-mcp.mjs` (stdio,
