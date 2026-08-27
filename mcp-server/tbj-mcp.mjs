@@ -133,8 +133,39 @@ async function notifyJoeSms(body) {
 // the board alone isn't enough: a question sitting unseen is a stalled application. This is
 // a relay, not a conversation — the agent still does all the thinking. Fail-open: a Telegram
 // outage must never wedge the tool call that triggered it.
+// WHICH BOT sends matters more than it looks. A Telegram chat id identifies the USER, but each
+// bot has its OWN private conversation with that user — so the same chat id reached from two
+// different bot tokens lands in two different threads. Joe talks to Venus in @Venus_JPSbot;
+// .env.local's TELEGRAM_BOT_TOKEN is @thinkbigjoe_alerts_bot, a separate app-alert bot. Sending
+// agent escalations from the alerts bot delivered them successfully into a thread Joe wasn't
+// reading — "ok=true" and invisible. So: prefer OpenClaw's OWN telegram credentials (single
+// source of truth, no secret duplicated into .env.local) and fall back to the alerts bot only if
+// OpenClaw has none. App-side alerts in src/lib/telegram.ts stay on the alerts bot on purpose —
+// those are from the app, not from Venus.
+let _tgCreds;
+function telegramCreds() {
+  if (_tgCreds !== undefined) return _tgCreds;
+  let token = null, chatId = null;
+  try {
+    const oc = JSON.parse(readFileSync(join(homedir(), ".openclaw/openclaw.json"), "utf8"));
+    const tg = oc?.channels?.telegram;
+    if (tg?.enabled !== false && tg?.botToken) {
+      token = tg.botToken;
+      const allow = Array.isArray(tg.allowFrom) ? tg.allowFrom : [];
+      chatId = allow.length ? String(allow[0]) : null;
+    }
+  } catch {
+    /* no OpenClaw config readable — fall through to env */
+  }
+  _tgCreds = {
+    token: token || process.env.TELEGRAM_BOT_TOKEN || null,
+    chatId: chatId || process.env.TELEGRAM_CHAT_ID || null,
+  };
+  return _tgCreds;
+}
+
 async function notifyJoeTelegram(text) {
-  const token = process.env.TELEGRAM_BOT_TOKEN, chatId = process.env.TELEGRAM_CHAT_ID;
+  const { token, chatId } = telegramCreds();
   if (!token || !chatId) return false;
   try {
     const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -2729,7 +2760,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.44.0" },
+  { name: "tbj-mcp", version: "2.45.0" },
   { capabilities: { tools: {} } },
 );
 

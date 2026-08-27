@@ -133,7 +133,7 @@ openclaw agents add/delete <id>       # roster management
 
 ## Cron delivery — why a cron "runs fine" and Joe still hears nothing
 
-Getting a scheduled message to actually reach Joe's Telegram has **three** independent traps.
+Getting a scheduled message to actually reach Joe's Telegram has **four** independent traps.
 All three were hit live on 2026-08-27 building the Job Hunt Debrief; `cron list` reported
 healthy-looking rows the whole time. Check this section before debugging an agent.
 
@@ -163,6 +163,25 @@ Always set both `channel: "telegram"` and `to: "<chat id>"`.
 > a working route. `TBJ Venus — Inbox Update` (Edward's briefing, ships cold) is declared agentless
 > **and** with a channel, which is trap #1 + #3 together — **it will not deliver as written**; give
 > it `agent: "main"` before enabling it.
+
+**4. Two different bots write to the same chat id — and only one is the one Joe reads.**
+A Telegram chat id identifies the **user**, but every bot has its *own* private conversation with
+that user. The same id reached from two tokens lands in two different threads:
+
+| Token | Bot | Used by |
+|---|---|---|
+| `channels.telegram.botToken` in `openclaw.json` | **@Venus_JPSbot** | Venus + every OpenClaw cron. **This is the thread Joe actually reads.** |
+| `TELEGRAM_BOT_TOKEN` in `.env.local` | **@thinkbigjoe_alerts_bot** | `src/lib/telegram.ts` — the Vercel app's own alerts (leads, bookings, voicemail). |
+
+This bit on 2026-08-27: Whitney's escalation ping and Venus's first debrief were sent with the
+`.env.local` token, returned `ok=true`, were logged as delivered — and Joe never saw them, because
+they were sitting in the alerts-bot thread. **A successful send is not evidence Joe saw it.**
+
+Fixed in tbj-mcp v2.45.0: `telegramCreds()` resolves the bot token from `openclaw.json` first and
+falls back to `.env.local` only if OpenClaw has none — so anything an *agent* sends comes from
+Venus, with no secret duplicated into `.env.local`. The app's own alerts stay on the alerts bot
+deliberately; they're from the app, not from Venus. **If you add a new agent-facing notification,
+send it through the MCP server, not through `src/lib/telegram.ts`.**
 
 **The durable workaround:** the Job Hunt Debrief also calls **`send_telegram_update`**, an MCP tool
 that posts straight to the Telegram Bot API. Belt and braces — the announce route is configured

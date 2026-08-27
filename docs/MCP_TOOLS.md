@@ -130,6 +130,11 @@ tool-by-tool → UI-surface map):
   `send_telegram_update` is how Venus actually delivers it. That is not a redundancy —
   see [OPENCLAW.md](OPENCLAW.md)'s **Cron delivery** section: OpenClaw's own `--announce`
   routing is fragile enough here that the message is sent by tool call as well.
+  ⚠️ Both this and `record_question`'s ping send as **@Venus_JPSbot**, resolved from
+  `~/.openclaw/openclaw.json` (v2.45.0) — NOT the `@thinkbigjoe_alerts_bot` token in `.env.local`
+  that `src/lib/telegram.ts` uses. Same chat id, different conversation: sending agent messages
+  from the alerts bot delivers them successfully into a thread Joe isn't reading. Route any new
+  agent-facing notification through here, not through the app's helper.
 - **Every state-changing tool in every group calls `audit(...)`** — the mechanism behind
   `/command/jobs`'s "verified" rows. See VENUS_UI_MAPPING.md's Audit log section.
 
