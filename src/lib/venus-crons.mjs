@@ -275,11 +275,11 @@ NEVER run forge-template.sh yourself or mass-add languages — Joe builds propos
   },
 
   {
-    // ✅ ENABLED for the FIND loop (target profile set 2026-08). She surfaces roles to
-    // /command/applications for Joe's approval. APPLYING is still gated on two things not yet
-    // wired: Joe's resume/history (USER.md) and a signup password (.env.local) — until those
-    // exist she finds/surfaces only and escalates rather than applying. Don't approve jobs for
-    // her to apply to until that's set up.
+    // ✅ ENABLED, full loop (find + apply). The apply-gate is open: target profile set 2026-08,
+    // RESUME_PATH + LINKEDIN_URL + JOB_SIGNUP_PASSWORD all present in .env.local.
+    // NOTE: this cron deliberately has NO delivery channel — she never messages Joe from the cron.
+    // When she's blocked, escalation rides the MCP tool instead: record_question posts to
+    // /command/applications AND pings Joe's Telegram on the spot (tbj-mcp notifyJoeTelegram).
     enabled: true,
     name: "TBJ Whitney — Job Applications",
     id: "9cb191fe-5ec2-4414-ac45-756501b8cc5d",
@@ -288,10 +288,15 @@ NEVER run forge-template.sh yourself or mass-add languages — Joe builds propos
                               // shared claude-cli Max weekly cap (see below) — dial back if it bites.
     stagger: "2m",
     summary: "Whitney's priority-queue run: FIRST work any job Joe approved (create account → email-verify → tailor → submit); only when the approved queue is empty, find new roles matching Joe's target profile and post them to /command/applications for approval. One approved application per run (human cadence).",
-    tools: ["list_approved_jobs", "update_application_status", "inbox_search", "record_found_job", "book_appointment", "log_activity"],
+    tools: ["list_approved_jobs", "update_application_status", "inbox_search", "record_found_job", "book_appointment", "record_question", "list_answered_questions", "mark_question_resolved", "remember_fact", "log_activity"],
     uiSurface: ["/command/applications (review board — Approve/Dismiss + live pipeline)"],
-    eventTypes: ["job_found", "application_account_created", "application_verified", "application_applied", "application_interview", "whitney_run_complete"],
+    eventTypes: ["job_found", "application_account_created", "application_verified", "application_applied", "application_interview", "agent_question", "whitney_run_complete"],
     prompt: `This is your work run. Follow your PRIORITY-QUEUE loop (AGENTS.md) — do the most important thing available, then stop.
+
+0. DECISIONS FIRST — call **list_answered_questions**. Joe replies in one of two ways and BOTH are decisions:
+   - **Answered** → use his answer to resume that application this run.
+   - **DECLINED** → he chose not to answer, and that application is already CANCELLED (job closed). That is a normal outcome, not a rejection of you and not a failure. Do NOT re-ask it, do NOT reword it, do NOT apply anyway, do NOT keep bringing it up. Just move to the next job.
+   **mark_question_resolved** each one either way, then continue.
 
 1. PRIORITY — call **list_approved_jobs** FIRST. If it returns any job, work the **TOP one to completion** this run:
    - Prefer the employer's own ATS/careers link over a logged-in LinkedIn/Indeed session (that session is what gets Joe's account banned).
@@ -299,7 +304,7 @@ NEVER run forge-template.sh yourself or mass-add languages — Joe builds propos
    - **Verify it:** call **inbox_search** (query the company name / "verify" / "confirm", small since_minutes) to get the verification link/code, and complete verification.
    - **Tailor, then fill:** mirror the posting's CORE requirements in Joe's words, lead with 2–3 quantified wins, keep formatting ATS-clean, fill every field truthfully from his profile (USER.md / his resume). Submit.
    - Call **update_application_status** at EACH stage: account_created → verified → applied.
-   - **HARD STOP + report** (do NOT guess, do NOT fight the wall) on: any CAPTCHA / ID / "verify you're human" wall; any field you can't answer truthfully (work authorization, license, exact salary, "years of X"); leave EEO/self-ID to Joe.
+   - **HARD STOP** (do NOT guess, do NOT fight the wall) on: any CAPTCHA / ID / "verify you're human" wall; any field you can't answer truthfully (work authorization, license, exact salary, "years of X"); leave EEO/self-ID to Joe. On a stop, call **record_question** with the application_id — that posts it to Joe's board AND pings his Telegram, so he can answer or decline. Then END THE TURN on that job and spend the rest of the run elsewhere; never sit waiting on him.
 
 2. FILLER — only if NO approved jobs are waiting: search for roles matching Joe's TARGET PROFILE (USER.md), fit-gate each (~60% of the CORE requirements), and **record_found_job** the keepers for Joe to approve. Don't re-post duplicates; don't spray.
 

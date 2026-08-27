@@ -128,6 +128,37 @@ async function notifyJoeSms(body) {
   }
 }
 
+// Message Joe on Telegram — the org's escalation channel (same bot + chat Venus speaks
+// through, so it reads to Joe as the org reaching out). Used when an agent is BLOCKED and
+// the board alone isn't enough: a question sitting unseen is a stalled application. This is
+// a relay, not a conversation — the agent still does all the thinking. Fail-open: a Telegram
+// outage must never wedge the tool call that triggered it.
+async function notifyJoeTelegram(text) {
+  const token = process.env.TELEGRAM_BOT_TOKEN, chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) return false;
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: String(text).slice(0, 3800),
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+      }),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+// Escape for Telegram's HTML parse_mode. Agent-authored question text is DATA — if it
+// carries a stray < or &, an unescaped send fails outright and Joe silently never hears.
+function tgEscape(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 // The review board's opportunity cap — how many 'found' roles can wait for Joe at once.
 // Rolling: Whitney stops finding at the cap and resumes once Joe works the queue below it.
 const REVIEW_CAP = 25;
@@ -1798,28 +1829,63 @@ async function toolRecordQuestion({ application_id, question, options, topic }) 
   await audit("agent_question", `Whitney asked${appLabel}: ${String(question).slice(0, 160)}`, {
     actor: "whitney", detail: { question_id: id, application_id: application_id || null },
   });
-  return { content: [{ type: "text", text: `✅ Question posted for Joe (#${id})${appLabel}. He answers it on the board; I'll pick up the answer next run via list_answered_questions and resume.` }] };
+
+  // Escalate to Joe's Telegram immediately. The board is passive — a blocked application
+  // sits dead until he looks at it — so the ping is what makes this loop actually resumable.
+  const opts = Array.isArray(options) && options.length
+    ? `\n\nOptions: ${options.map((o) => tgEscape(o)).join(" · ")}`
+    : "";
+  const tgSent = await notifyJoeTelegram(
+    `🙋 <b>Whitney is blocked</b>${appLabel ? ` — ${tgEscape(appLabel.replace(/^ about /, ""))}` : ""}\n\n` +
+      `<b>Q#${id}:</b> ${tgEscape(question)}${opts}\n\n` +
+      `Answer, or <b>Decline to answer</b> (declining cancels this application and frees her to move on):\n` +
+      `https://thinkbigjoe.com/command/applications`,
+  );
+
+  return { content: [{ type: "text", text: `✅ Question posted for Joe (#${id})${appLabel}${tgSent ? " and sent to his Telegram" : ""}. He can ANSWER it, or DECLINE to answer — a decline cancels this application, and that's a legitimate outcome, not a failure. Either way I pick it up next run via list_answered_questions. Do not wait on this one now: move to the next thing.` }] };
 }
 
 async function toolListAnsweredQuestions() {
   const res = await query(
-    `SELECT q.id, q.application_id, q.question, q.answer, q.answered_at,
+    `SELECT q.id, q.application_id, q.question, q.answer, q.status, q.answered_at,
             j.company, j.role, j.status AS job_status
      FROM agent_questions q
      LEFT JOIN job_applications j ON j.id = q.application_id
-     WHERE q.status = 'answered'
+     WHERE q.status IN ('answered', 'declined')
      ORDER BY q.answered_at ASC NULLS LAST
      LIMIT 25`,
   );
-  if (!res.rows.length) return { content: [{ type: "text", text: "📭 No answered questions waiting. Nothing to resume from Joe's side." }] };
-  const lines = [`💡 **${res.rows.length} answered question(s) from Joe** — act on these, then mark_question_resolved each:`, ""];
-  for (const r of res.rows) {
-    const where = r.application_id ? `#${r.application_id} ${r.role} @ ${r.company} (job: ${r.job_status})` : "(general)";
-    lines.push(`**Q#${r.id} · ${where}**`);
-    lines.push(`Q: ${r.question}`);
-    lines.push(`A: ${r.answer}`);
-    lines.push("");
+  if (!res.rows.length) return { content: [{ type: "text", text: "📭 No decisions waiting. Nothing to resume from Joe's side." }] };
+
+  const where = (r) => (r.application_id ? `#${r.application_id} ${r.role} @ ${r.company} (job: ${r.job_status})` : "(general)");
+  const answered = res.rows.filter((r) => r.status === "answered");
+  const declined = res.rows.filter((r) => r.status === "declined");
+  const lines = [];
+
+  if (answered.length) {
+    lines.push(`💡 **${answered.length} answered question(s) from Joe** — act on these, then mark_question_resolved each:`, "");
+    for (const r of answered) {
+      lines.push(`**Q#${r.id} · ${where(r)}**`);
+      lines.push(`Q: ${r.question}`);
+      lines.push(`A: ${r.answer}`);
+      lines.push("");
+    }
   }
+
+  // Joe declining to answer is a DECISION, not a dead end. The application is already
+  // cancelled (job status 'closed') by the time this shows up — so there is nothing left
+  // to work, and nothing to chase. She acknowledges it and spends the turn elsewhere.
+  if (declined.length) {
+    lines.push(`🚫 **${declined.length} question(s) Joe DECLINED to answer** — the application is CANCELLED. This is a normal outcome, not a failure or a rejection of me:`, "");
+    for (const r of declined) {
+      lines.push(`**Q#${r.id} · ${where(r)}**`);
+      lines.push(`Q: ${r.question}`);
+      lines.push(`→ Joe declined. Job #${r.application_id} is closed. Do NOT apply to it, do NOT ask again, do NOT ask a reworded version of this question.`);
+      lines.push("");
+    }
+    lines.push("_For each declined one: mark_question_resolved it, then move on to the next job in the queue. Don't spend the turn on it._");
+  }
+
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
@@ -2565,7 +2631,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.41.0" },
+  { name: "tbj-mcp", version: "2.42.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -3122,7 +3188,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "record_question",
-      description: "Whitney: when you can't proceed truthfully — a form field you can't answer from Joe's profile/facts, a judgment call — post a QUESTION for Joe instead of guessing or stopping. It shows on /command/applications; you read the answer next run (list_answered_questions) and resume. For RECURRING facts (work authorization, sponsorship, relocation, security clearance, notice period), pass a `topic` slug: Joe's answer becomes a permanent fact you'll reuse — and if you pass a topic you ALREADY know, this refuses and hands you the known fact so you never ask twice. For multiple-choice, pass `options` and Joe answers with a radio button.",
+      description: "Whitney: when you can't proceed truthfully — a form field you can't answer from Joe's profile/facts, a judgment call — post a QUESTION for Joe instead of guessing or stopping. It shows on /command/applications AND pings Joe's Telegram immediately, so he sees it while you're still working. He can ANSWER it, or DECLINE to answer — declining CANCELS that application, which is a legitimate outcome you should expect. You read his decision next run (list_answered_questions) and either resume or move on. Never block a whole turn waiting on him. For RECURRING facts (work authorization, sponsorship, relocation, security clearance, notice period), pass a `topic` slug: Joe's answer becomes a permanent fact you'll reuse — and if you pass a topic you ALREADY know, this refuses and hands you the known fact so you never ask twice. For multiple-choice, pass `options` and Joe answers with a radio button.",
       inputSchema: {
         type: "object",
         properties: {
@@ -3153,7 +3219,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "list_answered_questions",
-      description: "Whitney: questions Joe has ANSWERED, waiting for you to act on. Check this at the start of a run — his answers are how you resume a blocked application. After you use an answer, call mark_question_resolved.",
+      description: "Whitney: Joe's DECISIONS on your open questions — both the ones he ANSWERED and the ones he DECLINED to answer. Check this at the start of every run. An answer is how you resume a blocked application. A DECLINE means that application is cancelled (the job is already closed) — acknowledge it, don't re-ask, don't rephrase, don't apply anyway, just move to the next job. Call mark_question_resolved on each either way.",
       inputSchema: { type: "object", properties: {} },
     },
     {

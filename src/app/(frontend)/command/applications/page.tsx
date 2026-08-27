@@ -4,7 +4,7 @@ import { desc, eq } from "drizzle-orm";
 
 import { db, jobApplications, agents, agentQuestions } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
-import { approveJob, dismissJob, reopenJob, bumpPriority, setWhitneyPaused, answerQuestion } from "./actions";
+import { approveJob, dismissJob, reopenJob, bumpPriority, setWhitneyPaused, answerQuestion, declineQuestion } from "./actions";
 import { type Job, StageBadge, ScoreChip, MetaRow, relativeTime, abbreviate } from "./parts";
 
 export const dynamic = "force-dynamic";
@@ -239,6 +239,24 @@ export default async function ApplicationsPage({
                       Send answer
                     </button>
                   </form>
+                  {/* The other valid outcome: refuse the question. Whitney can't finish an
+                      application she can't answer for, so declining cancels it outright and
+                      frees her next run — better than leaving her blocked indefinitely. */}
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-amber-300/60 pt-2.5">
+                    <span className="text-[11px] text-ink-soft">
+                      Don&apos;t want to answer?{" "}
+                      {q.role ? (
+                        <>Declining cancels the <span className="font-medium text-ink">{q.role} @ {q.company}</span> application and she moves on.</>
+                      ) : (
+                        <>Declining closes the question and she moves on.</>
+                      )}
+                    </span>
+                    <form action={declineQuestion.bind(null, q.id)} className="ml-auto">
+                      <button className="rounded-lg border border-line bg-background px-3 py-1.5 text-xs font-semibold text-ink-soft transition-colors hover:border-red-300 hover:text-red-600">
+                        Decline to answer
+                      </button>
+                    </form>
+                  </div>
                 </div>
               ))}
             </div>

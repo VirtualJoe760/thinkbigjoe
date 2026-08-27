@@ -104,6 +104,23 @@ tool-by-tool → UI-surface map):
   on ad landing, stored on `leads`), plus organic volume for contrast. Read-only; combine with
   Meta's spend numbers (the separate `meta-ads` MCP server) for cost per form-fill. See
   [ADS.md](ADS.md).
+- **Job applications (whitney)** — `record_found_job`, `list_approved_jobs`,
+  `update_application_status`, plus the **question-escalation loop** (v2.42.0):
+  `record_question` → `list_answered_questions` → `mark_question_resolved`. When Whitney can't
+  proceed truthfully (a field she can't answer from Joe's profile, a judgment call) she posts a
+  question instead of guessing — and `record_question` now **pings Joe's Telegram immediately**
+  (`notifyJoeTelegram`, using `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` from `.env.local`;
+  fail-open, so a Telegram outage never wedges the tool call). The board alone is passive: without
+  the ping a blocked application sits dead until Joe happens to look.
+  Joe then has **two** valid outcomes on `/command/applications`, and `list_answered_questions`
+  returns both:
+  - **Answer** (`answerQuestion`) → she resumes the application. A question carrying a `topic`
+    slug also upserts `candidate_facts`, so she answers it herself forever after.
+  - **Decline to answer** (`declineQuestion`) → the question goes `status='declined'` **and the
+    application is cancelled** (`job_applications.status='closed'`). This is a first-class
+    outcome, not a failure: a question she can't get past is an application she can't finish.
+    She reads the decline, resolves it, and moves to the next job — no re-asking, no rewording,
+    no applying anyway. Reversible via `reopenJob` from the board's archive.
 - **Every state-changing tool in every group calls `audit(...)`** — the mechanism behind
   `/command/jobs`'s "verified" rows. See VENUS_UI_MAPPING.md's Audit log section.
 

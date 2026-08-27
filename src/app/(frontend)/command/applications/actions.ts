@@ -100,6 +100,52 @@ export async function answerQuestion(questionId: number, formData: FormData): Pr
 }
 
 /**
+ * Decline to answer a question Whitney posted — Joe's "I'm not answering this" gate.
+ *
+ * Declining is a DECISION, not a non-answer: the application the question was blocking is
+ * cancelled outright (job → 'closed'), because a question she can't get past is a question
+ * that makes the application unfinishable. She sees the decline next run via
+ * list_answered_questions, resolves it, and moves to the next job — no re-asking, no guessing.
+ *
+ * Reversible: the job lands in the archive, where `reopenJob` sends it back to the review queue.
+ */
+export async function declineQuestion(questionId: number): Promise<void> {
+  await assertAdmin();
+  const now = new Date().toISOString();
+  const rows = await db
+    .update(agentQuestions)
+    .set({ status: "declined", answeredAt: now })
+    .where(eq(agentQuestions.id, questionId))
+    .returning({ applicationId: agentQuestions.applicationId, question: agentQuestions.question });
+  const q = rows[0];
+  if (!q) return;
+
+  let jobLabel = "";
+  if (q.applicationId) {
+    const closed = await db
+      .update(jobApplications)
+      .set({ status: "closed", updatedAt: now })
+      .where(eq(jobApplications.id, q.applicationId))
+      .returning({ company: jobApplications.company, role: jobApplications.role });
+    const j = closed[0];
+    if (j) jobLabel = ` — cancelled ${j.role} @ ${j.company}`;
+  }
+
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "agent_question_declined",
+    summary: `Declined to answer Whitney's question #${questionId}${jobLabel}`,
+    metadata: {
+      questionId,
+      applicationId: q.applicationId,
+      question: q.question,
+      via: "/command/applications",
+    },
+  });
+  revalidatePath("/command/applications");
+}
+
+/**
  * Pause / resume Whitney. Sets agents.paused (survives roster sync). Her cron may
  * still fire, but her loop-entry MCP tools (list_approved_jobs / record_found_job)
  * read this flag and stand down, so she does no work while paused.
