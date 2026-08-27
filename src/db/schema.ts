@@ -899,3 +899,24 @@ export const agentQuestions = pgTable("agent_questions", {
 			name: "agent_questions_application_id_fkey"
 		}).onDelete("cascade"),
 ]);
+
+export const emailOutbox = pgTable("email_outbox", {
+	id: serial().primaryKey().notNull(),
+	toAddr: text("to_addr").notNull(),
+	ccAddr: text("cc_addr"),
+	subject: text().notNull(),
+	body: text().notNull(),
+	inReplyTo: text("in_reply_to"),
+	context: text(),
+	sendAt: timestamp("send_at", { withTimezone: true, mode: 'string' }),
+	status: text().default('pending').notNull(),
+	requestedBy: text("requested_by").default('edward').notNull(),
+	decidedBy: text("decided_by"),
+	decidedAt: timestamp("decided_at", { withTimezone: true, mode: 'string' }),
+	decisionNote: text("decision_note"),
+	sentAt: timestamp("sent_at", { withTimezone: true, mode: 'string' }),
+	error: text(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("email_outbox_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops"), table.sendAt.asc().nullsLast().op("text_ops")),
+]);

@@ -19,6 +19,7 @@ this covers **whether the delivery system is healthy and safe to send for client
 | **Transactional** | `sendMail` (`email.ts`) | `no-reply@thinkbigjoe.com` | low | password reset, welcome, booking confirmations |
 | **Outreach** | `send-outreach` | `no-reply@thinkbigjoe.com` | ~15/day, paced | first-touch to prospects |
 | **Client newsletter** | `sendNewsletterEmail` (`newsletter.ts`) | `no-reply@thinkbigjoe.com`, client's *name* | **thousands (target)** | a client mailing THEIR customers |
+| **Personal (Edward)** *(added 2026-08-26, ships cold)* | `email_approve_send` (tbj-mcp) + `scripts/email-outbox-drain.mjs` | `joe@thinkbigjoe.com` (Joe's own mailbox) | 1:1, a handful/day | Edward's Venus-approved replies **as Joe** — real correspondence only (employers, investors, clients). NEVER bulk, never marketing; every send is human-shaped and individually approved, so no unsubscribe header. Queue: `email_outbox`. |
 
 All three currently ride **one Zoho mailbox** on **one domain reputation**. That is the central risk
 the standards below exist to manage — see `EMAIL_SCALE.md` for the fix (per-client identity + SES).

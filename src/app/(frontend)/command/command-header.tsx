@@ -42,6 +42,12 @@ const LINKS: NavLink[] = [
     group: "Agents",
   },
   {
+    href: "/command/inbox",
+    label: "Inbox",
+    icon: "M3 8l9 6 9-6M4 6h16a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V7a1 1 0 011-1z",
+    group: "Agents",
+  },
+  {
     href: "/command/crons",
     label: "Venus",
     icon: "M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z",

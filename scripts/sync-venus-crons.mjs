@@ -40,6 +40,19 @@ function staggerArgs(stagger) {
   return ["--stagger", stagger];
 }
 
+// Delivery: a manifest cron with `channel` (e.g. "telegram") + `to` (chat id) announces
+// its final text there — how Venus's inbox updates reach Joe. `tz` pins the cron
+// expression to an IANA timezone. A cron without `channel` behaves exactly as before.
+function deliveryArgs(cron) {
+  const args = [];
+  if (cron.channel) {
+    args.push("--announce", "--channel", cron.channel, "--best-effort-deliver");
+    if (cron.to) args.push("--to", String(cron.to));
+  }
+  if (cron.tz) args.push("--tz", cron.tz);
+  return args;
+}
+
 // --- Load current OpenClaw state -------------------------------------------
 const listRes = oc(["cron", "list", "--all", "--json"]);
 let current = [];
@@ -84,6 +97,7 @@ for (const cron of VENUS_CRONS) {
         "--name", cron.name,
         "--cron", cron.schedule,
         ...staggerArgs(cron.stagger),
+        ...deliveryArgs(cron),
         ...payloadArgs,
       ]);
       if (res.status !== 0) {
@@ -122,6 +136,7 @@ for (const cron of VENUS_CRONS) {
       if (cron.agent) args.push("--agent", cron.agent, "--message", cron.prompt);
       else args.push("--system-event", cron.prompt);
     }
+    args.push(...deliveryArgs(cron)); // re-assert delivery on any edit (add-only otherwise)
     const res = oc(args);
     if (res.status !== 0) console.error(`  ✗ edit failed: ${res.stderr || res.stdout}`);
   }

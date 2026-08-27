@@ -28,6 +28,7 @@ export function SubNav({ items }: { items: Array<{ href: string; label: string }
 
 export const VENUS_TABS = [
   { href: "/command/crons", label: "Crons" },
+  { href: "/command/inbox", label: "Inbox" },
   { href: "/command/jobs", label: "Audit log" },
   { href: "/command/team", label: "Team" },
 ];

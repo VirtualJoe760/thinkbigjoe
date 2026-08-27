@@ -38,6 +38,7 @@ const ROLES = {
   researcher: "Deep research on prospects + markets",
   "brand-lead": "Design research + brand direction for the forge",
   whitney: "Finds jobs for Joe + applies once he approves (creates accounts, verifies by email, tailors)",
+  edward: "Manages joe@thinkbigjoe.com — triage, spam, drafts in Joe's voice; Venus approves every send",
 };
 
 const env = loadEnv(path.join(REPO, ".env.local"));

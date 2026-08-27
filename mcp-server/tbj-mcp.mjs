@@ -40,6 +40,7 @@ import {
 import pg from "pg";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
+import nodemailer from "nodemailer";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -1322,6 +1323,23 @@ const APPLICATION_STATUSES = [
   "found", "approved", "dismissed", "account_created", "verified", "applied", "interview", "rejected", "closed",
 ];
 
+// Cheap pre-flight for Whitney's filler path. The cap is also enforced inside
+// record_found_job, but only AFTER a full search has already been paid for — she
+// was scraping 2-4 leads every 15 minutes and discarding them while the board sat
+// at 93. This lets her check first and stop before doing any browsing at all.
+async function toolJobBoardCount() {
+  if (await isAgentPaused("whitney")) {
+    return { content: [{ type: "text", text: "⏸ Whitney is PAUSED by Joe. Stand down — do not find or post jobs. End your turn without acting." }] };
+  }
+  const res = await query(`SELECT count(*)::int n FROM job_applications WHERE status = 'found'`);
+  const n = res.rows[0].n;
+  const room = Math.max(0, REVIEW_CAP - n);
+  if (n >= REVIEW_CAP) {
+    return { content: [{ type: "text", text: `🧢 Review board is FULL: ${n} awaiting review, cap ${REVIEW_CAP}. Do NOT search for jobs this turn — no browsing, no scraping, no record_found_job. End your turn now. Joe has to approve or decline some before you surface more; check again on your next wake.` }] };
+  }
+  return { content: [{ type: "text", text: `✅ Review board has room: ${n}/${REVIEW_CAP} awaiting review — you may surface up to ${room} more this turn.` }] };
+}
+
 async function toolRecordFoundJob({
   company, role, platform, url, location, pay,
   fit_reason, fit_score, interest_match, interest_score,
@@ -1500,6 +1518,257 @@ async function toolInboxSearch({ query: q, from, since_minutes, limit }) {
     lines.push("");
   }
   return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+// ---------------------------------------------------------------------------
+// Edward — inbox management for joe@thinkbigjoe.com (Zoho IMAP/SMTP).
+// Edward sweeps + classifies + drafts; sends go to the email_outbox queue where
+// VENUS approves/rejects (email_approve_send / email_reject_send — her tools,
+// not Edward's). Approved future-dated sends are fired by the outbox drain
+// (scripts/email-outbox-drain.mjs). Queue + activity visible on /command/inbox.
+// ---------------------------------------------------------------------------
+function zohoImap() {
+  const USER = process.env.SMTP_USER, PASS = process.env.SMTP_PASS;
+  if (!USER || !PASS) return null;
+  return new ImapFlow({ host: "imap.zoho.com", port: 993, secure: true, auth: { user: USER, pass: PASS }, logger: false });
+}
+const NO_MAIL_CREDS = { content: [{ type: "text", text: "❌ Mailbox not configured (SMTP_USER/SMTP_PASS missing in .env.local)." }], isError: true };
+
+// Zoho names its junk folder "Spam"; resolve by special-use flag so we never guess wrong.
+async function findMailbox(client, specialUse, fallback) {
+  try {
+    for (const mbx of await client.list()) {
+      if (mbx.specialUse === specialUse) return mbx.path;
+    }
+  } catch { /* fall through */ }
+  return fallback;
+}
+
+async function toolInboxSweep({ since_minutes, limit } = {}) {
+  const client = zohoImap();
+  if (!client) return NO_MAIL_CREDS;
+  const sinceMin = Number.isFinite(since_minutes) ? since_minutes : 480; // default 8h — covers a missed sweep
+  const max = Math.min(Number(limit) || 30, 50);
+  const since = new Date(Date.now() - sinceMin * 60 * 1000);
+  const msgs = [];
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock("INBOX");
+    try {
+      const uids = await client.search({ since }, { uid: true });
+      const scan = (uids || []).slice(-max).reverse(); // newest first
+      for (const uid of scan) {
+        let parsed = null;
+        for await (const msg of client.fetch(uid, { source: true }, { uid: true })) {
+          try { parsed = await simpleParser(msg.source); } catch { parsed = null; }
+        }
+        if (!parsed) continue;
+        msgs.push({
+          uid,
+          date: parsed.date ? parsed.date.toISOString() : null,
+          from: parsed.from?.text || "",
+          subject: parsed.subject || "(no subject)",
+          message_id: parsed.messageId || null,
+          snippet: (parsed.text || "").replace(/\s+/g, " ").trim().slice(0, 400),
+        });
+      }
+    } finally {
+      lock.release();
+    }
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Inbox sweep failed: ${err?.message || err}` }], isError: true };
+  } finally {
+    try { await client.logout(); } catch { /* ignore */ }
+  }
+  if (!msgs.length) return { content: [{ type: "text", text: `📭 Nothing new in INBOX in the last ${sinceMin} min.` }] };
+  const lines = [`📥 **${msgs.length} message(s)** (newest first) — classify each and act per your SOP:`, ""];
+  for (const m of msgs) {
+    lines.push(`• uid ${m.uid} · ${m.date || "?"}`);
+    lines.push(`  From: ${m.from}`);
+    lines.push(`  Subject: ${m.subject}`);
+    if (m.message_id) lines.push(`  Message-ID: ${m.message_id}`);
+    lines.push(`  ${m.snippet}`);
+    lines.push("");
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolEmailCreateDraft({ to, subject, body, in_reply_to } = {}) {
+  if (!to || !subject || !body) return { content: [{ type: "text", text: "❌ to, subject, and body are required." }], isError: true };
+  const client = zohoImap();
+  if (!client) return NO_MAIL_CREDS;
+  const USER = process.env.SMTP_USER;
+  const raw = [
+    `From: Joe Sardella <${USER}>`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    in_reply_to ? `In-Reply-To: ${in_reply_to}` : null,
+    in_reply_to ? `References: ${in_reply_to}` : null,
+    `Date: ${new Date().toUTCString()}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: text/plain; charset=utf-8`,
+    ``,
+    body,
+  ].filter((l) => l !== null).join("\r\n");
+  try {
+    await client.connect();
+    const drafts = await findMailbox(client, "\\Drafts", "Drafts");
+    await client.append(drafts, raw, ["\\Draft"]);
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Draft creation failed: ${err?.message || err}` }], isError: true };
+  } finally {
+    try { await client.logout(); } catch { /* ignore */ }
+  }
+  await audit("email_draft_created", `Draft to ${to}: ${subject}`, { actor: "edward", target: to });
+  return { content: [{ type: "text", text: `📝 Draft saved to ${to} ("${subject}") — it's in the Drafts folder (visible in Joe's Apple Mail). To actually send it, queue it with email_request_send for Venus's approval.` }] };
+}
+
+async function toolEmailMoveSpam({ uid, uids } = {}) {
+  const list = (Array.isArray(uids) ? uids : [uid]).map(Number).filter(Number.isFinite);
+  if (!list.length) return { content: [{ type: "text", text: "❌ Pass uid (or uids[]) from inbox_sweep." }], isError: true };
+  const client = zohoImap();
+  if (!client) return NO_MAIL_CREDS;
+  let junk = "Spam";
+  try {
+    await client.connect();
+    junk = await findMailbox(client, "\\Junk", "Spam");
+    const lock = await client.getMailboxLock("INBOX");
+    try {
+      await client.messageMove(list.join(","), junk, { uid: true });
+    } finally {
+      lock.release();
+    }
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Move to ${junk} failed: ${err?.message || err}` }], isError: true };
+  } finally {
+    try { await client.logout(); } catch { /* ignore */ }
+  }
+  await audit("email_spam_moved", `Moved uid ${list.join(",")} → ${junk}`, { actor: "edward" });
+  return { content: [{ type: "text", text: `🗑️ Moved ${list.length} message(s) to ${junk}. Recoverable there — nothing is ever permanently deleted.` }] };
+}
+
+async function toolEmailRequestSend({ to, cc, subject, body, in_reply_to, context, send_at } = {}) {
+  if (!to || !subject || !body) return { content: [{ type: "text", text: "❌ to, subject, and body are required." }], isError: true };
+  let sendAt = null;
+  if (send_at) {
+    sendAt = new Date(send_at);
+    if (isNaN(sendAt.getTime())) return { content: [{ type: "text", text: `❌ send_at "${send_at}" isn't a parseable datetime (use ISO, e.g. 2026-08-27T09:00:00-07:00).` }], isError: true };
+  }
+  const res = await query(
+    `INSERT INTO email_outbox (to_addr, cc_addr, subject, body, in_reply_to, context, send_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+    [String(to).trim(), cc ? String(cc).trim() : null, subject, body, in_reply_to || null, context || null, sendAt],
+  );
+  const id = res.rows[0].id;
+  await audit("email_send_requested", `Outbox #${id} to ${to}: ${subject}${sendAt ? ` (scheduled ${sendAt.toISOString()})` : ""}`, { actor: "edward", target: to, detail: { id, send_at: sendAt?.toISOString() || null } });
+  return { content: [{ type: "text", text: `📤 Queued as outbox #${id}, awaiting Venus's approval${sendAt ? ` (requested send time ${sendAt.toISOString()})` : ""}. Report the id to Venus; you're done with this one until she decides.` }] };
+}
+
+async function toolEmailListPendingSends({ status } = {}) {
+  const st = ["pending", "approved", "sent", "rejected", "failed"].includes(String(status)) ? String(status) : "pending";
+  const res = await query(
+    `SELECT id, to_addr, subject, context, send_at, status, requested_by, decided_by, decision_note, sent_at, error, created_at
+       FROM email_outbox WHERE status = $1 ORDER BY created_at DESC LIMIT 25`,
+    [st],
+  );
+  if (!res.rows.length) return { content: [{ type: "text", text: `📭 No ${st} sends in the outbox.` }] };
+  const lines = [`📬 **${res.rows.length} ${st} send(s):**`, ""];
+  for (const r of res.rows) {
+    lines.push(`• #${r.id} → ${r.to_addr} · "${r.subject}"`);
+    if (r.context) lines.push(`  why: ${r.context}`);
+    if (r.send_at) lines.push(`  scheduled: ${new Date(r.send_at).toISOString()}`);
+    if (r.decided_by) lines.push(`  decided by ${r.decided_by}${r.decision_note ? ` — ${r.decision_note}` : ""}`);
+    if (r.error) lines.push(`  ⚠️ error: ${r.error}`);
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+// Actually fire one approved outbox row over Zoho SMTP. Shared by email_approve_send
+// (immediate sends) and scripts/email-outbox-drain.mjs (scheduled sends).
+async function sendOutboxRow(row) {
+  const USER = process.env.SMTP_USER, PASS = process.env.SMTP_PASS;
+  if (!USER || !PASS) throw new Error("SMTP_USER/SMTP_PASS missing");
+  const transport = nodemailer.createTransport({ host: "smtp.zoho.com", port: 465, secure: true, auth: { user: USER, pass: PASS } });
+  await transport.sendMail({
+    from: `Joe Sardella <${USER}>`,
+    to: row.to_addr,
+    cc: row.cc_addr || undefined,
+    subject: row.subject,
+    text: row.body,
+    inReplyTo: row.in_reply_to || undefined,
+    references: row.in_reply_to || undefined,
+  });
+}
+
+async function toolEmailApproveSend({ id, note } = {}) {
+  if (!Number.isFinite(Number(id))) return { content: [{ type: "text", text: "❌ id is required (from email_list_pending_sends)." }], isError: true };
+  const cur = await query(`SELECT * FROM email_outbox WHERE id = $1`, [Number(id)]);
+  if (!cur.rows.length) return { content: [{ type: "text", text: `❌ Outbox #${id} not found.` }], isError: true };
+  const row = cur.rows[0];
+  if (row.status !== "pending") return { content: [{ type: "text", text: `❌ Outbox #${id} is '${row.status}', not pending — nothing to approve.` }], isError: true };
+
+  const scheduledFuture = row.send_at && new Date(row.send_at).getTime() > Date.now();
+  await query(
+    `UPDATE email_outbox SET status = 'approved', decided_by = 'venus', decided_at = now(), decision_note = $2 WHERE id = $1`,
+    [row.id, note || null],
+  );
+  await audit("email_send_approved", `Outbox #${row.id} to ${row.to_addr}: ${row.subject}`, { actor: "venus", target: row.to_addr, detail: { id: row.id, note } });
+
+  if (scheduledFuture) {
+    return { content: [{ type: "text", text: `✅ Approved #${row.id} — scheduled; the outbox drain sends it at ${new Date(row.send_at).toISOString()}.` }] };
+  }
+  try {
+    await sendOutboxRow(row);
+    await query(`UPDATE email_outbox SET status = 'sent', sent_at = now() WHERE id = $1`, [row.id]);
+    await audit("email_sent", `Outbox #${row.id} sent to ${row.to_addr}: ${row.subject}`, { actor: "venus", target: row.to_addr, detail: { id: row.id } });
+    return { content: [{ type: "text", text: `✅ Approved and SENT #${row.id} to ${row.to_addr} ("${row.subject}").` }] };
+  } catch (err) {
+    const msg = String(err?.message || err);
+    await query(`UPDATE email_outbox SET status = 'failed', error = $2 WHERE id = $1`, [row.id, msg]);
+    await audit("email_send_failed", `Outbox #${row.id} to ${row.to_addr} failed: ${msg}`, { actor: "venus", target: row.to_addr, detail: { id: row.id } });
+    return { content: [{ type: "text", text: `❌ Approved #${row.id} but the send FAILED: ${msg}. It's marked failed — surface this to Joe.` }], isError: true };
+  }
+}
+
+// Venus: Edward's latest filed inbox report (he logs one per sweep as
+// event_type='email_inbox_report') + the pending-approval queue, in one call —
+// everything needed to compose the Telegram update for Joe.
+async function toolGetInboxReport() {
+  const rep = await query(
+    `SELECT summary, created_at FROM activity_log
+      WHERE event_type = 'email_inbox_report' ORDER BY created_at DESC LIMIT 1`,
+  );
+  const pending = await query(
+    `SELECT id, to_addr, subject, context, send_at FROM email_outbox WHERE status = 'pending' ORDER BY created_at DESC LIMIT 25`,
+  );
+  const lines = [];
+  if (rep.rows.length) {
+    const age = Math.round((Date.now() - new Date(rep.rows[0].created_at).getTime()) / 60000);
+    lines.push(`📥 **Edward's latest inbox report** (${age} min ago):`, "", rep.rows[0].summary, "");
+  } else {
+    lines.push("📭 Edward hasn't filed an inbox report yet (no email_inbox_report in activity_log).", "");
+  }
+  if (pending.rows.length) {
+    lines.push(`⏳ **${pending.rows.length} send(s) awaiting your approval** (email_approve_send / email_reject_send):`);
+    for (const r of pending.rows) {
+      lines.push(`• #${r.id} → ${r.to_addr} · "${r.subject}"${r.context ? ` — ${r.context}` : ""}${r.send_at ? ` (wants ${new Date(r.send_at).toISOString()})` : ""}`);
+    }
+  } else {
+    lines.push("✅ No sends awaiting approval.");
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolEmailRejectSend({ id, note } = {}) {
+  if (!Number.isFinite(Number(id))) return { content: [{ type: "text", text: "❌ id is required (from email_list_pending_sends)." }], isError: true };
+  const res = await query(
+    `UPDATE email_outbox SET status = 'rejected', decided_by = 'venus', decided_at = now(), decision_note = $2
+      WHERE id = $1 AND status = 'pending' RETURNING to_addr, subject`,
+    [Number(id), note || null],
+  );
+  if (!res.rows.length) return { content: [{ type: "text", text: `❌ Outbox #${id} not found or not pending.` }], isError: true };
+  await audit("email_send_rejected", `Outbox #${id} to ${res.rows[0].to_addr}: ${res.rows[0].subject}${note ? ` — ${note}` : ""}`, { actor: "venus", target: res.rows[0].to_addr, detail: { id: Number(id), note } });
+  return { content: [{ type: "text", text: `🚫 Rejected #${id}${note ? ` — ${note}` : ""}. Tell Edward why so the next draft is better.` }] };
 }
 
 // Whitney ↔ Joe question loop. When Whitney can't proceed truthfully (a field she can't
@@ -2296,7 +2565,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.40.0" },
+  { name: "tbj-mcp", version: "2.41.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -2729,6 +2998,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: { type: "object", properties: {} },
     },
     {
+      name: "job_board_count",
+      description: "Whitney: how many found roles are waiting on Joe's review board, and whether there's room under the cap. CALL THIS BEFORE ANY JOB SEARCHING — it is cheap, and if the board is full you must stop immediately without browsing, scraping, or calling record_found_job. Searching while the board is full wastes tokens and puts needless traffic on Joe's LinkedIn/Indeed identity.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
       name: "update_application_status",
       description: "Whitney: advance a job through its stages so the board shows live progress. Stages: found → approved/dismissed → account_created → verified → applied → interview → (rejected/closed). Call it at EACH step as you work an approved job (account_created after signup, verified after the email link, applied after submit).",
       inputSchema: {
@@ -2752,6 +3026,98 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           since_minutes: { type: "number", description: "How far back to look, in minutes (default 1440 = 24h). Use a small number right after triggering a verification email." },
           limit: { type: "number", description: "Max messages to return (default 10, cap 25)." },
         },
+      },
+    },
+    {
+      name: "inbox_sweep",
+      description: "Edward: everything new in joe@thinkbigjoe.com's INBOX since the last sweep, newest first — uid, sender, subject, Message-ID, and a snippet per message. Read-only (BODY.PEEK, never marks mail read). Classify each per your SOP, then act (draft / junk / flag pressing).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          since_minutes: { type: "number", description: "How far back to look, in minutes (default 480 = 8h, covering the gap between scheduled sweeps)." },
+          limit: { type: "number", description: "Max messages (default 30, cap 50)." },
+        },
+      },
+    },
+    {
+      name: "email_create_draft",
+      description: "Edward: save a reply/new-mail DRAFT into the mailbox's Drafts folder, written in Joe's voice — it appears in his Apple Mail automatically. This never sends anything. Pass in_reply_to (the Message-ID from inbox_sweep) when replying so the thread connects.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          to: { type: "string", description: "Recipient address." },
+          subject: { type: "string", description: "Subject line (for replies: 'Re: <original subject>')." },
+          body: { type: "string", description: "Plain-text body in Joe's voice. Unknowns become bracketed [Joe: …?] questions, never guesses." },
+          in_reply_to: { type: "string", description: "Optional Message-ID of the message being replied to (from inbox_sweep)." },
+        },
+        required: ["to", "subject", "body"],
+      },
+    },
+    {
+      name: "email_move_spam",
+      description: "Edward: move spam/phishing messages (by uid from inbox_sweep) out of INBOX into the Spam folder. Recoverable — nothing is ever permanently deleted. Never use this on anything you're not certain is junk; when unsure, leave it and ask Venus.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          uid: { type: "number", description: "A single message uid." },
+          uids: { type: "array", items: { type: "number" }, description: "Or several uids at once." },
+        },
+      },
+    },
+    {
+      name: "email_request_send",
+      description: "Edward: queue an email send (immediate, or scheduled via send_at) for VENUS'S APPROVAL. Nothing sends until she approves — this is the only path to sending, with no exceptions. Returns the outbox id; report it to Venus with one line of context.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          to: { type: "string", description: "Recipient address." },
+          cc: { type: "string", description: "Optional CC address(es), comma-separated." },
+          subject: { type: "string" },
+          body: { type: "string", description: "Plain-text body in Joe's voice, final and send-ready." },
+          in_reply_to: { type: "string", description: "Optional Message-ID being replied to, so the send threads correctly." },
+          context: { type: "string", description: "One line for Venus: why this should send (e.g. 'reply to interview invite from Acme — Whitney's application #42')." },
+          send_at: { type: "string", description: "Optional ISO datetime to schedule the send (e.g. 2026-08-27T09:00:00-07:00). Omit to send as soon as Venus approves." },
+        },
+        required: ["to", "subject", "body"],
+      },
+    },
+    {
+      name: "email_list_pending_sends",
+      description: "The email outbox queue by status (default 'pending'). Edward: check what's awaiting Venus. Venus: review pending sends here, then email_approve_send / email_reject_send each by id.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          status: { type: "string", description: "'pending' (default), 'approved', 'sent', 'rejected', or 'failed'." },
+        },
+      },
+    },
+    {
+      name: "email_approve_send",
+      description: "VENUS ONLY: approve outbox send #id. Immediate sends fire right now over Zoho SMTP (as Joe); future-scheduled ones are marked approved and fired at their send_at by the outbox drain. Approve only drafts that read like Joe and commit him to nothing he hasn't agreed to — when unsure, ask Joe instead.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "number", description: "Outbox id from email_list_pending_sends." },
+          note: { type: "string", description: "Optional decision note." },
+        },
+        required: ["id"],
+      },
+    },
+    {
+      name: "get_inbox_report",
+      description: "VENUS: Edward's latest filed inbox report plus every send awaiting your approval, in one call. Use at the top of each inbox-update run (6:00/12:00/18:00) — review pending sends (approve/reject each), then compose Joe's Telegram update from the report.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "email_reject_send",
+      description: "VENUS ONLY: reject outbox send #id with a reason. The email does not send; tell Edward the reason so his next draft is better.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "number", description: "Outbox id from email_list_pending_sends." },
+          note: { type: "string", description: "Why it's rejected — this feeds Edward's next attempt." },
+        },
+        required: ["id"],
       },
     },
     {
@@ -3051,8 +3417,17 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "mark_sent": return toolMarkSent(args);
     case "record_found_job": return toolRecordFoundJob(args);
     case "list_approved_jobs": return toolListApprovedJobs();
+    case "job_board_count": return toolJobBoardCount();
     case "update_application_status": return toolUpdateApplicationStatus(args);
     case "inbox_search": return toolInboxSearch(args);
+    case "inbox_sweep": return toolInboxSweep(args);
+    case "email_create_draft": return toolEmailCreateDraft(args);
+    case "email_move_spam": return toolEmailMoveSpam(args);
+    case "email_request_send": return toolEmailRequestSend(args);
+    case "email_list_pending_sends": return toolEmailListPendingSends(args);
+    case "email_approve_send": return toolEmailApproveSend(args);
+    case "email_reject_send": return toolEmailRejectSend(args);
+    case "get_inbox_report": return toolGetInboxReport();
     case "record_question": return toolRecordQuestion(args);
     case "list_answered_questions": return toolListAnsweredQuestions();
     case "mark_question_resolved": return toolMarkQuestionResolved(args);

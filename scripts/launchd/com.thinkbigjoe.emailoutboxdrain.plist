@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Outbox drain for Edward's SCHEDULED email sends (scripts/email-outbox-drain.mjs).
+  Only rows that are status='approved' (Venus approved) AND send_at-due are sent;
+  everything else no-ops. Immediate approvals are sent by the MCP tool itself.
+
+  launchd plists are NOT auto-loaded from the repo — this is the REFERENCE COPY. To install/update:
+    cp scripts/launchd/com.thinkbigjoe.emailoutboxdrain.plist ~/Library/LaunchAgents/
+    launchctl unload ~/Library/LaunchAgents/com.thinkbigjoe.emailoutboxdrain.plist 2>/dev/null
+    launchctl load  ~/Library/LaunchAgents/com.thinkbigjoe.emailoutboxdrain.plist
+
+  SHIPS COLD with Edward: don't install until Edward is turned on. Safe once installed —
+  an empty/unapproved queue means it does nothing. Ticks every 5 min; logs to /tmp/email-outbox-drain.log.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.thinkbigjoe.emailoutboxdrain</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>/Users/macdaddyjoe/code/thinkbigjoe/scripts/email-outbox-drain.mjs</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macdaddyjoe/code/thinkbigjoe</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/macdaddyjoe/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macdaddyjoe</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/email-outbox-drain.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/email-outbox-drain.log</string>
+</dict>
+</plist>
