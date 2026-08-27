@@ -160,9 +160,9 @@ Always set both `channel: "telegram"` and `to: "<chat id>"`.
 > Applications` and `TBJ Email Inbox` both show `announce -> last (… will fail-closed)`. Whitney's
 > is harmless *by design* — she is not supposed to message Joe, and her escalation goes out through
 > `record_question`'s own Telegram call instead of the cron route. The others have simply never had
-> a working route. `TBJ Venus — Inbox Update` (Edward's briefing, ships cold) is declared agentless
-> **and** with a channel, which is trap #1 + #3 together — **it will not deliver as written**; give
-> it `agent: "main"` before enabling it.
+> a working route. (`TBJ Venus — Inbox Update` used to be listed here as broken — agentless *and* with
+> a channel, traps #1 + #3 together. It has since been **merged into `TBJ Venus — Org Debrief`**,
+> which covers Edward and Whitney in one message and is wired correctly.)
 
 **4. Two different bots write to the same chat id — and only one is the one Joe reads.**
 A Telegram chat id identifies the **user**, but every bot has its *own* private conversation with
