@@ -642,37 +642,6 @@ export const voiceProvisionQueue = pgTable("voice_provision_queue", {
 	unique("voice_provision_queue_site_id_key").on(table.siteId),
 ]);
 
-export const jobApplications = pgTable("job_applications", {
-	id: serial().primaryKey().notNull(),
-	company: text().notNull(),
-	role: text().notNull(),
-	platform: varchar({ length: 40 }),
-	url: text(),
-	location: text(),
-	pay: text(),
-	fitReason: text("fit_reason"),
-	status: varchar({ length: 24 }).default('found').notNull(),
-	priority: integer().default(0).notNull(),
-	notes: text(),
-	approvedAt: timestamp("approved_at", { withTimezone: true, mode: 'string' }),
-	appliedAt: timestamp("applied_at", { withTimezone: true, mode: 'string' }),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	jobDescription: text("job_description"),
-	companyAbout: text("company_about"),
-	companyAddress: text("company_address"),
-	companyWebsite: text("company_website"),
-	companyReviews: jsonb("company_reviews"),
-	contactInfo: jsonb("contact_info"),
-	fitScore: integer("fit_score"),
-	interestScore: integer("interest_score"),
-	interestMatch: text("interest_match"),
-}, (table) => [
-	index("job_applications_created_at_idx").using("btree", table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
-	index("job_applications_priority_idx").using("btree", table.priority.desc().nullsFirst().op("int4_ops"), table.approvedAt.asc().nullsLast().op("int4_ops")),
-	index("job_applications_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
-]);
-
 export const leads = pgTable("leads", {
 	id: serial().primaryKey().notNull(),
 	name: varchar().notNull(),
@@ -919,4 +888,36 @@ export const emailOutbox = pgTable("email_outbox", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
 	index("email_outbox_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops"), table.sendAt.asc().nullsLast().op("text_ops")),
+]);
+
+export const jobApplications = pgTable("job_applications", {
+	id: serial().primaryKey().notNull(),
+	company: text().notNull(),
+	role: text().notNull(),
+	platform: varchar({ length: 40 }),
+	url: text(),
+	location: text(),
+	pay: text(),
+	fitReason: text("fit_reason"),
+	status: varchar({ length: 24 }).default('found').notNull(),
+	priority: integer().default(0).notNull(),
+	notes: text(),
+	approvedAt: timestamp("approved_at", { withTimezone: true, mode: 'string' }),
+	appliedAt: timestamp("applied_at", { withTimezone: true, mode: 'string' }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	jobDescription: text("job_description"),
+	companyAbout: text("company_about"),
+	companyAddress: text("company_address"),
+	companyWebsite: text("company_website"),
+	companyReviews: jsonb("company_reviews"),
+	contactInfo: jsonb("contact_info"),
+	fitScore: integer("fit_score"),
+	interestScore: integer("interest_score"),
+	interestMatch: text("interest_match"),
+	directed: boolean().default(false).notNull(),
+}, (table) => [
+	index("job_applications_created_at_idx").using("btree", table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
+	index("job_applications_priority_idx").using("btree", table.priority.desc().nullsFirst().op("int4_ops"), table.approvedAt.asc().nullsLast().op("int4_ops")),
+	index("job_applications_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
 ]);

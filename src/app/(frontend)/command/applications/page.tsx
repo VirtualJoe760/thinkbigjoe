@@ -5,7 +5,7 @@ import { desc, eq } from "drizzle-orm";
 import { db, jobApplications, agents, agentQuestions } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { approveJob, dismissJob, reopenJob, bumpPriority, setWhitneyPaused, answerQuestion, declineQuestion } from "./actions";
-import { type Job, StageBadge, ScoreChip, MetaRow, relativeTime, abbreviate } from "./parts";
+import { type Job, StageBadge, ScoreChip, TargetBadge, MetaRow, relativeTime, abbreviate } from "./parts";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -55,6 +55,7 @@ function InFlightCard({ job }: { job: Job }) {
             {job.status === "approved" && job.priority > 0 && (
               <span className="text-[11px] font-semibold text-blue-700">priority {job.priority}</span>
             )}
+            <TargetBadge job={job} />
             <ScoreChip label="Fit" score={job.fitScore} />
             <ScoreChip label="Interest" score={job.interestScore} />
             <MetaRow job={job} />
@@ -303,7 +304,8 @@ export default async function ApplicationsPage({
                   </div>
 
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    <ScoreChip label="Fit" score={job.fitScore} />
+                    <TargetBadge job={job} />
+            <ScoreChip label="Fit" score={job.fitScore} />
                     <ScoreChip label="Interest" score={job.interestScore} />
                   </div>
 

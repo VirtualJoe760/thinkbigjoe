@@ -194,6 +194,13 @@ function tgEscape(s) {
 // Rolling: Whitney stops finding at the cap and resumes once Joe works the queue below it.
 const REVIEW_CAP = 25;
 
+// DIRECTED finds get their own, separate allowance. The general cap exists to stop Whitney
+// spraying — indiscriminate searching that costs tokens and puts traffic on Joe's job-board
+// identity. A role at an employer JOE NAMED is not that: naming it is already the human
+// judgement the cap is waiting for. So a full board must not block "go look at Anthropic".
+// It's still capped, just separately, so a directed run can't run away either.
+const DIRECTED_CAP = 20;
+
 // ---------------------------------------------------------------------------
 // Shared constants
 // ---------------------------------------------------------------------------
@@ -1397,7 +1404,11 @@ async function toolJobBoardCount() {
   const n = res.rows[0].n;
   const room = Math.max(0, REVIEW_CAP - n);
   if (n >= REVIEW_CAP) {
-    return { content: [{ type: "text", text: `🧢 Review board is FULL: ${n} awaiting review, cap ${REVIEW_CAP}. Do NOT search for jobs this turn — no browsing, no scraping, no record_found_job. End your turn now. Joe has to approve or decline some before you surface more; check again on your next wake.` }] };
+    const dir = await query(`SELECT count(*)::int n FROM job_applications WHERE status = 'found' AND directed = true`);
+    const dirRoom = Math.max(0, DIRECTED_CAP - dir.rows[0].n);
+    return { content: [{ type: "text", text: `🧢 Review board is FULL for GENERAL search: ${n} awaiting review, cap ${REVIEW_CAP}. Do NOT go looking for roles broadly this turn — no speculative browsing, no scraping, no untargeted record_found_job.\n\n${dirRoom > 0
+      ? `✅ BUT Joe's PRIORITY EMPLOYERS (listed in your USER.md target profile) are exempt — that lane has room for ${dirRoom} more. You may go straight to those employers' own careers pages, and record what you find with **directed: true**. Nothing else this turn.`
+      : `Joe's priority-employer lane is also full (${dir.rows[0].n}/${DIRECTED_CAP}) — end your turn now.`}` }] };
   }
   return { content: [{ type: "text", text: `✅ Review board has room: ${n}/${REVIEW_CAP} awaiting review — you may surface up to ${room} more this turn.` }] };
 }
@@ -1406,7 +1417,7 @@ async function toolRecordFoundJob({
   company, role, platform, url, location, pay,
   fit_reason, fit_score, interest_match, interest_score,
   job_description, company_about, company_address, company_website,
-  company_reviews, contact_info,
+  company_reviews, contact_info, directed,
 }) {
   if (await isAgentPaused("whitney")) {
     return { content: [{ type: "text", text: "⏸ Whitney is PAUSED by Joe. Stand down — do not find or post jobs. End your turn without acting." }] };
@@ -1414,9 +1425,17 @@ async function toolRecordFoundJob({
   if (!company || !role) {
     return { content: [{ type: "text", text: "❌ company and role are required." }], isError: true };
   }
-  const capCheck = await query(`SELECT count(*)::int n FROM job_applications WHERE status = 'found'`);
-  if (capCheck.rows[0].n >= REVIEW_CAP) {
-    return { content: [{ type: "text", text: `🧢 The review board is at its ${REVIEW_CAP}-opportunity cap (${capCheck.rows[0].n} awaiting review). Stop finding — Joe needs to approve or decline some before you surface more.` }] };
+  // Directed finds are counted and capped separately — a full general board doesn't block them.
+  const isDirected = directed === true;
+  const capCheck = await query(
+    `SELECT count(*)::int n FROM job_applications WHERE status = 'found' AND directed = $1`,
+    [isDirected],
+  );
+  const cap = isDirected ? DIRECTED_CAP : REVIEW_CAP;
+  if (capCheck.rows[0].n >= cap) {
+    return { content: [{ type: "text", text: isDirected
+      ? `🧢 Joe's priority-target lane is full: ${capCheck.rows[0].n} directed roles awaiting review (cap ${cap}). Stop finding — he needs to work these before you surface more.`
+      : `🧢 The review board is at its ${cap}-opportunity cap (${capCheck.rows[0].n} awaiting review). Stop general finding — Joe needs to approve or decline some before you surface more. You MAY still surface roles at the priority employers in his target profile: pass directed: true for those.` }] };
   }
   // Dedup: same company + role already on the board (any status) → don't re-add.
   const dup = await query(
@@ -1431,8 +1450,8 @@ async function toolRecordFoundJob({
     `INSERT INTO job_applications
        (company, role, platform, url, location, pay, fit_reason, fit_score,
         interest_match, interest_score, job_description, company_about,
-        company_address, company_website, company_reviews, contact_info, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16::jsonb,'found')
+        company_address, company_website, company_reviews, contact_info, status, directed)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16::jsonb,'found',$17)
      RETURNING id`,
     [
       company, role, platform || null, url || null, location || null, pay || null,
@@ -1441,12 +1460,13 @@ async function toolRecordFoundJob({
       job_description || null, company_about || null, company_address || null, company_website || null,
       company_reviews ? JSON.stringify(company_reviews) : null,
       contact_info ? JSON.stringify(contact_info) : null,
+      isDirected,
     ],
   );
   const id = res.rows[0].id;
-  await audit("job_found", `Found: ${role} @ ${company}${location ? ` (${location})` : ""}`, {
+  await audit("job_found", `Found${isDirected ? " (priority target)" : ""}: ${role} @ ${company}${location ? ` (${location})` : ""}`, {
     actor: "whitney", target: company,
-    detail: { role, platform, url, pay, fit_score: clampScore(fit_score), interest_score: clampScore(interest_score) },
+    detail: { role, platform, url, pay, directed: isDirected, fit_score: clampScore(fit_score), interest_score: clampScore(interest_score) },
   });
   const scoreNote = [
     clampScore(fit_score) != null ? `fit ${clampScore(fit_score)}%` : null,
@@ -2760,7 +2780,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.45.0" },
+  { name: "tbj-mcp", version: "2.46.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -3163,7 +3183,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "record_found_job",
-      description: "Whitney: post a candidate job to Joe's review board (/command/applications) at status 'found'. Only surface roles that clear the fit-gate (~60% of the CORE requirements) per the target profile. Dedups on company+role. Joe then Approves or Dismisses each card — that approval is the trigger for you to actually apply. RESEARCH THE ROLE BEFORE POSTING: Joe wants a card he can decide on without leaving the page — capture the full job description, the company (what they do, HQ address, website), REAL sourced reviews of the company (Glassdoor/Indeed/Google — with rating + source URL), a point of contact, and BOTH a skills-fit and a personal-interest read. Missing data is fine (pass what you can find), but the more complete the card, the better Joe can approve.",
+      description: "Whitney: post a candidate job to Joe's review board (/command/applications) at status 'found'. Only surface roles that clear the fit-gate (~60% of the CORE requirements) per the target profile. Dedups on company+role. Joe then Approves or Dismisses each card — that approval is the trigger for you to actually apply. RESEARCH THE ROLE BEFORE POSTING: Joe wants a card he can decide on without leaving the page — capture the full job description, the company (what they do, HQ address, website), REAL sourced reviews of the company (Glassdoor/Indeed/Google — with rating + source URL), a point of contact, and BOTH a skills-fit and a personal-interest read. Missing data is fine (pass what you can find), but the more complete the card, the better Joe can approve. PRIORITY EMPLOYERS: if the role is at an employer Joe named in his target profile, pass directed: true — those bypass the general review-board cap.",
       inputSchema: {
         type: "object",
         properties: {
@@ -3178,6 +3198,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           company_address: { type: "string", description: "The company's HQ / office address (street, city, state) — separate from the job's work arrangement." },
           company_website: { type: "string", description: "The company's own website (not the job board)." },
           company_reviews: { type: "array", description: "REAL sourced reviews of the company as an employer. Each: { source (e.g. 'Glassdoor'), rating (number, e.g. 4.1), count (number of reviews), url, summary (what employees say — pros/cons in a sentence) }. Source these by searching; do not invent. Empty array if none found.", items: { type: "object", properties: { source: { type: "string" }, rating: { type: "number" }, count: { type: "number" }, url: { type: "string" }, summary: { type: "string" } } } },
+          directed: { type: "boolean", description: "TRUE only when this role is at one of the PRIORITY EMPLOYERS in Joe's target profile (USER.md) — an employer he named himself. Directed finds have their own review lane, so they are still allowed when the general board is full. Never set it to sneak an ordinary find past the cap; the point is that Joe already chose these employers." },
           contact_info: { type: "object", description: "A way to reach the company/recruiter: { recruiter_name, email, phone, careers_url, linkedin }. Whatever you can find from the posting or the company site.", properties: { recruiter_name: { type: "string" }, email: { type: "string" }, phone: { type: "string" }, careers_url: { type: "string" }, linkedin: { type: "string" } } },
           fit_reason: { type: "string", description: "One line: why Joe fits against the CORE requirements (skills/experience)." },
           fit_score: { type: "number", description: "0–100 skills/experience fit against the CORE requirements." },

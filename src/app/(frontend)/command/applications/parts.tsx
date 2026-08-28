@@ -56,6 +56,20 @@ export function ScoreChip({ label, score }: { label: string; score: number | nul
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${cls}`}>{label} {score}%</span>;
 }
 
+/**
+ * Marks a role Whitney found at an employer JOE named (target profile → priority employers).
+ * Worth calling out on the card: these bypass the general review-board cap, so when the board
+ * is full these are the only new things appearing — and they're the ones he asked for.
+ */
+export function TargetBadge({ job }: { job: Job }) {
+  if (!job.directed) return null;
+  return (
+    <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+      ★ Your target
+    </span>
+  );
+}
+
 export function MetaRow({ job }: { job: Job }) {
   return (
     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-soft">

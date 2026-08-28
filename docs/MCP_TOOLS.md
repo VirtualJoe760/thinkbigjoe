@@ -121,6 +121,17 @@ tool-by-tool → UI-surface map):
     outcome, not a failure: a question she can't get past is an application she can't finish.
     She reads the decline, resolves it, and moves to the next job — no re-asking, no rewording,
     no applying anyway. Reversible via `reopenJob` from the board's archive.
+- **Priority employers / directed finds** (v2.46.0): `record_found_job` takes `directed: true`
+  for a role at an employer **Joe named himself** (the ⭐ PRIORITY EMPLOYERS list in Whitney's
+  `USER.md` — currently Anthropic, xAI, and real-estate brokerages/proptech). Those get their own
+  review lane (`job_applications.directed`, `DIRECTED_CAP = 20`) and are **exempt from the general
+  `REVIEW_CAP = 25`**. The reasoning: the general cap exists to stop indiscriminate spraying that
+  costs tokens and puts traffic on Joe's job-board identity — but an employer Joe *chose* is
+  already the human judgement that cap is waiting for, so a full board must not block "go look at
+  Anthropic." Directed cards show a **★ Your target** badge on `/command/applications` and sort to
+  the top. `job_board_count` tells Whitney the directed lane is still open when the general one is
+  full, so a full board redirects her rather than idling her.
+
 - **Job-hunt debrief (Venus)** (v2.43.0 / v2.44.0): `get_job_hunt_report` + `send_telegram_update`.
   `get_job_hunt_report` is the rollup behind Joe's 12:30/19:30 Telegram debrief — applications
   submitted in the window **with titles + companies**, interview-stage roles, work in progress,
