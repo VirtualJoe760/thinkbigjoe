@@ -284,8 +284,14 @@ NEVER run forge-template.sh yourself or mass-add languages — Joe builds propos
     name: "TBJ Whitney — Job Applications",
     id: "9cb191fe-5ec2-4414-ac45-756501b8cc5d",
     agent: "whitney",
-    schedule: "*/15 * * * *", // "always looking" — every 15 min, 24/7 (96 runs/day). Draws the
-                              // shared claude-cli Max weekly cap (see below) — dial back if it bites.
+    // ⏱ Cut from */15 24/7 (96 runs/day) on 2026-08-27. That cadence exhausted her ollama-cloud
+    // free-tier quota and left her rate-limited — and the waste was almost total: 69 of 96 runs in
+    // a 24h sample did nothing but log "review board full, standing down". A stand-down still costs
+    // a full model call, so a board Joe hasn't worked converted directly into burned quota.
+    // 6am–11pm Phoenix, every 30 min ≈ 34 runs/day. She only does ONE application per turn anyway,
+    // so the extra wake-ups bought nothing; overnight buys less.
+    schedule: "*/30 6-22 * * *",
+    tz: "America/Phoenix",
     stagger: "2m",
     summary: "Whitney's priority-queue run: FIRST work any job Joe approved (create account → email-verify → tailor → submit); only when the approved queue is empty, find new roles matching Joe's target profile and post them to /command/applications for approval. One approved application per run (human cadence).",
     tools: ["list_approved_jobs", "update_application_status", "inbox_search", "record_found_job", "book_appointment", "record_question", "list_answered_questions", "mark_question_resolved", "remember_fact", "log_activity"],
