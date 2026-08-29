@@ -301,7 +301,10 @@ NEVER run forge-template.sh yourself or mass-add languages — Joe builds propos
     // a full model call, so a board Joe hasn't worked converted directly into burned quota.
     // 6am–11pm Phoenix, every 30 min ≈ 34 runs/day. She only does ONE application per turn anyway,
     // so the extra wake-ups bought nothing; overnight buys less.
-    schedule: "*/30 6-22 * * *",
+    // Hourly, 7am–7pm, WEEKDAYS ONLY = 13/day, 65/week (was 34/day, 238/week).
+    // Weekends are the cheapest cut there is: an application submitted Saturday sits in a
+    // queue until Monday anyway, so those runs bought nothing and cost the same as any other.
+    schedule: "0 7-19 * * 1-5",
     tz: "America/Phoenix",
     stagger: "2m",
     summary: "Whitney's priority-queue run: FIRST work any job Joe approved (create account → email-verify → tailor → submit); only when the approved queue is empty, find new roles matching Joe's target profile and post them to /command/applications for approval. One approved application per run (human cadence).",
@@ -314,6 +317,8 @@ NEVER run forge-template.sh yourself or mass-add languages — Joe builds propos
    - **Answered** → use his answer to resume that application this run.
    - **DECLINED** → he chose not to answer, and that application is already CANCELLED (job closed). That is a normal outcome, not a rejection of you and not a failure. Do NOT re-ask it, do NOT reword it, do NOT apply anyway, do NOT keep bringing it up. Just move to the next job.
    **mark_question_resolved** each one either way, then continue.
+
+PACING: you may submit at most **5 applications per day** and your loop tools enforce it — when the cap is hit they will tell you to stand down, and that is final, not something to work around. You run on Joe's shared Claude usage, so a wasted turn costs him his own tooling. Do the most valuable thing available, then end the turn; never pad a run to look busy.
 
 1. PRIORITY — call **list_approved_jobs** FIRST. If it returns any job, work the **TOP one to completion** this run:
    - Prefer the employer's own ATS/careers link over a logged-in LinkedIn/Indeed session (that session is what gets Joe's account banned).
@@ -336,7 +341,9 @@ Finish with **log_activity** (actor: "whitney") summarizing what you did — **n
     name: "TBJ Edward — Inbox Sweep",
     id: "9e596bde-e170-4267-ad0f-2896d810d722",
     agent: "edward",
-    schedule: "45 5,11,17 * * *",
+    // 2×/day (was 3). Kept on all 7 days — mail still arrives at the weekend, and a missed
+    // employer reply costs more than the turn does.
+    schedule: "45 6,15 * * *",
     tz: "America/Phoenix",
     stagger: "exact",
     summary: "Edward sweeps joe@thinkbigjoe.com 3×/day (5:45a/11:45a/5:45p): classify, junk spam, draft replies in Joe's voice, queue sends for Venus, file the inbox report she reads for her 6/12/6 Telegram update.",
@@ -372,7 +379,9 @@ Hard rules, always: you never send or schedule mail yourself — email_request_s
     enabled: true,
     name: "TBJ Venus — Org Debrief",
     id: "0ab9b0f5-23c1-4be2-8f5b-1639262feffd",
-    schedule: "30 6,12,18 * * *",
+    // 2×/day (was 3). The 6:30 run is gone: Whitney no longer works overnight, so a morning
+    // debrief had nothing new to report — it was paying to say "nothing happened".
+    schedule: "30 12,18 * * *",
     tz: "America/Phoenix",
     stagger: "exact",
     agent: "main",

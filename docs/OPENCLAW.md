@@ -163,6 +163,48 @@ openclaw agents add/delete <id>       # roster management
 
 ---
 
+## Budget — two independent controls, and why both exist
+
+Since all three operating agents moved to `claude-cli/claude-sonnet-4-6` (2026-08-29) they draw the
+**shared Max weekly cap** — the same pool as Joe's interactive Claude Code and the forge's
+`claude -p` builds. An agent overspending doesn't just cost money; it takes Joe's own tooling away
+from him. Two separate controls, because neither is sufficient alone:
+
+**1. Cadence — how often they WAKE** (`venus-crons.mjs`). Cut 67% on 2026-08-29:
+
+| Agent | Schedule | Turns/week |
+|---|---|---|
+| `whitney` | `0 7-19 * * 1-5` Phoenix — hourly, 7am–7pm, **weekdays only** | 238 → **65** |
+| `edward` | `45 6,15 * * *` — 2×/day, all 7 days | 21 → **14** |
+| `main` (Venus) | `30 12,18 * * *` — 2×/day | 21 → **14** |
+| | | **280 → 93** |
+
+Two cuts were nearly free. Whitney's **weekends**: an application submitted Saturday sits in a queue
+until Monday, so those runs cost full price for nothing. And Venus's **6:30am** debrief: Whitney no
+longer works overnight, so it was paying to report that nothing had happened.
+
+**2. Daily caps — how much they can SPEND once awake** (`tbj-mcp.mjs`, enforced server-side at each
+agent's loop entry, NOT left to the prompt). Cadence is not a cap: one pathological day of long
+turns can still burn a week of quota.
+
+- `DAILY_TURN_CAP = { whitney: 15, edward: 4, main: 4 }` — a **backstop**, deliberately set above
+  the cadence ceiling (13/2/2) so it only fires on runaway or heavy manual triggering.
+- `DAILY_APPLY_CAP = 5` — Whitney's real-world ceiling. This one is a **business** limit, not a cost
+  one: more than ~5 applications/day reads as automated and is what gets Joe's job-board accounts
+  flagged.
+
+Turn counts come from `activity_log` (Phoenix day boundary), which slightly **undercounts** — a turn
+that dies before logging isn't seen. That's why the caps sit above the cadence rather than at it.
+The check is **fail-open**: a counting error must never wedge an agent.
+
+⚠️ **Remember the structural cost that made this necessary:** a *stand-down is still a full model
+call*. In a 24h sample Whitney logged 96 runs of which ~69 did nothing but say "board full,
+standing down" — that alone exhausted an entire weekly tier. Cheap-out gates belong **before** the
+wake (schedule, or a command-payload pre-check), not inside the turn. The gates below are damage
+control, not the real fix.
+
+---
+
 ## Cron delivery — why a cron "runs fine" and Joe still hears nothing
 
 Getting a scheduled message to actually reach Joe's Telegram has **four** independent traps.

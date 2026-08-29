@@ -190,6 +190,60 @@ function tgEscape(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// ---------------------------------------------------------------------------
+// DAILY BUDGETS — the ceiling that survives a bad day.
+//
+// Cadence (the cron) controls how OFTEN an agent wakes. That is not a cap: one pathological
+// day of long turns can still burn a week of quota. Since 2026-08-29 all three operating agents
+// run on claude-cli/claude-sonnet-4-6, drawing the SAME Max weekly pool as Joe's interactive
+// Claude Code and the forge's `claude -p` builds — so an agent overspending doesn't just cost
+// money, it takes Joe's own tooling away from him. Hence a hard stop, enforced server-side at
+// each agent's loop entry rather than trusted to the prompt.
+//
+// Turn counts come from activity_log, which every agent writes at the end of a run. That
+// slightly UNDERCOUNTS (a turn that dies before logging isn't seen), so these are deliberately
+// set below the cadence ceiling — they're a backstop, not the primary control.
+// ---------------------------------------------------------------------------
+const DAILY_TURN_CAP = { whitney: 15, edward: 4, main: 4 };
+// Whitney's real-world ceiling. ~2-5 applications/day is the healthy human cadence; more looks
+// like a bot and is what gets Joe's accounts flagged. This is a business limit, not a cost one.
+const DAILY_APPLY_CAP = 5;
+// Venus logs as 'venus'; her agent id is 'main'.
+const BUDGET_ACTOR = { main: "venus" };
+
+async function turnsToday(agentId) {
+  const actor = BUDGET_ACTOR[agentId] || agentId;
+  const r = await query(
+    `SELECT count(*)::int n FROM activity_log
+      WHERE actor = $1
+        AND (created_at AT TIME ZONE 'America/Phoenix')::date
+          = (now() AT TIME ZONE 'America/Phoenix')::date`,
+    [actor],
+  );
+  return r.rows[0].n;
+}
+
+/** Loop-entry guard. Returns a stand-down tool result when the day's budget is spent, else null. */
+async function dailyBudgetStop(agentId) {
+  const cap = DAILY_TURN_CAP[agentId];
+  if (!cap) return null;
+  let n;
+  try { n = await turnsToday(agentId); }
+  catch { return null; } // fail-open: a counting error must never wedge an agent
+  if (n < cap) return null;
+  return { content: [{ type: "text", text: `🛑 Daily budget spent: ${n}/${cap} turns logged today. Stand down NOW — end this turn without calling another tool, browsing, or logging. This is a hard cost ceiling (you run on Joe's shared Claude Max cap), not a suggestion. You resume automatically tomorrow.` }] };
+}
+
+async function appliedToday() {
+  const r = await query(
+    `SELECT count(*)::int n FROM job_applications
+      WHERE applied_at IS NOT NULL
+        AND (applied_at AT TIME ZONE 'America/Phoenix')::date
+          = (now() AT TIME ZONE 'America/Phoenix')::date`,
+  );
+  return r.rows[0].n;
+}
+
 // The review board's opportunity cap — how many 'found' roles can wait for Joe at once.
 // Rolling: Whitney stops finding at the cap and resumes once Joe works the queue below it.
 const REVIEW_CAP = 25;
@@ -1400,6 +1454,8 @@ async function toolJobBoardCount() {
   if (await isAgentPaused("whitney")) {
     return { content: [{ type: "text", text: "⏸ Whitney is PAUSED by Joe. Stand down — do not find or post jobs. End your turn without acting." }] };
   }
+  const budget = await dailyBudgetStop("whitney");
+  if (budget) return budget;
   const res = await query(`SELECT count(*)::int n FROM job_applications WHERE status = 'found'`);
   const n = res.rows[0].n;
   const room = Math.max(0, REVIEW_CAP - n);
@@ -1422,6 +1478,8 @@ async function toolRecordFoundJob({
   if (await isAgentPaused("whitney")) {
     return { content: [{ type: "text", text: "⏸ Whitney is PAUSED by Joe. Stand down — do not find or post jobs. End your turn without acting." }] };
   }
+  const budgetStop = await dailyBudgetStop("whitney");
+  if (budgetStop) return budgetStop;
   if (!company || !role) {
     return { content: [{ type: "text", text: "❌ company and role are required." }], isError: true };
   }
@@ -1478,6 +1536,12 @@ async function toolRecordFoundJob({
 async function toolListApprovedJobs() {
   if (await isAgentPaused("whitney")) {
     return { content: [{ type: "text", text: "⏸ Whitney is PAUSED by Joe. Stand down — do NOT apply to anything and do NOT find new jobs. Log nothing and end your turn." }] };
+  }
+  const budget = await dailyBudgetStop("whitney");
+  if (budget) return budget;
+  const appliedN = await appliedToday();
+  if (appliedN >= DAILY_APPLY_CAP) {
+    return { content: [{ type: "text", text: `✅ Today's applications are done: ${appliedN}/${DAILY_APPLY_CAP}. That is the healthy human ceiling — more in one day looks automated and is what gets Joe's job-board accounts flagged. Do NOT apply to anything else today and do NOT go looking for more roles. End your turn; the queue will still be here tomorrow.` }] };
   }
   const res = await query(
     `SELECT id, company, role, platform, url, location, pay, fit_reason, priority, approved_at,
@@ -1627,6 +1691,8 @@ async function findMailbox(client, specialUse, fallback) {
 }
 
 async function toolInboxSweep({ since_minutes, limit } = {}) {
+  const budget = await dailyBudgetStop("edward");
+  if (budget) return budget;
   const client = zohoImap();
   if (!client) return NO_MAIL_CREDS;
   const sinceMin = Number.isFinite(since_minutes) ? since_minutes : 480; // default 8h — covers a missed sweep
@@ -1816,6 +1882,8 @@ async function toolEmailApproveSend({ id, note } = {}) {
 // event_type='email_inbox_report') + the pending-approval queue, in one call —
 // everything needed to compose the Telegram update for Joe.
 async function toolGetInboxReport() {
+  const vBudget = await dailyBudgetStop("main");
+  if (vBudget) return vBudget;
   const rep = await query(
     `SELECT summary, created_at FROM activity_log
       WHERE event_type = 'email_inbox_report' ORDER BY created_at DESC LIMIT 1`,
@@ -1979,6 +2047,8 @@ async function toolSendTelegramUpdate({ text }) {
 // the audit trail: the debrief should say what actually happened, not what she said happened.
 // Her own run notes ride along underneath as colour, clearly labelled as self-reported.
 async function toolGetJobHuntReport({ since_hours } = {}) {
+  const vBudget = await dailyBudgetStop("main");
+  if (vBudget) return vBudget;
   const hours = Math.max(1, Math.min(Number(since_hours) || 12, 168));
   const label = (r) => `${r.role} @ ${r.company}`;
 
@@ -2780,7 +2850,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.46.0" },
+  { name: "tbj-mcp", version: "2.47.0" },
   { capabilities: { tools: {} } },
 );
 
