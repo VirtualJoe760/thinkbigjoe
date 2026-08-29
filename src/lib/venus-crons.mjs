@@ -292,6 +292,9 @@ NEVER run forge-template.sh yourself or mass-add languages — Joe builds propos
     name: "TBJ Whitney — Job Applications",
     id: "9cb191fe-5ec2-4414-ac45-756501b8cc5d",
     agent: "whitney",
+    // 💰 She runs on claude-cli/claude-sonnet-4-6 as of 2026-08-29 (moved off the exhausted
+    // ollama free tier). That means every wake now draws the SHARED Max weekly cap — the same
+    // pool as Joe's interactive Claude Code and the forge's site builds. Keep this cadence tight.
     // ⏱ Cut from */15 24/7 (96 runs/day) on 2026-08-27. That cadence exhausted her ollama-cloud
     // free-tier quota and left her rate-limited — and the waste was almost total: 69 of 96 runs in
     // a 24h sample did nothing but log "review board full, standing down". A stand-down still costs

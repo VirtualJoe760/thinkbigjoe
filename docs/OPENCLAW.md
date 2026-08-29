@@ -91,7 +91,23 @@ Two providers are in play, and mixing them up wastes a debugging session:
 - **`claude-cli/<model>`** — rides **Joe's existing Claude Max subscription login** (macOS Keychain,
   zero extra setup). This is what `prospector`, `marketing-manager`, and `outreach` run on
   (`claude-cli/claude-sonnet-4-6` as of this writing — sonnet, not opus, to protect budget).
-- **`ollama-cloud/glm-5.2`** — the free-tier model; `main` (Venus) and `researcher` run on it.
+- **`ollama-cloud/glm-5.2`** — the free-tier model. **No longer used by any operating agent.**
+  `researcher`/`incubator`/`angel-scout`/`nc-social` still point at it but are stood down.
+  > ⚠️ **It has a WEEKLY usage limit, and the gateway hides which one.** OpenClaw surfaces only
+  > `FailoverError: ⚠️ API rate limit reached`. POST `https://ollama.com/v1/chat/completions` with
+  > `OLLAMA_API_KEY` from `.env.local` to see the real message — on 2026-08-28 it returned HTTP 429
+  > *"you (josephsardella) have reached your **weekly** usage limit"*. Weekly, not daily: waiting a
+  > day does nothing, and no reset headers are returned. Top-up: https://ollama.com/settings.
+  > What burned it: Whitney's old `*/15` 24/7 cron — 96 wakes/day of which ~70% only logged
+  > "board full, standing down". **A stand-down still costs a full model call.**
+
+- **2026-08-29 — Whitney, Edward and Venus all moved to `claude-cli/claude-sonnet-4-6`** (Joe's
+  call, to get off the exhausted Ollama tier and onto one backend). Confirm a model switch actually
+  took effect by the ERROR CHANGING, not by the config: the startup log's `agent model:` line is the
+  global default, not the per-agent model. An ollama agent fails with "rate limit reached"; a
+  claude-cli one fails with "OAuth session expired" — that swap is the proof.
+  ⚠️ **They now draw the shared Max weekly cap** — same pool as interactive Claude Code and the
+  forge's `claude -p` builds. Whitney at ~34 runs/day is ~238 agent turns/week against it.
   **`glm-4.7` was RETIRED by Ollama Cloud on 2026-07-15** (the API 410s) — if an ollama agent errors
   with `FailoverError: 410 … retired`, bump its model to a live one (`openclaw config set` +
   gateway restart, then `node scripts/sync-openclaw-agents.mjs`). Historical glm-4.7 gotchas
