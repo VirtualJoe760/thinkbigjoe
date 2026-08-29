@@ -3,7 +3,7 @@
 import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
-import { db, jobApplications, activityLog, agents, agentQuestions, candidateFacts } from "@/db";
+import { db, jobApplications, activityLog, agents, agentQuestions, agentDirectives, candidateFacts } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
 
 // Joe's human gate. Whitney posts jobs at status 'found'; these actions are how
@@ -163,4 +163,45 @@ export async function setWhitneyPaused(paused: boolean): Promise<void> {
     metadata: { agent: "whitney", via: "/command/applications" },
   });
   revalidatePath("/command/applications");
+}
+
+/**
+ * Give an agent a direct instruction — Joe's manual override.
+ *
+ * The daily budget cap exists to stop *autonomous* waste (an agent waking with nothing to do and
+ * spending a model call to work that out). It must never stop Joe: "go after Compass", "draft a
+ * reply to this", "chase that lender" are the entire point of having agents. So an open directive
+ * is worked FIRST and lifts that agent's cap until it's done.
+ *
+ * Agent-agnostic on purpose — a newly created agent is directable the day it's registered,
+ * with no code change here.
+ */
+export async function directAgent(agent: string, formData: FormData): Promise<void> {
+  await assertAdmin();
+  const request = String(formData.get("request") || "").trim();
+  if (!request) return;
+  const context = String(formData.get("context") || "").trim() || null;
+  const rows = await db
+    .insert(agentDirectives)
+    .values({ agent, request, context })
+    .returning({ id: agentDirectives.id });
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "agent_directive_issued",
+    summary: `Directed ${agent}: ${request.slice(0, 140)}`,
+    metadata: { directiveId: rows[0]?.id, agent, via: "/command/applications" },
+  });
+  revalidatePath("/command/applications");
+  revalidatePath("/command/inbox");
+}
+
+/** Withdraw an instruction the agent hasn't finished — it stops overriding the budget cap. */
+export async function cancelDirective(id: number): Promise<void> {
+  await assertAdmin();
+  await db
+    .update(agentDirectives)
+    .set({ status: "cancelled", completedAt: new Date().toISOString() })
+    .where(eq(agentDirectives.id, id));
+  revalidatePath("/command/applications");
+  revalidatePath("/command/inbox");
 }

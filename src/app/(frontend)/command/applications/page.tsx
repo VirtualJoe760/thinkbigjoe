@@ -6,6 +6,7 @@ import { db, jobApplications, agents, agentQuestions } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
 import { approveJob, dismissJob, reopenJob, bumpPriority, setWhitneyPaused, answerQuestion, declineQuestion } from "./actions";
 import { type Job, StageBadge, ScoreChip, TargetBadge, MetaRow, relativeTime, abbreviate } from "./parts";
+import { DirectAgent } from "../direct-agent";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -197,6 +198,12 @@ export default async function ApplicationsPage({
           <span className="rounded-full bg-indigo-50 px-3 py-1 font-semibold text-indigo-700">{working.length} in progress</span>
           <span className="rounded-full bg-green-50 px-3 py-1 font-semibold text-green-700">{done.length} applied</span>
         </div>
+
+        <DirectAgent
+          agent="whitney"
+          label="Whitney"
+          placeholder="e.g. Go after Compass — find their engineering roles and post the ones I'd fit."
+        />
 
         {/* NEEDS YOUR INPUT — Whitney is blocked and asked a question */}
         {openQuestions.length > 0 && (

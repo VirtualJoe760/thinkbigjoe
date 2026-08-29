@@ -205,6 +205,32 @@ control, not the real fix.
 
 ---
 
+## Overriding the budget — directives
+
+A cap that Joe can't override is a cage. The budget exists to stop **autonomous** waste (an agent
+waking with nothing to do and spending a model call to work that out). It must never stop Joe:
+*"go after Compass"*, *"draft a reply to this"*, *"chase that lender"* are the entire point of
+having agents.
+
+**`agent_directives`** is that override, and it is **agent-agnostic by design** — a newly created
+agent is directable the day it's registered, with no code change:
+
+- Joe issues one from the **"Tell &lt;agent&gt; to…"** box on that agent's dashboard
+  (`src/app/(frontend)/command/direct-agent.tsx`, mounted on `/command/applications` for Whitney
+  and `/command/inbox` for Edward). `directAgent(agent, formData)` writes the row.
+- The agent calls **`list_my_directives`** at the very top of every run — ahead of its own loop —
+  and **`complete_directive`** with what it actually did (including "I couldn't, because…").
+- **While any directive is open, that agent's `DAILY_TURN_CAP` is lifted.** Completing it puts the
+  cap back. That's the whole trick: flexibility without abandoning the budget.
+
+`DEFAULT_TURN_CAP = 8` covers any agent not named in `DAILY_TURN_CAP`, so a new agent is budgeted
+from the moment it exists rather than running unbounded until someone remembers to add it.
+
+> ⚠️ Not to be confused with **`agent_tasks`** — a legacy prospecting table from the retired
+> `research` agent (2 rows, June 2026, no code reads it). `agent_directives` is the live one.
+
+---
+
 ## Cron delivery — why a cron "runs fine" and Joe still hears nothing
 
 Getting a scheduled message to actually reach Joe's Telegram has **four** independent traps.

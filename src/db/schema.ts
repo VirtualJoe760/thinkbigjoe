@@ -181,6 +181,7 @@ export const agentTasks = pgTable("agent_tasks", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	processedAt: timestamp("processed_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
+	index("agent_tasks_agent_status_idx").using("btree", table.agent.asc().nullsLast().op("text_ops"), table.status.asc().nullsLast().op("text_ops"), table.createdAt.asc().nullsLast().op("text_ops")),
 	index("agent_tasks_prospect_idx").using("btree", table.prospectId.asc().nullsLast().op("int4_ops")),
 	index("agent_tasks_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops"), table.createdAt.asc().nullsLast().op("text_ops")),
 	foreignKey({
@@ -920,4 +921,19 @@ export const jobApplications = pgTable("job_applications", {
 	index("job_applications_created_at_idx").using("btree", table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
 	index("job_applications_priority_idx").using("btree", table.priority.desc().nullsFirst().op("int4_ops"), table.approvedAt.asc().nullsLast().op("int4_ops")),
 	index("job_applications_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+]);
+
+export const agentDirectives = pgTable("agent_directives", {
+	id: serial().primaryKey().notNull(),
+	agent: varchar({ length: 40 }).notNull(),
+	request: text().notNull(),
+	context: text(),
+	status: varchar({ length: 16 }).default('open').notNull(),
+	result: text(),
+	createdBy: varchar("created_by", { length: 40 }).default('joe').notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	startedAt: timestamp("started_at", { withTimezone: true, mode: 'string' }),
+	completedAt: timestamp("completed_at", { withTimezone: true, mode: 'string' }),
+}, (table) => [
+	index("agent_directives_agent_status_idx").using("btree", table.agent.asc().nullsLast().op("text_ops"), table.status.asc().nullsLast().op("text_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")),
 ]);

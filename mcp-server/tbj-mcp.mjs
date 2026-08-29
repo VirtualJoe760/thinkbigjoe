@@ -204,6 +204,9 @@ function tgEscape(s) {
 // slightly UNDERCOUNTS (a turn that dies before logging isn't seen), so these are deliberately
 // set below the cadence ceiling — they're a backstop, not the primary control.
 // ---------------------------------------------------------------------------
+// Per-agent overrides; anything not listed gets DEFAULT_TURN_CAP. A NEW agent is therefore
+// budgeted the moment it exists — no code change needed to keep it from running away.
+const DEFAULT_TURN_CAP = 8;
 const DAILY_TURN_CAP = { whitney: 15, edward: 4, main: 4 };
 // Whitney's real-world ceiling. ~2-5 applications/day is the healthy human cadence; more looks
 // like a bot and is what gets Joe's accounts flagged. This is a business limit, not a cost one.
@@ -225,13 +228,21 @@ async function turnsToday(agentId) {
 
 /** Loop-entry guard. Returns a stand-down tool result when the day's budget is spent, else null. */
 async function dailyBudgetStop(agentId) {
-  const cap = DAILY_TURN_CAP[agentId];
-  if (!cap) return null;
-  let n;
-  try { n = await turnsToday(agentId); }
-  catch { return null; } // fail-open: a counting error must never wedge an agent
+  const cap = DAILY_TURN_CAP[agentId] ?? DEFAULT_TURN_CAP;
+  let n, pending;
+  try {
+    [n, pending] = await Promise.all([turnsToday(agentId), openDirectiveCount(agentId)]);
+  } catch { return null; } // fail-open: a counting error must never wedge an agent
+  // OVERRIDE: Joe asking for something is never the autonomous waste this cap exists to stop.
+  // An open directive lifts the ceiling for the day — flexibility without abandoning the budget.
+  if (pending > 0) return null;
   if (n < cap) return null;
-  return { content: [{ type: "text", text: `🛑 Daily budget spent: ${n}/${cap} turns logged today. Stand down NOW — end this turn without calling another tool, browsing, or logging. This is a hard cost ceiling (you run on Joe's shared Claude Max cap), not a suggestion. You resume automatically tomorrow.` }] };
+  return { content: [{ type: "text", text: `🛑 Daily budget spent: ${n}/${cap} turns logged today. Stand down NOW — end this turn without calling another tool, browsing, or logging. This is a hard cost ceiling (you run on Joe's shared Claude Max cap), not a suggestion. You resume automatically tomorrow — or immediately if Joe gives you a direct instruction, which overrides this.` }] };
+}
+
+async function openDirectiveCount(agentId) {
+  const r = await query(`SELECT count(*)::int n FROM agent_directives WHERE agent = $1 AND status = 'open'`, [agentId]);
+  return r.rows[0].n;
 }
 
 async function appliedToday() {
@@ -242,6 +253,49 @@ async function appliedToday() {
           = (now() AT TIME ZONE 'America/Phoenix')::date`,
   );
   return r.rows[0].n;
+}
+
+// ---------------------------------------------------------------------------
+// DIRECTIVES — Joe's manual override, for ANY agent.
+//
+// The budget cap stops autonomous waste. It must never stop Joe: "go after Compass", "draft a
+// reply to this", "look into that lender" are the whole point of having agents. So a directive
+// (a) is worked FIRST, before the agent's own loop, and (b) lifts the daily cap while it's open.
+// Deliberately agent-agnostic — a new agent is directable the day it's registered, no code change.
+// ---------------------------------------------------------------------------
+async function toolListMyDirectives({ agent }) {
+  if (!agent) return { content: [{ type: "text", text: "❌ agent is required — pass your own agent id." }], isError: true };
+  const r = await query(
+    `SELECT id, request, context, created_at FROM agent_directives
+      WHERE agent = $1 AND status IN ('open','working') ORDER BY created_at ASC LIMIT 10`,
+    [agent],
+  );
+  if (!r.rows.length) {
+    return { content: [{ type: "text", text: "📭 No direct instructions from Joe. Work your normal loop." }] };
+  }
+  await query(`UPDATE agent_directives SET status='working', started_at=COALESCE(started_at, now()) WHERE agent=$1 AND status='open'`, [agent]);
+  const lines = [`📌 **${r.rows.length} direct instruction(s) from Joe — these come FIRST, before your normal loop:**`, ""];
+  for (const d of r.rows) {
+    lines.push(`**#${d.id}** — ${d.request}`);
+    if (d.context) lines.push(`Context: ${d.context}`);
+    lines.push("");
+  }
+  lines.push("_Work these to completion, then **complete_directive** each with what you actually did. While one is open your daily budget cap is lifted, so don't rush — but don't wander either: do what he asked, not what's adjacent to it. If you genuinely can't do it, complete it anyway and say why._");
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolCompleteDirective({ id, result }) {
+  if (!Number.isFinite(Number(id))) return { content: [{ type: "text", text: "❌ id is required (from list_my_directives)." }], isError: true };
+  const r = await query(
+    `UPDATE agent_directives SET status='done', result=$2, completed_at=now()
+      WHERE id=$1 AND status IN ('open','working') RETURNING agent, request`,
+    [id, result || null],
+  );
+  if (!r.rows.length) return { content: [{ type: "text", text: `❌ No open directive #${id}.` }], isError: true };
+  await audit("agent_directive_done", `${r.rows[0].agent} finished Joe's instruction: ${String(r.rows[0].request).slice(0, 120)}`, {
+    actor: r.rows[0].agent, detail: { directive_id: Number(id), result: result || null },
+  });
+  return { content: [{ type: "text", text: `✅ Directive #${id} marked done. Joe sees your result on the board.` }] };
 }
 
 // The review board's opportunity cap — how many 'found' roles can wait for Joe at once.
@@ -2850,7 +2904,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.47.0" },
+  { name: "tbj-mcp", version: "2.48.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -3249,6 +3303,27 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           notes: { type: "string", description: "Optional notes about the send." },
         },
         required: ["outreach_id"],
+      },
+    },
+    {
+      name: "list_my_directives",
+      description: "ANY AGENT: direct instructions Joe has given YOU personally — 'go after this company', 'draft a reply to that', 'look into this lender'. CALL THIS FIRST, at the very top of every run, before your own loop. These outrank everything else you were going to do, and while one is open your daily budget cap is LIFTED (a request from Joe is never the waste that cap exists to stop). Pass your own agent id.",
+      inputSchema: {
+        type: "object",
+        properties: { agent: { type: "string", description: "Your own agent id (e.g. 'whitney', 'edward')." } },
+        required: ["agent"],
+      },
+    },
+    {
+      name: "complete_directive",
+      description: "ANY AGENT: mark one of Joe's direct instructions finished, with what you ACTUALLY did — he reads this. Complete it even if you could not do what he asked: say plainly what blocked you. Leaving it open keeps your budget cap lifted and makes him think you're still working.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "number", description: "Directive id from list_my_directives." },
+          result: { type: "string", description: "What you did, or why you couldn't. One or two sentences, concrete." },
+        },
+        required: ["id"],
       },
     },
     {
@@ -3720,6 +3795,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "update_prospect": return toolUpdateProspect(args);
     case "list_approved_for_outreach": return toolListApprovedForOutreach();
     case "mark_sent": return toolMarkSent(args);
+    case "list_my_directives": return toolListMyDirectives(args);
+    case "complete_directive": return toolCompleteDirective(args);
     case "record_found_job": return toolRecordFoundJob(args);
     case "list_approved_jobs": return toolListApprovedJobs();
     case "job_board_count": return toolJobBoardCount();

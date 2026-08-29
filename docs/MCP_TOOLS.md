@@ -121,6 +121,12 @@ tool-by-tool → UI-surface map):
     outcome, not a failure: a question she can't get past is an application she can't finish.
     She reads the decline, resolves it, and moves to the next job — no re-asking, no rewording,
     no applying anyway. Reversible via `reopenJob` from the board's archive.
+- **Directives — Joe's manual override** (v2.48.0): `list_my_directives` + `complete_directive`,
+  backed by `agent_directives`. Any agent calls `list_my_directives` FIRST each run; an open
+  directive outranks its normal loop and **lifts its `DAILY_TURN_CAP`** until completed. The budget
+  is there to stop autonomous waste, never to stop Joe. Agent-agnostic — works for an agent created
+  after this line was written. Issued from the "Tell &lt;agent&gt; to…" box on the agent's dashboard.
+
 - **Priority employers / directed finds** (v2.46.0): `record_found_job` takes `directed: true`
   for a role at an employer **Joe named himself** (the ⭐ PRIORITY EMPLOYERS list in Whitney's
   `USER.md` — currently Anthropic, xAI, and real-estate brokerages/proptech). Those get their own

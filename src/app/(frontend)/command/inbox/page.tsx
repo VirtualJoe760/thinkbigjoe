@@ -3,6 +3,7 @@ import { desc, eq, inArray, ne } from "drizzle-orm";
 
 import { db, emailOutbox, activityLog } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
+import { DirectAgent } from "../direct-agent";
 import { SubNav, VENUS_TABS } from "../sub-nav";
 
 export const dynamic = "force-dynamic";
@@ -76,10 +77,17 @@ export default async function InboxPage() {
         <SubNav items={VENUS_TABS} />
         <h1 className="text-2xl font-extrabold tracking-tight">Inbox — Edward 📬</h1>
         <p className="mt-1 text-sm text-ink-soft">
-          Edward sweeps joe@thinkbigjoe.com 3×/day: triage, spam out, replies drafted in Joe&apos;s
-          voice. Sends queue below for <span className="font-semibold text-ink">Venus&apos;s</span>{" "}
-          approval — nothing sends without it. Venus briefs Joe on Telegram at 6:00 / 12:00 / 18:00.
+          Edward sweeps joe@thinkbigjoe.com 2×/day (6:45a / 3:45p): triage, spam out, replies
+          drafted in Joe&apos;s voice. Sends queue below for{" "}
+          <span className="font-semibold text-ink">Venus&apos;s</span> approval — nothing sends
+          without it. Venus briefs Joe on Telegram at 12:30 / 18:30.
         </p>
+
+        <DirectAgent
+          agent="edward"
+          label="Edward"
+          placeholder="e.g. Draft a reply to the recruiter from Northgate — interested, ask about remote."
+        />
 
         {/* Latest report */}
         <h2 className="mt-8 text-sm font-semibold uppercase tracking-wide text-ink-soft">

@@ -308,7 +308,7 @@ NEVER run forge-template.sh yourself or mass-add languages — Joe builds propos
     tz: "America/Phoenix",
     stagger: "2m",
     summary: "Whitney's priority-queue run: FIRST work any job Joe approved (create account → email-verify → tailor → submit); only when the approved queue is empty, find new roles matching Joe's target profile and post them to /command/applications for approval. One approved application per run (human cadence).",
-    tools: ["list_approved_jobs", "update_application_status", "inbox_search", "record_found_job", "book_appointment", "record_question", "list_answered_questions", "mark_question_resolved", "remember_fact", "log_activity"],
+    tools: ["list_my_directives", "complete_directive", "list_approved_jobs", "update_application_status", "inbox_search", "record_found_job", "book_appointment", "record_question", "list_answered_questions", "mark_question_resolved", "remember_fact", "log_activity"],
     uiSurface: ["/command/applications (review board — Approve/Dismiss + live pipeline)"],
     eventTypes: ["job_found", "application_account_created", "application_verified", "application_applied", "application_interview", "agent_question", "whitney_run_complete"],
     prompt: `This is your work run. Follow your PRIORITY-QUEUE loop (AGENTS.md) — do the most important thing available, then stop.
@@ -317,6 +317,8 @@ NEVER run forge-template.sh yourself or mass-add languages — Joe builds propos
    - **Answered** → use his answer to resume that application this run.
    - **DECLINED** → he chose not to answer, and that application is already CANCELLED (job closed). That is a normal outcome, not a rejection of you and not a failure. Do NOT re-ask it, do NOT reword it, do NOT apply anyway, do NOT keep bringing it up. Just move to the next job.
    **mark_question_resolved** each one either way, then continue.
+
+‼️ FIRST, ALWAYS — call **list_my_directives** with agent "whitney". If Joe has given you a direct instruction ("go after Compass", "look at this posting"), that OUTRANKS everything below and your daily cap is lifted while it's open. Do it, then **complete_directive** with what you actually did — including if you couldn't, and why. Only then continue.
 
 PACING: you may submit at most **5 applications per day** and your loop tools enforce it — when the cap is hit they will tell you to stand down, and that is final, not something to work around. You run on Joe's shared Claude usage, so a wasted turn costs him his own tooling. Do the most valuable thing available, then end the turn; never pad a run to look busy.
 
@@ -347,11 +349,12 @@ Finish with **log_activity** (actor: "whitney") summarizing what you did — **n
     tz: "America/Phoenix",
     stagger: "exact",
     summary: "Edward sweeps joe@thinkbigjoe.com 3×/day (5:45a/11:45a/5:45p): classify, junk spam, draft replies in Joe's voice, queue sends for Venus, file the inbox report she reads for her 6/12/6 Telegram update.",
-    tools: ["inbox_sweep", "email_create_draft", "email_move_spam", "email_request_send", "email_list_pending_sends", "log_activity"],
+    tools: ["list_my_directives", "complete_directive", "inbox_sweep", "email_create_draft", "email_move_spam", "email_request_send", "email_list_pending_sends", "log_activity"],
     uiSurface: ["/command/inbox"],
     eventTypes: ["email_inbox_report", "email_draft_created", "email_spam_moved", "email_send_requested"],
     prompt: `This is your scheduled inbox sweep — one of three a day. Work your SOP (AGENTS.md) start to finish:
 
+0. ‼️ **list_my_directives** with agent "edward" FIRST. A direct instruction from Joe ("draft a reply to X", "find the thread about Y") outranks the whole sweep and lifts your daily cap while it's open. Do it, **complete_directive** it, then continue.
 1. inbox_sweep with since_minutes 760 (covers the gap since your last sweep, overnight included).
 2. Classify every message (employer / investor / client-lead / personal / transactional / newsletter / promo / spam / phishing). Real correspondence deserves care; mass mail wearing a first name is still mass mail.
 3. Act: spam/phishing → email_move_spam (phishing additionally gets named in your report — NEVER interact with it otherwise). Real correspondence needing a reply → email_create_draft in Joe's voice; if it's ready to go out, email_request_send with one line of context for Venus. Time-sensitive items (interview invites, investor questions, deadlines) are PRESSING.
