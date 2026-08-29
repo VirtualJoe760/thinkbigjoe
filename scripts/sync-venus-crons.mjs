@@ -67,7 +67,7 @@ try {
 const byName = new Map(current.map((c) => [c.name, c]));
 
 // --- Reconcile --------------------------------------------------------------
-let added = 0, updated = 0, ok = 0;
+let added = 0, updated = 0, ok = 0, disabled = 0;
 
 let skipped = 0;
 
@@ -77,7 +77,21 @@ for (const cron of VENUS_CRONS) {
   // schedule in-repo before its prerequisites (e.g. an agent's credentials/profile)
   // are set, without it firing. Flip to true (or remove the flag) + re-sync to activate.
   if (cron.enabled === false) {
-    console.log(`⏸ skip  ${cron.name}  (disabled in manifest — not synced)`);
+    // The manifest is the source of truth, so `enabled:false` must be able to TURN OFF a cron
+    // that is already live — not merely decline to create it. Skipping was a real gap: on
+    // 2026-08-28 three crons (Tom, Email Inbox, Brand Lead) were running against a manifest
+    // that said they shouldn't be, and had to be disabled by hand via the CLI.
+    const live = byName.get(cron.name);
+    if (live && live.enabled !== false) {
+      console.log(`${DRY ? "[dry] would DISABLE" : "⏸ DISABLE"} ${cron.name}  (manifest says enabled:false, but it is live)`);
+      if (!DRY) {
+        const res = oc(["cron", "disable", live.id]);
+        if (res.status !== 0) console.error(`  ✗ disable failed: ${res.stderr || res.stdout}`);
+      }
+      disabled++;
+    } else {
+      console.log(`⏸ skip  ${cron.name}  (disabled in manifest — not synced)`);
+    }
     skipped++;
     continue;
   }
@@ -155,6 +169,7 @@ for (const o of orphans) {
 console.log("");
 console.log(
   `${DRY ? "[dry] " : ""}Sync complete — ${ok} in sync, ${updated} ${DRY ? "to update" : "updated"}, ` +
-  `${added} ${DRY ? "to add" : "added"}, ${skipped} disabled/skipped, ${orphans.length} orphan(s).`,
+  `${added} ${DRY ? "to add" : "added"}, ${disabled} ${DRY ? "to turn off" : "turned off"}, ` +
+  `${skipped} disabled/skipped, ${orphans.length} orphan(s).`,
 );
 if (DRY) console.log("Re-run without --dry to apply.");

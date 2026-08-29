@@ -187,6 +187,10 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
   },
 
   {
+    // ⏸ OFF (2026-08-28, Joe): fleet narrowed to Whitney + Edward + Venus only. Prospecting,
+    // brand, and the other workers are not in use — every extra cron is quota and noise for
+    // work nobody is reading.
+    enabled: false,
     name: "TBJ Email Inbox",
     id: "a1d6b6cd-27d5-4a54-a74f-a5dab3d69293",
     agent: "outreach",
@@ -255,6 +259,10 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
 4. DIGEST: finish with log_activity, event_type "marketing_digest", summary like "Funnel: P previews · S sent · C claimed · K calls booked. sent→claimed X%. Budget→N. E expiring — flagged." This is Joe's daily read on the whole machine.`,
   },
   {
+    // ⏸ OFF (2026-08-28, Joe): fleet narrowed to Whitney + Edward + Venus only. Prospecting,
+    // brand, and the other workers are not in use — every extra cron is quota and noise for
+    // work nobody is reading.
+    enabled: false,
     name: "TBJ Brand Lead — Design Research",
     id: "54185d25-45a9-41c1-82dc-4a651242d60e",
     agent: "brand-lead",
@@ -317,9 +325,13 @@ NEVER run forge-template.sh yourself or mass-add languages — Joe builds propos
 Finish with **log_activity** (actor: "whitney") summarizing what you did — **name the role + company** for anything you applied to or advanced (e.g. "Applied: Senior Solutions Consultant @ Northgate Capital"), or "surfaced N new roles". Venus reads these notes into Joe's Telegram job-hunt debrief, so a bare count is useless to him — he wants the names. You still don't message Joe directly; Venus does the debriefing.`,
   },
   {
-    // ❄️ SHIPS COLD with Edward (2026-08-26): flip to true + `npm run venus:sync` to go live.
-    enabled: false,
+    // ✅ ON (2026-08-28, Joe): he wants Whitney + Edward as the only two workers operating.
+    // ⚠️ Edward runs on claude-cli, which is currently UNAUTHENTICATED (`claude auth status`
+    // → loggedIn:false). This cron is ARMED but every run fails until Joe runs `claude auth
+    // login`. Left enabled deliberately so he starts the moment that login happens.
+    enabled: true,
     name: "TBJ Edward — Inbox Sweep",
+    id: "9e596bde-e170-4267-ad0f-2896d810d722",
     agent: "edward",
     schedule: "45 5,11,17 * * *",
     tz: "America/Phoenix",

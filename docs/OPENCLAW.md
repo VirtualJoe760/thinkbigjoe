@@ -13,6 +13,22 @@ doc is the *concepts*, the playbook is the *procedures*.
 
 ## The roster (role-named, not human-named)
 
+> ### ⏸ FLEET NARROWED TO THREE — 2026-08-28 (Joe)
+> **Only `whitney`, `edward`, and `main` (Venus) operate.** Prospecting, brand, marketing, outreach,
+> research, and `tom` are **stood down**: their crons are disabled and their `agents` rows are
+> `enabled=false, status='off', paused=true` (those three columns survive
+> `sync-openclaw-agents.mjs`, which only overwrites name/role/org/model/workspace/archived).
+> Registration and persona files are **untouched** — this is reversible: re-enable the cron in
+> `venus-crons.mjs`, re-run `npm run venus:sync`, and flip the row back.
+>
+> Exactly three crons are enabled: `TBJ Whitney — Job Applications`, `TBJ Edward — Inbox Sweep`,
+> `TBJ Venus — Org Debrief`. Anything else showing as enabled is drift.
+>
+> ⚠️ **This did not free any Ollama quota.** The stood-down agents were either on `claude-cli`
+> (dead anyway — see below) or on ollama-cloud *with no cron*, so they were spending nothing.
+> The only ollama consumers are Whitney and Venus, and both are being kept.
+
+
 Agents are named for **what they do**, with one exception:
 
 | id | role | notes |
