@@ -163,6 +163,47 @@ openclaw agents add/delete <id>       # roster management
 
 ---
 
+## The mail audit of 2026-08-30 — an interview invite nobody saw
+
+Joe noticed he had no confirmation emails for jobs Whitney applied to. The applications were
+real; the **reporting was structurally blind**. Three independent gaps, each individually
+reasonable, combined into a system that confidently reported "inbox clear" over a live interview
+invite:
+
+1. **A Zoho server-side filter** routes ATS and employer mail out of `INBOX` into a
+   `Notification` folder. 23 messages had accumulated there, 19 unread.
+2. **`inbox_sweep` hard-coded `getMailboxLock("INBOX")`** — so that folder was invisible to
+   Edward permanently, not intermittently.
+3. **The sweep is time-windowed** (`since_minutes`). Anything nobody answered aged out of the
+   window and was never surfaced again. There was no concept of "still owed a reply".
+4. **Employer replies never reached the database.** Whitney writes `job_applications`; employers
+   write to the mailbox. Nothing joined the two, so Venus's debrief — which reads the tables —
+   could not see an emailed invite by construction.
+
+**What it cost:** a Klavis AI next-step invite (take-home, 7-day deadline) sat 4 days unread, and
+a Farmers Insurance meeting request that explicitly asked for confirmation went 34 days
+unanswered. Of 22 human inbound messages in the mailbox, **zero had a reply in `Sent`.** Three
+application records had also drifted from reality (Tebra rejected, Klavis advanced, Solv
+submitted) because only email knew.
+
+**The fix (all four gaps, same change):**
+- `inbox_sweep` walks **every** user folder via `sweepableFolders()` and tags each message with
+  its folder (uids are per-folder — always carry both).
+- **`inbox_unanswered`** — age-blind: every human message with no reply in `Sent`, most overdue
+  first. Bulk mail is separated by **`List-Unsubscribe`** (RFC 2369), because sorting purely by
+  age put 60 days of vendor onboarding above a recruiter.
+- **`email_file`** — files job mail into a `Job Alerts` lane. Filing organises; it never hides,
+  since every folder is still swept.
+- **`record_employer_reply`** — writes an employer's emailed answer onto the application and
+  advances it to `interview`/`rejected`, so it reaches `/command/applications` **and** Venus's
+  debrief.
+- Edward's report gained **OWED** and **EMPLOYER** sections; Venus's debrief gained 📬 **OWED**
+  and folds employer invites into 🎉 **INTERVIEW**; `/command/inbox` renders all three as panels.
+
+**The lesson worth keeping:** *a report that can only see one folder and one time window will
+tell you everything is fine.* When an agent reports "nothing to do", check what it is
+structurally capable of seeing before believing it.
+
 ## `inbox_search` reads HTML — and why that mattered
 
 Fixed 2026-08-30 (tbj-mcp 2.51.0). The tool read only `parsed.text`, but **transactional mail —

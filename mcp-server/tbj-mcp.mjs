@@ -1796,6 +1796,37 @@ async function findMailbox(client, specialUse, fallback) {
   return fallback;
 }
 
+// Folders a sweep must cover. Zoho (and any server-side filter Joe adds later) routes mail
+// OUT of INBOX — ATS/employer mail lands in "Notification" — so an INBOX-only sweep is
+// structurally blind to exactly the mail that matters most. Scan INBOX plus every ordinary
+// user folder; skip only the ones where mail is already handled or outbound.
+const SWEEP_SKIP_SPECIAL = new Set(["\\Sent", "\\Drafts", "\\Trash", "\\Junk", "\\All", "\\Flagged"]);
+const SWEEP_SKIP_NAMES = new Set(["sent", "drafts", "trash", "spam", "junk", "templates", "snoozed", "outbox"]);
+async function sweepableFolders(client) {
+  const out = [];
+  try {
+    for (const mbx of await client.list()) {
+      if (mbx.path === "INBOX") { out.unshift("INBOX"); continue; }
+      if (mbx.specialUse && SWEEP_SKIP_SPECIAL.has(mbx.specialUse)) continue;
+      if (SWEEP_SKIP_NAMES.has(String(mbx.path).toLowerCase())) continue;
+      out.push(mbx.path);
+    }
+  } catch { /* fall back to INBOX only */ }
+  return out.length ? out : ["INBOX"];
+}
+
+// Senders that can never be "waiting on a reply" — machine mail. Kept deliberately tight:
+// a real person at a company must never be filtered out just because their domain looks noisy.
+const MACHINE_SENDER = /(^|[<.@])(no-?reply|do-?not-?reply|donotreply|mailer-daemon|postmaster|bounce|notifications?@|automated|noreply)/i;
+const MACHINE_SUBJECT = /^(report domain|delivery status notification|undelivered mail|mail delivery)/i;
+function isMachineMail(from, subject) {
+  return MACHINE_SENDER.test(from || "") || MACHINE_SUBJECT.test(subject || "");
+}
+function bareAddress(s) {
+  const m = /<([^>]+)>/.exec(s || "");
+  return (m ? m[1] : (s || "")).trim().toLowerCase();
+}
+
 async function toolInboxSweep({ since_minutes, limit } = {}) {
   const budget = await dailyBudgetStop("edward");
   if (budget) return budget;
@@ -1807,37 +1838,42 @@ async function toolInboxSweep({ since_minutes, limit } = {}) {
   const msgs = [];
   try {
     await client.connect();
-    const lock = await client.getMailboxLock("INBOX");
-    try {
-      const uids = await client.search({ since }, { uid: true });
-      const scan = (uids || []).slice(-max).reverse(); // newest first
-      for (const uid of scan) {
-        let parsed = null;
-        for await (const msg of client.fetch(uid, { source: true }, { uid: true })) {
-          try { parsed = await simpleParser(msg.source); } catch { parsed = null; }
+    for (const folder of await sweepableFolders(client)) {
+      const lock = await client.getMailboxLock(folder);
+      try {
+        const uids = await client.search({ since }, { uid: true });
+        const scan = (uids || []).slice(-max).reverse(); // newest first
+        for (const uid of scan) {
+          let parsed = null;
+          for await (const msg of client.fetch(uid, { source: true }, { uid: true })) {
+            try { parsed = await simpleParser(msg.source); } catch { parsed = null; }
+          }
+          if (!parsed) continue;
+          msgs.push({
+            uid,
+            folder,
+            date: parsed.date ? parsed.date.toISOString() : null,
+            from: parsed.from?.text || "",
+            subject: parsed.subject || "(no subject)",
+            message_id: parsed.messageId || null,
+            snippet: (parsed.text || "").replace(/\s+/g, " ").trim().slice(0, 400),
+          });
         }
-        if (!parsed) continue;
-        msgs.push({
-          uid,
-          date: parsed.date ? parsed.date.toISOString() : null,
-          from: parsed.from?.text || "",
-          subject: parsed.subject || "(no subject)",
-          message_id: parsed.messageId || null,
-          snippet: (parsed.text || "").replace(/\s+/g, " ").trim().slice(0, 400),
-        });
+      } finally {
+        lock.release();
       }
-    } finally {
-      lock.release();
     }
+    msgs.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   } catch (err) {
     return { content: [{ type: "text", text: `❌ Inbox sweep failed: ${err?.message || err}` }], isError: true };
   } finally {
     try { await client.logout(); } catch { /* ignore */ }
   }
-  if (!msgs.length) return { content: [{ type: "text", text: `📭 Nothing new in INBOX in the last ${sinceMin} min.` }] };
-  const lines = [`📥 **${msgs.length} message(s)** (newest first) — classify each and act per your SOP:`, ""];
+  if (!msgs.length) return { content: [{ type: "text", text: `📭 Nothing new in the last ${sinceMin} min across any folder.` }] };
+  const byFolder = [...new Set(msgs.map((m) => m.folder))].join(", ");
+  const lines = [`📥 **${msgs.length} message(s)** across ${byFolder} (newest first) — classify each and act per your SOP:`, ""];
   for (const m of msgs) {
-    lines.push(`• uid ${m.uid} · ${m.date || "?"}`);
+    lines.push(`• uid ${m.uid} · [${m.folder}] · ${m.date || "?"}`);
     lines.push(`  From: ${m.from}`);
     lines.push(`  Subject: ${m.subject}`);
     if (m.message_id) lines.push(`  Message-ID: ${m.message_id}`);
@@ -1899,6 +1935,163 @@ async function toolEmailMoveSpam({ uid, uids } = {}) {
   }
   await audit("email_spam_moved", `Moved uid ${list.join(",")} → ${junk}`, { actor: "edward" });
   return { content: [{ type: "text", text: `🗑️ Moved ${list.length} message(s) to ${junk}. Recoverable there — nothing is ever permanently deleted.` }] };
+}
+
+// --- The unanswered backlog -------------------------------------------------
+// inbox_sweep is time-windowed by design, which means an inquiry nobody answered simply ages
+// out of view and is never seen again. That is how a Klavis AI interview invite and a Farmers
+// Insurance meeting request both went 4 and 34 days without a reply while Edward reported
+// "inbox clear". This tool is age-blind on purpose: it asks "who is still owed a reply?"
+async function toolInboxUnanswered({ limit, include_machine } = {}) {
+  const client = zohoImap();
+  if (!client) return NO_MAIL_CREDS;
+  const max = Math.min(Number(limit) || 40, 100);
+  const repliedTo = new Set();   // addresses we have written to
+  const answeredIds = new Set(); // Message-IDs we have replied to (thread-accurate)
+  const inbound = [];
+  try {
+    await client.connect();
+
+    const sentPath = await findMailbox(client, "\\Sent", "Sent");
+    const slock = await client.getMailboxLock(sentPath);
+    try {
+      for await (const m of client.fetch({ all: true }, { envelope: true, uid: true })) {
+        const e = m.envelope || {};
+        for (const a of (e.to || [])) if (a.address) repliedTo.add(a.address.toLowerCase());
+        for (const a of (e.cc || [])) if (a.address) repliedTo.add(a.address.toLowerCase());
+        if (e.inReplyTo) answeredIds.add(String(e.inReplyTo).trim());
+      }
+    } finally { slock.release(); }
+
+    for (const folder of await sweepableFolders(client)) {
+      const lock = await client.getMailboxLock(folder);
+      try {
+        for await (const m of client.fetch({ all: true }, { envelope: true, flags: true, uid: true, headers: ["list-unsubscribe", "precedence", "auto-submitted"] })) {
+          const e = m.envelope || {};
+          const from = (e.from || []).map((a) => `${a.name || ""} <${a.address}>`).join(", ");
+          const subject = e.subject || "(no subject)";
+          if (!include_machine && isMachineMail(from, subject)) continue;
+          const addr = bareAddress(from);
+          if (!addr || repliedTo.has(addr)) continue;
+          if (e.messageId && answeredIds.has(String(e.messageId).trim())) continue;
+          // Bulk detection: List-Unsubscribe (RFC 2369) is the honest signal that a message was
+          // blasted to a list, not written to Joe. Without this, 60 days of vendor onboarding mail
+          // outranks a recruiter — which is exactly how the Klavis invite stayed buried.
+          const hdr = m.headers ? m.headers.toString().toLowerCase() : "";
+          const bulk = /list-unsubscribe:/.test(hdr)
+            || /precedence:\s*(bulk|list|junk)/.test(hdr)
+            || /auto-submitted:\s*auto/.test(hdr)
+            || folder.toLowerCase() === "newsletter";
+          inbound.push({
+            uid: m.uid, folder, from, subject, bulk,
+            date: e.date ? new Date(e.date).toISOString() : null,
+            seen: !!(m.flags && m.flags.has && m.flags.has("\\Seen")),
+          });
+        }
+      } finally { lock.release(); }
+    }
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Unanswered scan failed: ${err?.message || err}` }], isError: true };
+  } finally {
+    try { await client.logout(); } catch { /* ignore */ }
+  }
+
+  const byAge = (a, b) => String(a.date || "").localeCompare(String(b.date || "")); // oldest = most overdue
+  const real = inbound.filter((m) => !m.bulk).sort(byAge);
+  const bulk = inbound.filter((m) => m.bulk).sort(byAge);
+  if (!real.length && !bulk.length) {
+    return { content: [{ type: "text", text: "✅ Nothing is waiting on a reply — every human message in the mailbox has an answer in Sent." }] };
+  }
+
+  const now = Date.now();
+  const age = (m) => (m.date ? Math.floor((now - new Date(m.date).getTime()) / 86400000) : "?");
+  const lines = [];
+  if (real.length) {
+    lines.push(`⏳ **${real.length} message(s) from a real person, still owed a reply** (most overdue first):`, "");
+    for (const m of real.slice(0, max)) {
+      lines.push(`• uid ${m.uid} · [${m.folder}] · **${age(m)}d overdue** · ${m.seen ? "read" : "UNREAD"}`);
+      lines.push(`  From: ${m.from}`);
+      lines.push(`  Subject: ${m.subject}`);
+      lines.push("");
+    }
+  } else {
+    lines.push("✅ No person is waiting on a reply.", "");
+  }
+  if (bulk.length) {
+    lines.push(`📰 Plus **${bulk.length} bulk/list message(s)** (List-Unsubscribe or newsletter) with no reply — these are mailing lists, not people waiting on Joe. Ignore them unless he says otherwise; pass include_machine:true to see them.`, "");
+  }
+  lines.push("Draft a reply for anything real — employer, recruiter, client, investor. If one genuinely needs no reply (a rejection, a cold pitch Joe would ignore), file it with email_file so it stops surfacing. If it's an employer answering an application, ALSO call record_employer_reply so it reaches Joe's board.");
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+// --- Filing -----------------------------------------------------------------
+async function toolEmailFile({ uid, uids, folder, from_folder } = {}) {
+  const list = (Array.isArray(uids) ? uids : [uid]).map(Number).filter(Number.isFinite);
+  if (!list.length) return { content: [{ type: "text", text: "❌ Pass uid (or uids[]) from inbox_sweep / inbox_unanswered." }], isError: true };
+  if (!folder) return { content: [{ type: "text", text: "❌ Pass folder — the destination, e.g. \"Job Alerts\"." }], isError: true };
+  const src = from_folder || "INBOX";
+  const client = zohoImap();
+  if (!client) return NO_MAIL_CREDS;
+  try {
+    await client.connect();
+    try { await client.mailboxCreate(folder); } catch { /* already exists — fine */ }
+    const lock = await client.getMailboxLock(src);
+    try {
+      await client.messageMove(list.join(","), folder, { uid: true });
+    } finally { lock.release(); }
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Move to ${folder} failed: ${err?.message || err}` }], isError: true };
+  } finally {
+    try { await client.logout(); } catch { /* ignore */ }
+  }
+  await audit("email_filed", `Filed uid ${list.join(",")} from ${src} → ${folder}`, { actor: "edward" });
+  return { content: [{ type: "text", text: `📁 Filed ${list.length} message(s) from ${src} → ${folder}. Still swept — filing organises, it never hides mail.` }] };
+}
+
+// --- Employer replies must reach the database -------------------------------
+// Whitney writes to job_applications; employers write to the mailbox. Nothing joined the two,
+// so an interview invite was invisible to Venus's debrief and to /command/applications.
+async function toolRecordEmployerReply({ application_id, company, kind, summary } = {}) {
+  const KINDS = { interview: "interview", rejected: "rejected", offer: "interview", info: null };
+  if (!kind || !(kind in KINDS)) {
+    return { content: [{ type: "text", text: "❌ kind must be one of: interview, offer, rejected, info." }], isError: true };
+  }
+  if (!summary) return { content: [{ type: "text", text: "❌ summary is required — one line on what the employer actually said." }], isError: true };
+
+  let row = null;
+  try {
+    if (Number.isFinite(Number(application_id))) {
+      const r = await query(`SELECT id, company, role, status FROM job_applications WHERE id = $1`, [Number(application_id)]);
+      row = r.rows[0] || null;
+    } else if (company) {
+      const r = await query(
+        `SELECT id, company, role, status FROM job_applications
+          WHERE company ILIKE $1 ORDER BY updated_at DESC LIMIT 1`, [`%${company}%`]);
+      row = r.rows[0] || null;
+    }
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Lookup failed: ${err?.message || err}` }], isError: true };
+  }
+  if (!row) {
+    return { content: [{ type: "text", text: `❌ No application matched (application_id ${application_id ?? "—"}, company "${company ?? "—"}"). Don't guess: report it in your log so Joe can match it by hand.` }], isError: true };
+  }
+
+  const nextStatus = KINDS[kind];
+  const note = `[employer reply · ${new Date().toISOString().slice(0, 10)}] ${summary}`;
+  try {
+    await query(
+      `UPDATE job_applications
+          SET status = COALESCE($1, status),
+              notes = CASE WHEN COALESCE(notes,'') = '' THEN $2 ELSE notes || E'\n\n' || $2 END,
+              updated_at = now()
+        WHERE id = $3`, [nextStatus, note, row.id]);
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Update failed: ${err?.message || err}` }], isError: true };
+  }
+  await audit(kind === "interview" ? "application_interview" : "application_employer_reply",
+    `${row.company} — ${row.role}: ${summary}`, { actor: "edward", target: String(row.id) });
+  const moved = nextStatus && nextStatus !== row.status ? ` Status ${row.status} → ${nextStatus}.` : "";
+  return { content: [{ type: "text", text: `✅ Recorded on #${row.id} ${row.company} — ${row.role}.${moved} It will now show on /command/applications and in Venus's debrief.` }] };
 }
 
 async function toolEmailRequestSend({ to, cc, subject, body, in_reply_to, context, send_at } = {}) {
@@ -2956,7 +3149,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.51.0" },
+  { name: "tbj-mcp", version: "2.52.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -3478,6 +3671,45 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "inbox_unanswered",
+      description: "Edward: WHO IS STILL OWED A REPLY — every human message in the mailbox (any folder, ANY AGE) with no answer in Sent, most overdue first. inbox_sweep only sees a time window, so anything nobody answered silently ages out of view; this is the backstop that makes sure a recruiter or client never goes dark again. Run it EVERY sweep, right after inbox_sweep. Machine mail (no-reply, DMARC, bounces) is excluded automatically.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          limit: { type: "number", description: "Max rows (default 40, cap 100)." },
+          include_machine: { type: "boolean", description: "Include no-reply/automated senders too. Default false — normally you want only mail a person is actually waiting on." },
+        },
+      },
+    },
+    {
+      name: "email_file",
+      description: "Edward: file message(s) into a folder, creating it if needed — e.g. move ATS/recruiter mail into \"Job Alerts\" so the job hunt has its own lane. Filing ORGANISES, it does not hide: swept folders are all still read every run. Use it to clear things that genuinely need no reply so inbox_unanswered stays honest. Never file real correspondence that still owes a reply.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          uid: { type: "number", description: "A single message uid." },
+          uids: { type: "array", items: { type: "number" }, description: "Or several uids at once." },
+          folder: { type: "string", description: "Destination folder, e.g. \"Job Alerts\". Created if it doesn't exist." },
+          from_folder: { type: "string", description: "Folder the uids came from (default INBOX). uids are per-folder — pass the folder inbox_sweep showed in brackets." },
+        },
+        required: ["folder"],
+      },
+    },
+    {
+      name: "record_employer_reply",
+      description: "Edward: write an employer's emailed reply back onto the job application. Whitney only records what SHE does, so an interview invite that arrives by email is invisible to Joe's board and to Venus's debrief until you record it here. Call it for any real employer response: interview/next-step invite, offer, or rejection. This is what puts an interview in front of Joe.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          application_id: { type: "number", description: "The job_applications id, when you know it." },
+          company: { type: "string", description: "Or the company name — matches the most recently updated application for that employer." },
+          kind: { type: "string", enum: ["interview", "offer", "rejected", "info"], description: "interview/offer advance the application to 'interview'; rejected sets 'rejected'; info records a note without changing status." },
+          summary: { type: "string", description: "One line on what they actually said, including any DEADLINE (e.g. 'take-home assignment, due within 7 days of Aug 26')." },
+        },
+        required: ["kind", "summary"],
+      },
+    },
+    {
       name: "email_request_send",
       description: "Edward: queue an email send (immediate, or scheduled via send_at) for VENUS'S APPROVAL. Nothing sends until she approves — this is the only path to sending, with no exceptions. Returns the outbox id; report it to Venus with one line of context.",
       inputSchema: {
@@ -3857,6 +4089,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "inbox_sweep": return toolInboxSweep(args);
     case "email_create_draft": return toolEmailCreateDraft(args);
     case "email_move_spam": return toolEmailMoveSpam(args);
+    case "inbox_unanswered": return toolInboxUnanswered(args);
+    case "email_file": return toolEmailFile(args);
+    case "record_employer_reply": return toolRecordEmployerReply(args);
     case "email_request_send": return toolEmailRequestSend(args);
     case "email_list_pending_sends": return toolEmailListPendingSends(args);
     case "email_approve_send": return toolEmailApproveSend(args);

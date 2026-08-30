@@ -33,6 +33,24 @@ function relativeTime(iso: string | Date | null): string {
   return `${Math.round(hrs / 24)}d ago`;
 }
 
+// Edward files his report as labelled sections (PRESSING / OWED / EMPLOYER / NEW / ...).
+// Pull one out so the two that cost real money — who's waiting, and what an employer said —
+// get their own panel instead of being buried in the raw report text.
+function reportSection(summary: string | null | undefined, label: string): string | null {
+  if (!summary) return null;
+  const lines = summary.split("\n");
+  const start = lines.findIndex((l) => new RegExp(`^\\s*${label}\\s*:`, "i").test(l));
+  if (start === -1) return null;
+  const collected = [lines[start].replace(new RegExp(`^\\s*${label}\\s*:`, "i"), "").trim()];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^\s*[A-Z][A-Z /]{2,}\s*:/.test(lines[i])) break; // next section label
+    collected.push(lines[i].trim());
+  }
+  const value = collected.join("\n").trim();
+  if (!value || /^(none|n\/a|nothing|no\b)/i.test(value)) return null;
+  return value;
+}
+
 const STATUS_BADGE: Record<string, string> = {
   pending: "bg-brand-tint text-brand",
   approved: "bg-surface text-ink",
@@ -70,6 +88,9 @@ export default async function InboxPage() {
     .limit(40);
 
   const lastReport = activity.find((a) => a.eventType === "email_inbox_report");
+  const owed = reportSection(lastReport?.summary, "OWED");
+  const employer = reportSection(lastReport?.summary, "EMPLOYER");
+  const pressing = reportSection(lastReport?.summary, "PRESSING");
 
   return (
     <div className="px-6 py-8">
@@ -89,6 +110,44 @@ export default async function InboxPage() {
           placeholder="e.g. Draft a reply to the recruiter from Northgate — interested, ask about remote."
         />
 
+        {/* What's actually owed — the two sections that cost money when missed. */}
+        {(pressing || owed || employer) && (
+          <div className="mt-8 space-y-3">
+            {pressing && (
+              <div className="rounded-2xl border border-red-300 bg-red-50 px-4 py-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-red-700">
+                  🔴 Pressing
+                </h2>
+                <p className="mt-1 whitespace-pre-wrap text-sm font-medium text-red-900">{pressing}</p>
+              </div>
+            )}
+            {employer && (
+              <div className="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                  🎉 Employer replies
+                </h2>
+                <p className="mt-1 whitespace-pre-wrap text-sm font-medium text-emerald-900">
+                  {employer}
+                </p>
+                <p className="mt-1 text-xs text-emerald-700">
+                  Recorded onto the applications board — see /command/applications.
+                </p>
+              </div>
+            )}
+            {owed && (
+              <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                  ⏳ Still owed a reply
+                </h2>
+                <p className="mt-1 whitespace-pre-wrap text-sm font-medium text-amber-900">{owed}</p>
+                <p className="mt-1 text-xs text-amber-700">
+                  Age-blind: these keep surfacing every sweep until they are answered or filed.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Latest report */}
         <h2 className="mt-8 text-sm font-semibold uppercase tracking-wide text-ink-soft">
           Latest inbox report
@@ -100,8 +159,7 @@ export default async function InboxPage() {
           </pre>
         ) : (
           <p className="mt-2 rounded-2xl border border-line bg-background px-4 py-3 text-sm text-ink-soft">
-            No report filed yet — Edward hasn&apos;t run (his sweep cron ships disabled until he&apos;s
-            turned on).
+            No report filed yet — Edward hasn&apos;t run since his last sweep window.
           </p>
         )}
 
