@@ -241,7 +241,14 @@ async function dailyBudgetStop(agentId) {
 }
 
 async function openDirectiveCount(agentId) {
-  const r = await query(`SELECT count(*)::int n FROM agent_directives WHERE agent = $1 AND status = 'open'`, [agentId]);
+  // 'working' MUST count here, not just 'open'. list_my_directives flips open→working the moment
+  // the agent reads it, so counting only 'open' meant reading a directive silently cancelled its
+  // own budget override — the agent got un-capped for exactly one tool call. The override has to
+  // hold until the work is actually done.
+  const r = await query(
+    `SELECT count(*)::int n FROM agent_directives WHERE agent = $1 AND status IN ('open','working')`,
+    [agentId],
+  );
   return r.rows[0].n;
 }
 
@@ -2915,7 +2922,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.49.0" },
+  { name: "tbj-mcp", version: "2.50.0" },
   { capabilities: { tools: {} } },
 );
 
