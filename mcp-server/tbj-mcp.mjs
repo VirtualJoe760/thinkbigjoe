@@ -1675,6 +1675,36 @@ async function toolUpdateApplicationStatus({ id, status, notes }) {
 // Read joe@thinkbigjoe.com (Zoho IMAP, same creds as SMTP) for a SPECIFIC purpose:
 // the verification link/code for an account Whitney just created, or an interview
 // invite. BODY.PEEK — never marks mail read. Not a general inbox browser.
+// Transactional mail — account verifications, magic links, OTPs — is very often HTML-ONLY, with
+// no text/plain part at all. Reading just `parsed.text` therefore returned an empty body and zero
+// links for exactly the messages Whitney needs most: on 2026-08-30 she found Zillow's Workday
+// "Verify your candidate account" email, got back a subject and nothing else, and had to escalate
+// to Joe for a link that was sitting in the HTML. Strip the HTML instead.
+function htmlToText(html) {
+  if (!html) return "";
+  return String(html)
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s*\n+/g, "\n")
+    .trim();
+}
+
+// Links live in href="..." in HTML, not inline in the text — so scrape both.
+function extractLinks(text, html) {
+  const out = new Set();
+  for (const m of String(text || "").match(/https?:\/\/[^\s<>()"']+/g) || []) out.add(m);
+  for (const m of String(html || "").matchAll(/href\s*=\s*["']([^"']+)["']/gi)) {
+    const u = m[1];
+    if (/^https?:\/\//i.test(u)) out.add(u.replace(/&amp;/gi, "&"));
+  }
+  return Array.from(out);
+}
+
 async function toolInboxSearch({ query: q, from, since_minutes, limit }) {
   const USER = process.env.SMTP_USER, PASS = process.env.SMTP_PASS;
   if (!USER || !PASS) {
@@ -1703,11 +1733,15 @@ async function toolInboxSearch({ query: q, from, since_minutes, limit }) {
         if (!parsed) continue;
         const fromAddr = (parsed.from?.text || "").toLowerCase();
         const subject = parsed.subject || "";
-        const bodyText = parsed.text || "";
-        const hay = `${subject}\n${fromAddr}\n${bodyText}`.toLowerCase();
+        const bodyText = parsed.text || htmlToText(parsed.html) || "";
+        const hay = `${subject}\n${fromAddr}\n${bodyText}\n${parsed.html || ""}`.toLowerCase();
         if (needle && !hay.includes(needle)) continue;
         if (fromNeedle && !fromAddr.includes(fromNeedle)) continue;
-        const links = Array.from(new Set(bodyText.match(/https?:\/\/[^\s<>()"']+/g) || [])).slice(0, 12);
+        // Verification/magic links are the whole point of this tool — keep more of them, and
+        // float the ones that look like a confirm/verify action to the front.
+        const all = extractLinks(bodyText, parsed.html);
+        const isAction = (u) => /verif|confirm|activat|validate|token|otp|magic|reset/i.test(u);
+        const links = [...all.filter(isAction), ...all.filter((u) => !isAction(u))].slice(0, 15);
         hits.push({
           date: parsed.date ? parsed.date.toISOString() : null,
           from: parsed.from?.text || "",
@@ -2922,7 +2956,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.50.0" },
+  { name: "tbj-mcp", version: "2.51.0" },
   { capabilities: { tools: {} } },
 );
 

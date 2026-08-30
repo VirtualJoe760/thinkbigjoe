@@ -163,6 +163,27 @@ openclaw agents add/delete <id>       # roster management
 
 ---
 
+## `inbox_search` reads HTML — and why that mattered
+
+Fixed 2026-08-30 (tbj-mcp 2.51.0). The tool read only `parsed.text`, but **transactional mail —
+account verifications, magic links, OTPs — is very often HTML-ONLY with no text/plain part.** For
+exactly the messages Whitney needs most it returned a subject and an empty body.
+
+The failure was invisible and looked like an org problem: Whitney created a Zillow Workday account,
+searched the inbox, correctly found "Verify your candidate account", got no link back, and escalated
+to Joe. Joe reasonably read that as *"why isn't Edward handling the inbox?"* — but Edward was never
+involved. It was a parser gap in a tool Whitney already owned.
+
+Now: `htmlToText()` strips the HTML body, `extractLinks()` scrapes `href=` attributes as well as
+inline URLs, and verify/confirm/activate links are floated to the front of the list.
+
+**The lesson for the org, not just the tool:** when an agent escalates something it *should* own,
+check whether its tool actually returns what it needs before redesigning who-owns-what. Whitney's
+persona now also carries an explicit escalation bar — never escalate a strategic question about
+Joe's career, anything with a tool for it, or anything already in `candidate_facts`.
+
+---
+
 ## Budget — two independent controls, and why both exist
 
 Since all three operating agents moved to `claude-cli/claude-sonnet-4-6` (2026-08-29) they draw the
