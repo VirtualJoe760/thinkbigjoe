@@ -48,9 +48,26 @@ function deliveryArgs(cron) {
   if (cron.channel) {
     args.push("--announce", "--channel", cron.channel, "--best-effort-deliver");
     if (cron.to) args.push("--to", String(cron.to));
+  } else {
+    // A worker cron (Whitney, Edward) must NEVER announce — it reports through activity_log and
+    // Venus does the talking. Saying nothing here is not enough: `openclaw cron add` defaults to
+    // channel "last", which FAIL-CLOSES whenever more than one channel is configured
+    // ("Channel is required when multiple channels are configured: discord, telegram"). That
+    // silently errored Edward's sweep 4 runs in a row while the agent work itself succeeded.
+    args.push("--no-deliver");
   }
   if (cron.tz) args.push("--tz", cron.tz);
   return args;
+}
+
+// Delivery drift is invisible to a schedule/prompt/agent diff, which is exactly how Edward's cron
+// sat broken. The manifest is the source of truth for delivery too.
+function deliveryDrift(cron, existing) {
+  const d = existing.delivery ?? {};
+  if (cron.channel) {
+    return d.mode !== "announce" || d.channel !== cron.channel || d.bestEffort !== true;
+  }
+  return d.mode === "announce" && d.channel != null;
 }
 
 // --- Load current OpenClaw state -------------------------------------------
@@ -133,14 +150,15 @@ for (const cron of VENUS_CRONS) {
   const scheduleDrift = liveExpr !== cron.schedule;
   const promptDrift = liveText !== cron.prompt;
   const agentDrift = (cron.agent ?? null) !== liveAgent;
+  const delivDrift = deliveryDrift(cron, existing);
 
-  if (!scheduleDrift && !promptDrift && !agentDrift) {
+  if (!scheduleDrift && !promptDrift && !agentDrift && !delivDrift) {
     console.log(`✓ ok   ${cron.name}`);
     ok++;
     continue;
   }
 
-  const what = [scheduleDrift && "schedule", promptDrift && "prompt", agentDrift && "agent"].filter(Boolean).join(" + ");
+  const what = [scheduleDrift && "schedule", promptDrift && "prompt", agentDrift && "agent", delivDrift && "delivery"].filter(Boolean).join(" + ");
   console.log(`${DRY ? "[dry] would EDIT" : "✎ EDIT"} ${cron.name}  (${what})`);
   if (scheduleDrift) console.log(`     schedule: ${liveExpr || "—"}  →  ${cron.schedule}`);
   if (!DRY) {
@@ -150,7 +168,7 @@ for (const cron of VENUS_CRONS) {
       if (cron.agent) args.push("--agent", cron.agent, "--message", cron.prompt);
       else args.push("--system-event", cron.prompt);
     }
-    args.push(...deliveryArgs(cron)); // re-assert delivery on any edit (add-only otherwise)
+    args.push(...deliveryArgs(cron)); // always re-assert delivery — see deliveryDrift()
     const res = oc(args);
     if (res.status !== 0) console.error(`  ✗ edit failed: ${res.stderr || res.stdout}`);
   }
