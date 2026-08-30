@@ -163,6 +163,37 @@ export default async function ApplicationsPage({
           card&apos;s <span className="font-medium text-ink">full job</span> for the description, company, reviews, and contact.
         </p>
 
+        {/* Account credentials — Joe was locked out of a Zillow account on 2026-08-30 simply
+            because nobody had written down that every job account shares one login. Naming the
+            env var (never the value) is enough to make that impossible again. */}
+        <details className="mt-4 rounded-xl border border-line bg-background px-4 py-3 [&_summary::-webkit-details-marker]:hidden">
+          <summary className="cursor-pointer list-none text-sm font-semibold text-ink">
+            🔑 Sign-in for any account Whitney created
+          </summary>
+          <div className="mt-2 space-y-1.5 text-sm text-ink-soft">
+            <p>
+              Every job-site account she creates uses the <span className="font-medium text-ink">same</span> pair —
+              there is no per-site password to lose:
+            </p>
+            <p className="text-ink">
+              Email <code className="rounded bg-surface px-1">joe@thinkbigjoe.com</code> · Password ={" "}
+              <code className="rounded bg-surface px-1">JOB_SIGNUP_PASSWORD</code> in{" "}
+              <code className="rounded bg-surface px-1">.env.local</code>
+            </p>
+            <p>
+              To have it autofill everywhere, add that one password to your own password manager once,
+              under any job site. Whitney&apos;s browser is a separate, deliberately isolated Chrome
+              profile (<code className="rounded bg-surface px-1">--disable-sync</code>, no Google account),
+              so nothing she saves can ever sync to yours — and signing her profile into your Google
+              account would hand an autonomous agent your whole Google identity.
+            </p>
+            <p>
+              Cards below at <span className="font-medium text-ink">Account created</span> or{" "}
+              <span className="font-medium text-ink">Verified</span> are the sites that have one.
+            </p>
+          </div>
+        </details>
+
         {/* pause / resume control */}
         {registered && (
           <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-background px-4 py-3">
