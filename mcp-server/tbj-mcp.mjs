@@ -1650,6 +1650,17 @@ async function toolUpdateApplicationStatus({ id, status, notes }) {
   });
   if (status === "applied") {
     await notifyJoeSms(`📮 Whitney just applied: ${role} @ ${company} (#${id}). Review it on /command/applications.`);
+    // The apply cap's REAL chokepoint. list_approved_jobs checks it too, but that only guards the
+    // queue path — a directive from Joe can send her straight here, and that path was unguarded.
+    // Deliberately AFTER the write, never instead of it: by the time she calls this the form is
+    // already submitted, so refusing to record it would leave the board lying about reality.
+    // Record the truth, then stop her.
+    try {
+      const n = await appliedToday();
+      if (n >= DAILY_APPLY_CAP) {
+        return { content: [{ type: "text", text: `✅ #${id} ${role} @ ${company}: ${prev} → **applied**.\n\n🛑 That was application ${n}/${DAILY_APPLY_CAP} for today — your daily limit. STOP applying now: do not start another, even if Joe's directive lists more employers. The rest carry over to tomorrow, and that is the correct outcome — more than ${DAILY_APPLY_CAP} applications in one day reads as automated and is exactly what gets Joe's accounts flagged. Finish your turn: log_activity, and leave any directive open so you pick it up tomorrow.` }] };
+      }
+    } catch { /* fail-open: a counting error must not hide a real application */ }
   }
   return { content: [{ type: "text", text: `✅ #${id} ${role} @ ${company}: ${prev} → **${status}**.` }] };
 }
@@ -2904,7 +2915,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.48.0" },
+  { name: "tbj-mcp", version: "2.49.0" },
   { capabilities: { tools: {} } },
 );
 

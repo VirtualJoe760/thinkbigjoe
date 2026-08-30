@@ -301,10 +301,11 @@ NEVER run forge-template.sh yourself or mass-add languages — Joe builds propos
     // a full model call, so a board Joe hasn't worked converted directly into burned quota.
     // 6am–11pm Phoenix, every 30 min ≈ 34 runs/day. She only does ONE application per turn anyway,
     // so the extra wake-ups bought nothing; overnight buys less.
-    // Hourly, 7am–7pm, WEEKDAYS ONLY = 13/day, 65/week (was 34/day, 238/week).
-    // Weekends are the cheapest cut there is: an application submitted Saturday sits in a
-    // queue until Monday anyway, so those runs bought nothing and cost the same as any other.
-    schedule: "0 7-19 * * 1-5",
+    // Hourly, 7am–7pm, ALL 7 DAYS = 13/day, 91/week (was 34/day, 238/week).
+    // Weekend-only was tried 2026-08-29 and reverted the same day at Joe's request — he wants
+    // her working the queue through the weekend. The hourly window is doing the real saving;
+    // weekends are ~28% on top of that.
+    schedule: "0 7-19 * * *",
     tz: "America/Phoenix",
     stagger: "2m",
     summary: "Whitney's priority-queue run: FIRST work any job Joe approved (create account → email-verify → tailor → submit); only when the approved queue is empty, find new roles matching Joe's target profile and post them to /command/applications for approval. One approved application per run (human cadence).",
