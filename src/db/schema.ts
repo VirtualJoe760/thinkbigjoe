@@ -937,3 +937,36 @@ export const agentDirectives = pgTable("agent_directives", {
 }, (table) => [
 	index("agent_directives_agent_status_idx").using("btree", table.agent.asc().nullsLast().op("text_ops"), table.status.asc().nullsLast().op("text_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")),
 ]);
+
+export const gigs = pgTable("gigs", {
+	id: serial().primaryKey().notNull(),
+	title: text().notNull(),
+	client: text(),
+	url: text(),
+	platform: varchar({ length: 24 }).default('upwork').notNull(),
+	lane: varchar({ length: 24 }).default('ai-agent').notNull(),
+	budget: text(),
+	scope: text(),
+	description: text(),
+	proposalsSoFar: integer("proposals_so_far"),
+	clientHires: integer("client_hires"),
+	clientVerified: boolean("client_verified"),
+	fitScore: integer("fit_score"),
+	winScore: integer("win_score"),
+	fitReason: text("fit_reason"),
+	winReason: text("win_reason"),
+	proposal: text(),
+	proposalDraftedAt: timestamp("proposal_drafted_at", { withTimezone: true, mode: 'string' }),
+	status: varchar({ length: 24 }).default('found').notNull(),
+	notes: text(),
+	postedAt: timestamp("posted_at", { withTimezone: true, mode: 'string' }),
+	approvedAt: timestamp("approved_at", { withTimezone: true, mode: 'string' }),
+	submittedAt: timestamp("submitted_at", { withTimezone: true, mode: 'string' }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("gigs_created_at_idx").using("btree", table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
+	index("gigs_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops"), table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
+	uniqueIndex("gigs_url_uniq").using("btree", table.url.asc().nullsLast().op("text_ops")).where(sql`(url IS NOT NULL)`),
+	index("gigs_win_idx").using("btree", table.winScore.desc().nullsLast().op("int4_ops"), table.fitScore.desc().nullsLast().op("int4_ops")),
+]);

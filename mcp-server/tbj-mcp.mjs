@@ -207,7 +207,7 @@ function tgEscape(s) {
 // Per-agent overrides; anything not listed gets DEFAULT_TURN_CAP. A NEW agent is therefore
 // budgeted the moment it exists — no code change needed to keep it from running away.
 const DEFAULT_TURN_CAP = 8;
-const DAILY_TURN_CAP = { whitney: 15, edward: 4, main: 4 };
+const DAILY_TURN_CAP = { whitney: 15, edward: 4, main: 4, destiny: 4 };
 // Whitney's real-world ceiling. ~2-5 applications/day is the healthy human cadence; more looks
 // like a bot and is what gets Joe's accounts flagged. This is a business limit, not a cost one.
 const DAILY_APPLY_CAP = 5;
@@ -2065,6 +2065,208 @@ async function toolEmailFile({ uid, uids, folder, from_folder } = {}) {
   return { content: [{ type: "text", text: `📁 Filed ${list.length} message(s) from ${src} → ${folder}. Still swept — filing organises, it never hides mail.` }] };
 }
 
+// ============================================================================
+// DESTINY — Upwork gig hunting. Draft-only, by design.
+//
+// Upwork bans accounts permanently for automation: auto-submitting proposals, scraping the job
+// feed, or letting a tool log in "as you" are all prohibited. RSS was killed in Aug 2024 for
+// exactly that reason and the official API is gated behind partner approval we don't have. So the
+// ONLY compliant ingestion path is Upwork's own saved-search alert email, which Upwork pushes to
+// Joe. Reading our own mailbox is not automation against Upwork. Nothing here logs in, scrapes,
+// submits, or spends a Connect — Joe does that himself.
+// ============================================================================
+const GIG_FOLDER = "Upwork";
+
+async function toolListGigAlerts({ since_minutes, limit } = {}) {
+  const budget = await dailyBudgetStop("destiny");
+  if (budget) return budget;
+  const client = zohoImap();
+  if (!client) return NO_MAIL_CREDS;
+  const sinceMin = Number.isFinite(since_minutes) ? since_minutes : 1440;
+  const max = Math.min(Number(limit) || 15, 40);
+  const since = new Date(Date.now() - sinceMin * 60 * 1000);
+  const mails = [];
+  try {
+    await client.connect();
+    try { await client.mailboxCreate(GIG_FOLDER); } catch { /* exists */ }
+    const lock = await client.getMailboxLock(GIG_FOLDER);
+    try {
+      const uids = await client.search({ since }, { uid: true });
+      for (const uid of (uids || []).slice(-max).reverse()) {
+        let parsed = null;
+        for await (const m of client.fetch(uid, { source: true }, { uid: true })) {
+          try { parsed = await simpleParser(m.source); } catch { parsed = null; }
+        }
+        if (!parsed) continue;
+        const body = (parsed.text || parsed.html?.replace(/<[^>]+>/g, " ") || "").replace(/[ \t]+/g, " ");
+        // Deterministic only where it must be: the posting URL is the dedupe key. Everything else
+        // is judgement, which is Destiny's job, not this tool's.
+        const urls = [...new Set((body.match(/https?:\/\/[^\s)>\]]*upwork\.com\/[^\s)>\]]*/gi) || [])
+          .map((u) => u.replace(/[.,;]+$/, "")))];
+        mails.push({ uid, date: parsed.date?.toISOString() || null, subject: parsed.subject || "", body: body.trim().slice(0, 6000), urls });
+      }
+    } finally { lock.release(); }
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Reading the ${GIG_FOLDER} folder failed: ${err?.message || err}` }], isError: true };
+  } finally {
+    try { await client.logout(); } catch { /* ignore */ }
+  }
+
+  if (!mails.length) {
+    return { content: [{ type: "text", text: `📭 No Upwork alerts in the "${GIG_FOLDER}" folder in the last ${sinceMin} min.\n\nIf this stays empty, the saved-search alerts aren't set up yet (Joe configures those in Upwork's UI) or the mail filter isn't routing them to "${GIG_FOLDER}". Say so in your report rather than guessing — an empty folder is a setup problem, not "no gigs available".` }] };
+  }
+
+  // Dedupe: the same posting arrives in several saved-search alerts.
+  let seen = new Set();
+  try {
+    const all = mails.flatMap((m) => m.urls);
+    if (all.length) {
+      const r = await query(`SELECT url FROM gigs WHERE url = ANY($1::text[])`, [all]);
+      seen = new Set(r.rows.map((x) => x.url));
+    }
+  } catch { /* dedupe is a nicety; never block the run on it */ }
+
+  const lines = [`📬 **${mails.length} Upwork alert email(s)** — read each and pull the gigs out yourself; I deliberately don't parse them for you:`, ""];
+  for (const m of mails) {
+    const fresh = m.urls.filter((u) => !seen.has(u));
+    lines.push(`━━ uid ${m.uid} · ${m.date || "?"} · ${m.subject}`);
+    if (m.urls.length) {
+      lines.push(`  postings: ${m.urls.length} (${fresh.length} new, ${m.urls.length - fresh.length} already on the board)`);
+      for (const u of fresh.slice(0, 12)) lines.push(`  • ${u}`);
+    }
+    lines.push(m.body, "");
+  }
+  lines.push("Score each NEW posting on fit_score AND win_score, then record_found_gig the ones worth Joe's Connects. Postings already on the board need nothing. Drop the rest with a reason — a dropped gig with a stated reason is a useful output.");
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolRecordFoundGig(a = {}) {
+  const { title, client, url, budget, scope, description, lane, proposals_so_far, client_hires, client_verified, fit_score, win_score, fit_reason, win_reason } = a;
+  if (!title) return { content: [{ type: "text", text: "❌ title is required." }], isError: true };
+  if (!Number.isFinite(Number(fit_score)) || !Number.isFinite(Number(win_score))) {
+    return { content: [{ type: "text", text: "❌ Both fit_score and win_score are required (0-100). win_score is the one that matters: can a profile with NO reviews win this?" }], isError: true };
+  }
+  try {
+    const r = await query(
+      `INSERT INTO gigs (title, client, url, budget, scope, description, lane,
+                         proposals_so_far, client_hires, client_verified,
+                         fit_score, win_score, fit_reason, win_reason, status)
+       VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'ai-agent'),$8,$9,$10,$11,$12,$13,$14,'found')
+       ON CONFLICT (url) WHERE url IS NOT NULL DO NOTHING
+       RETURNING id`,
+      [title, client ?? null, url ?? null, budget ?? null, scope ?? null, description ?? null, lane ?? null,
+       proposals_so_far ?? null, client_hires ?? null, client_verified ?? null,
+       Number(fit_score), Number(win_score), fit_reason ?? null, win_reason ?? null]);
+    if (!r.rows.length) return { content: [{ type: "text", text: `↩️ Already on the board (same URL) — skipped, not duplicated.` }] };
+    await audit("gig_found", `${title}${client ? ` @ ${client}` : ""} — fit ${fit_score} / win ${win_score}`, { actor: "destiny", target: String(r.rows[0].id) });
+    return { content: [{ type: "text", text: `✅ Gig #${r.rows[0].id} on the board for Joe: ${title}. fit ${fit_score} · win ${win_score}.` }] };
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Could not record the gig: ${err?.message || err}` }], isError: true };
+  }
+}
+
+async function toolListApprovedGigs({ limit } = {}) {
+  const budget = await dailyBudgetStop("destiny");
+  if (budget) return budget;
+  const max = Math.min(Number(limit) || 10, 25);
+  let rows;
+  try {
+    const r = await query(
+      `SELECT id, title, client, url, budget, scope, description, fit_score, win_score, fit_reason, win_reason, notes
+         FROM gigs WHERE status = 'approved' ORDER BY approved_at ASC NULLS LAST, win_score DESC LIMIT $1`, [max]);
+    rows = r.rows;
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Lookup failed: ${err?.message || err}` }], isError: true };
+  }
+  if (!rows.length) return { content: [{ type: "text", text: "📭 No approved gigs waiting. Joe hasn't approved anything new on /command/gigs — go find gigs instead, or end the turn." }] };
+  const lines = [`✍️ **${rows.length} approved gig(s)** awaiting a proposal, oldest approval first:`, ""];
+  for (const g of rows) {
+    lines.push(`━━ #${g.id} · ${g.title}${g.client ? ` — ${g.client}` : ""}`);
+    if (g.budget) lines.push(`  Budget: ${g.budget}`);
+    if (g.url) lines.push(`  ${g.url}`);
+    lines.push(`  fit ${g.fit_score} / win ${g.win_score}${g.win_reason ? ` — ${g.win_reason}` : ""}`);
+    if (g.description) lines.push(`  ${String(g.description).slice(0, 1200)}`);
+    if (g.notes) lines.push(`  Joe's note: ${g.notes}`);
+    lines.push("");
+  }
+  lines.push("Write the proposal per AGENTS.md — their problem in their words, name the fear, evidence from OUTSIDE Upwork, one honest line about being new plus a concrete first step. Then save_gig_proposal. Max 3 per run. Never send it.");
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function toolSaveGigProposal({ gig_id, proposal, note } = {}) {
+  if (!Number.isFinite(Number(gig_id)) || !proposal) {
+    return { content: [{ type: "text", text: "❌ gig_id and proposal are both required." }], isError: true };
+  }
+  try {
+    const r = await query(
+      `UPDATE gigs SET proposal = $1, proposal_drafted_at = now(), status = 'drafted',
+              notes = CASE WHEN $2::text IS NULL THEN notes
+                           WHEN COALESCE(notes,'') = '' THEN $2 ELSE notes || E'\n\n' || $2 END,
+              updated_at = now()
+        WHERE id = $3 AND status IN ('approved','drafted') RETURNING id, title`,
+      [proposal, note ?? null, Number(gig_id)]);
+    if (!r.rows.length) return { content: [{ type: "text", text: `❌ Gig #${gig_id} isn't approved (or doesn't exist). Only gigs Joe approved can get a proposal.` }], isError: true };
+    await audit("gig_proposal_drafted", `Proposal drafted for #${r.rows[0].id} ${r.rows[0].title}`, { actor: "destiny", target: String(r.rows[0].id) });
+    return { content: [{ type: "text", text: `✅ Proposal saved on #${r.rows[0].id}. It's on /command/gigs for Joe to review, edit, and submit himself. You do NOT submit it and you never spend a Connect.` }] };
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Save failed: ${err?.message || err}` }], isError: true };
+  }
+}
+
+const GIG_STATUS = ["found", "approved", "dismissed", "drafted", "submitted", "won", "lost"];
+async function toolUpdateGigStatus({ gig_id, status, note } = {}) {
+  if (!Number.isFinite(Number(gig_id)) || !GIG_STATUS.includes(status)) {
+    return { content: [{ type: "text", text: `❌ gig_id + status required. status ∈ ${GIG_STATUS.join(", ")}.` }], isError: true };
+  }
+  if (status === "submitted") {
+    return { content: [{ type: "text", text: "❌ Only Joe marks a gig submitted — he's the one who sends it on Upwork. You draft and stop." }], isError: true };
+  }
+  try {
+    const r = await query(
+      `UPDATE gigs SET status = $1,
+              notes = CASE WHEN $2::text IS NULL THEN notes
+                           WHEN COALESCE(notes,'') = '' THEN $2 ELSE notes || E'\n\n' || $2 END,
+              updated_at = now()
+        WHERE id = $3 RETURNING id, title, status`, [status, note ?? null, Number(gig_id)]);
+    if (!r.rows.length) return { content: [{ type: "text", text: `❌ No gig #${gig_id}.` }], isError: true };
+    await audit("gig_status", `#${r.rows[0].id} ${r.rows[0].title} → ${status}`, { actor: "destiny", target: String(r.rows[0].id) });
+    return { content: [{ type: "text", text: `✅ #${r.rows[0].id} → ${status}.` }] };
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Update failed: ${err?.message || err}` }], isError: true };
+  }
+}
+
+// Venus's read on the gig pipeline. Kept separate from get_job_hunt_report on purpose: that one
+// is Whitney's job hunt (Joe as an employee); this is contract work he sells.
+async function toolGetGigReport() {
+  const vBudget = await dailyBudgetStop("main");
+  if (vBudget) return vBudget;
+  let rep, counts, ready;
+  try {
+    [rep, counts, ready] = await Promise.all([
+      query(`SELECT summary, created_at FROM activity_log WHERE event_type = 'gig_hunt_report' ORDER BY created_at DESC LIMIT 1`),
+      query(`SELECT status, count(*)::int n FROM gigs GROUP BY status`),
+      query(`SELECT id, title, client FROM gigs WHERE status = 'drafted' ORDER BY proposal_drafted_at ASC LIMIT 10`),
+    ]);
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Gig report failed: ${err?.message || err}` }], isError: true };
+  }
+  const by = Object.fromEntries(counts.rows.map((r) => [r.status, r.n]));
+  const lines = [];
+  if (rep.rows.length) {
+    const age = Math.round((Date.now() - new Date(rep.rows[0].created_at).getTime()) / 3600000);
+    lines.push(`📄 **Destiny's latest gig report** (${age}h ago):`, "", rep.rows[0].summary, "");
+  } else {
+    lines.push("📄 Destiny hasn't filed a gig report yet.", "");
+  }
+  lines.push(`Board: ${by.found ?? 0} awaiting Joe's approval · ${by.approved ?? 0} approved (proposal pending) · ${by.drafted ?? 0} drafted · ${by.submitted ?? 0} submitted · ${by.won ?? 0} won / ${by.lost ?? 0} lost`);
+  if (ready.rows.length) {
+    lines.push("", `✍️ **${ready.rows.length} proposal(s) written and waiting on JOE to send** — he is the only one who can submit, so these stall until he acts:`);
+    for (const g of ready.rows) lines.push(`• #${g.id} ${g.title}${g.client ? ` — ${g.client}` : ""}`);
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
 // --- Following up on silence ------------------------------------------------
 // The failure this closes: an application is submitted, the ATS auto-confirms, and then nothing
 // ever happens again. Nobody notices, because "applied" looks like success. This asks the only
@@ -3227,7 +3429,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.54.0" },
+  { name: "tbj-mcp", version: "2.56.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -3774,6 +3976,77 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "get_gig_report",
+      description: "VENUS: the gig pipeline for Joe's debrief — Destiny's latest report, the board counts, and (most important) any proposal she has DRAFTED that is waiting on Joe to actually send. Destiny cannot submit on Upwork, so a drafted proposal stalls until Joe acts; surface those by name.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "list_gig_alerts",
+      description: "Destiny: new Upwork saved-search ALERT EMAILS from the 'Upwork' mail folder — the only compliant source of gigs. Returns each alert's raw text plus the upwork.com posting URLs it contains, flagged against what is already on the board. It deliberately does NOT parse gigs for you: reading the post is your judgement, not the tool's. NOTE: nothing here logs into Upwork, scrapes, or submits — Upwork pushes these emails to Joe and we read our own mailbox.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          since_minutes: { type: "number", description: "How far back (default 1440 = 24h)." },
+          limit: { type: "number", description: "Max alert emails (default 15, cap 40)." },
+        },
+      },
+    },
+    {
+      name: "record_found_gig",
+      description: "Destiny: put a scored gig on Joe's board at /command/gigs. BOTH scores are required — fit_score (can Joe do this well?) and win_score (can a profile with NO reviews and no Job Success Score realistically WIN it?). win_score is the one that matters: Joe's alerts arrive 15-60 min late by design, so he can never win a speed race, and at 14-25 Connects a proposal a bad bid costs real money. Duplicate URLs are skipped automatically.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "The gig title as posted." },
+          client: { type: "string", description: "Client name/company if the alert shows one." },
+          url: { type: "string", description: "The upwork.com posting URL — the dedupe key. Always pass it when you have it." },
+          budget: { type: "string", description: "Budget or rate as posted, verbatim." },
+          scope: { type: "string", description: "Size/duration as posted (e.g. 'small, under 1 month')." },
+          description: { type: "string", description: "The posting text, enough for you to write a proposal from later." },
+          lane: { type: "string", enum: ["ai-agent", "engineering", "web-design"], description: "Which offer this belongs to. Default ai-agent." },
+          proposals_so_far: { type: "number", description: "Proposal count shown on the posting — high counts crush win_score." },
+          client_hires: { type: "number", description: "Client's prior hires. Zero hires + unverified payment is where Connects go to die." },
+          client_verified: { type: "boolean", description: "Is the client's payment method verified?" },
+          fit_score: { type: "number", description: "0-100: can Joe genuinely deliver this well?" },
+          win_score: { type: "number", description: "0-100: can an empty profile actually win it?" },
+          fit_reason: { type: "string", description: "One line on the fit." },
+          win_reason: { type: "string", description: "One line on why he can or can't win it — the honest read." },
+        },
+        required: ["title", "fit_score", "win_score"],
+      },
+    },
+    {
+      name: "list_approved_gigs",
+      description: "Destiny: gigs Joe APPROVED on /command/gigs, oldest approval first — your work queue for writing proposals. Returns the posting text and both scores so you can write from the source. Max 3 proposals per run.",
+      inputSchema: { type: "object", properties: { limit: { type: "number", description: "Max rows (default 10, cap 25)." } } },
+    },
+    {
+      name: "save_gig_proposal",
+      description: "Destiny: attach your drafted proposal to an approved gig. It appears on /command/gigs for Joe to review, edit, and submit HIMSELF on Upwork. This never sends anything and never spends a Connect — that human step is what keeps the account compliant. Use a bracketed [Joe: ...?] for any gap rather than inventing a rate, a timeline, or availability.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          gig_id: { type: "number", description: "The gig id from list_approved_gigs." },
+          proposal: { type: "string", description: "The proposal text, ready for Joe to paste." },
+          note: { type: "string", description: "Optional note for Joe — an assumption you made, or what you'd want confirmed." },
+        },
+        required: ["gig_id", "proposal"],
+      },
+    },
+    {
+      name: "update_gig_status",
+      description: "Destiny: move a gig through its stages (found → approved/dismissed → drafted → submitted → won/lost). You may NOT set 'submitted' — only Joe marks that, because only Joe sends.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          gig_id: { type: "number" },
+          status: { type: "string", enum: ["found", "approved", "dismissed", "drafted", "won", "lost"] },
+          note: { type: "string", description: "Why — appended to the gig's notes." },
+        },
+        required: ["gig_id", "status"],
+      },
+    },
+    {
       name: "list_followup_due",
       description: "Edward: applications that have gone SILENT — submitted N+ days ago with no employer response recorded and no follow-up already sent, oldest first. 'Applied' looks like success, so a dead application is invisible until someone asks this question. Use it on the follow-up run; draft one short nudge per row into the existing ATS thread.",
       inputSchema: {
@@ -4180,6 +4453,12 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "email_move_spam": return toolEmailMoveSpam(args);
     case "inbox_unanswered": return toolInboxUnanswered(args);
     case "email_file": return toolEmailFile(args);
+    case "get_gig_report": return toolGetGigReport();
+    case "list_gig_alerts": return toolListGigAlerts(args);
+    case "record_found_gig": return toolRecordFoundGig(args);
+    case "list_approved_gigs": return toolListApprovedGigs(args);
+    case "save_gig_proposal": return toolSaveGigProposal(args);
+    case "update_gig_status": return toolUpdateGigStatus(args);
     case "list_followup_due": return toolListFollowupDue(args);
     case "record_employer_reply": return toolRecordEmployerReply(args);
     case "email_request_send": return toolEmailRequestSend(args);

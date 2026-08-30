@@ -42,6 +42,12 @@ const LINKS: NavLink[] = [
     group: "Agents",
   },
   {
+    href: "/command/gigs",
+    label: "Destiny",
+    icon: "M20 7h-4V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2H4a1 1 0 00-1 1v11a1 1 0 001 1h16a1 1 0 001-1V8a1 1 0 00-1-1zM10 5h4v2h-4V5z",
+    group: "Agents",
+  },
+  {
     href: "/command/inbox",
     label: "Inbox",
     icon: "M3 8l9 6 9-6M4 6h16a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V7a1 1 0 011-1z",

@@ -39,6 +39,7 @@ const ROLES = {
   "brand-lead": "Design research + brand direction for the forge",
   whitney: "Finds jobs for Joe + applies once he approves (creates accounts, verifies by email, tailors)",
   edward: "Manages joe@thinkbigjoe.com — triage, spam, drafts in Joe's voice; Venus approves every send",
+  destiny: "Finds Upwork gigs from Upwork's own alert emails and drafts proposals — Joe submits (she never bids)",
 };
 
 const env = loadEnv(path.join(REPO, ".env.local"));
