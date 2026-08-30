@@ -1854,6 +1854,10 @@ async function toolInboxSweep({ since_minutes, limit } = {}) {
             folder,
             date: parsed.date ? parsed.date.toISOString() : null,
             from: parsed.from?.text || "",
+            // Relay senders (YC's Work at a Startup, most ATS platforms) put the human's real
+            // routing address in Reply-To and a generic no-reply in From. Replying to From sends
+            // the message nowhere. Surface it so a draft can never be addressed to the wrong box.
+            reply_to: parsed.replyTo?.value?.[0]?.address || null,
             subject: parsed.subject || "(no subject)",
             message_id: parsed.messageId || null,
             snippet: (parsed.text || "").replace(/\s+/g, " ").trim().slice(0, 400),
@@ -1875,6 +1879,7 @@ async function toolInboxSweep({ since_minutes, limit } = {}) {
   for (const m of msgs) {
     lines.push(`• uid ${m.uid} · [${m.folder}] · ${m.date || "?"}`);
     lines.push(`  From: ${m.from}`);
+    if (m.reply_to) lines.push(`  ⚠️ Reply-To: ${m.reply_to}  ← reply HERE, not to From`);
     lines.push(`  Subject: ${m.subject}`);
     if (m.message_id) lines.push(`  Message-ID: ${m.message_id}`);
     lines.push(`  ${m.snippet}`);
