@@ -2053,6 +2053,57 @@ async function toolEmailFile({ uid, uids, folder, from_folder } = {}) {
   return { content: [{ type: "text", text: `📁 Filed ${list.length} message(s) from ${src} → ${folder}. Still swept — filing organises, it never hides mail.` }] };
 }
 
+// --- Following up on silence ------------------------------------------------
+// The failure this closes: an application is submitted, the ATS auto-confirms, and then nothing
+// ever happens again. Nobody notices, because "applied" looks like success. This asks the only
+// question that matters after a submission — who has gone quiet, and for how long?
+async function toolListFollowupDue({ days, limit } = {}) {
+  const minDays = Number.isFinite(Number(days)) ? Number(days) : 7;
+  const max = Math.min(Number(limit) || 15, 40);
+  let rows;
+  try {
+    const r = await query(
+      `SELECT id, company, role, platform, applied_at, contact_info, notes,
+              EXTRACT(DAY FROM (now() - applied_at))::int AS days_silent
+         FROM job_applications
+        WHERE status = 'applied'
+          AND applied_at IS NOT NULL
+          AND applied_at < now() - ($1 || ' days')::interval
+          AND COALESCE(notes, '') NOT LIKE '%[employer reply%'
+          AND COALESCE(notes, '') NOT LIKE '%[followed up%'
+        ORDER BY applied_at ASC
+        LIMIT $2`, [String(minDays), max]);
+    rows = r.rows;
+  } catch (err) {
+    return { content: [{ type: "text", text: `❌ Follow-up scan failed: ${err?.message || err}` }], isError: true };
+  }
+  if (!rows.length) {
+    return { content: [{ type: "text", text: `✅ Nothing is due a follow-up — no application has been silent longer than ${minDays} days without a reply already recorded.` }] };
+  }
+  const lines = [`📮 **${rows.length} application(s) silent ${minDays}+ days** — no employer response recorded. Oldest first:`, ""];
+  for (const r of rows) {
+    let contact = "";
+    try {
+      const ci = typeof r.contact_info === "string" ? JSON.parse(r.contact_info) : r.contact_info;
+      if (ci) {
+        const bits = [ci.recruiter_name || ci.name, ci.email, ci.linkedin].filter(Boolean);
+        if (bits.length) contact = bits.join(" · ");
+      }
+    } catch { /* contact_info is free-form; ignore shape errors */ }
+    lines.push(`• #${r.id} · **${r.days_silent}d silent** · ${r.company} — ${r.role}${r.platform ? ` (${r.platform})` : ""}`);
+    if (contact) lines.push(`  Contact: ${contact}`);
+    lines.push("");
+  }
+  lines.push(
+    "For each, draft ONE short, warm follow-up and queue it with email_request_send.",
+    "• Reply INTO the existing ATS thread in `Job Alerts` where one exists — that reaches a real inbox; a fresh mail to a no-reply address does not.",
+    "• If the only address is no-reply and there's no named contact, DON'T invent one: say so in your report and let Joe decide whether to chase it on LinkedIn.",
+    "• Never follow up twice on the same application, and never chase a rejection.",
+    "• After you queue one, call record_employer_reply with kind 'info' and a summary starting '[followed up' so it stops appearing here.",
+  );
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
 // --- Employer replies must reach the database -------------------------------
 // Whitney writes to job_applications; employers write to the mailbox. Nothing joined the two,
 // so an interview invite was invisible to Venus's debrief and to /command/applications.
@@ -2192,6 +2243,12 @@ async function toolGetInboxReport() {
     `SELECT summary, created_at FROM activity_log
       WHERE event_type = 'email_inbox_report' ORDER BY created_at DESC LIMIT 1`,
   );
+  // The follow-up run files under its own event type so it doesn't overwrite the sweep report.
+  // Venus needs BOTH — the sweep says what arrived, the follow-up says what has gone silent.
+  const followup = await query(
+    `SELECT summary, created_at FROM activity_log
+      WHERE event_type = 'job_followup_report' ORDER BY created_at DESC LIMIT 1`,
+  );
   const pending = await query(
     `SELECT id, to_addr, subject, context, send_at FROM email_outbox WHERE status = 'pending' ORDER BY created_at DESC LIMIT 25`,
   );
@@ -2201,6 +2258,10 @@ async function toolGetInboxReport() {
     lines.push(`📥 **Edward's latest inbox report** (${age} min ago):`, "", rep.rows[0].summary, "");
   } else {
     lines.push("📭 Edward hasn't filed an inbox report yet (no email_inbox_report in activity_log).", "");
+  }
+  if (followup.rows.length) {
+    const fAge = Math.round((Date.now() - new Date(followup.rows[0].created_at).getTime()) / 3600000);
+    lines.push(`📮 **Edward's latest follow-up report** (${fAge}h ago) — applications that have gone silent:`, "", followup.rows[0].summary, "");
   }
   if (pending.rows.length) {
     lines.push(`⏳ **${pending.rows.length} send(s) awaiting your approval** (email_approve_send / email_reject_send):`);
@@ -3154,7 +3215,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.52.0" },
+  { name: "tbj-mcp", version: "2.53.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -3701,6 +3762,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "list_followup_due",
+      description: "Edward: applications that have gone SILENT — submitted N+ days ago with no employer response recorded and no follow-up already sent, oldest first. 'Applied' looks like success, so a dead application is invisible until someone asks this question. Use it on the follow-up run; draft one short nudge per row into the existing ATS thread.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          days: { type: "number", description: "Silence threshold in days (default 7). Below ~5 is too eager for most employers." },
+          limit: { type: "number", description: "Max rows (default 15, cap 40)." },
+        },
+      },
+    },
+    {
       name: "record_employer_reply",
       description: "Edward: write an employer's emailed reply back onto the job application. Whitney only records what SHE does, so an interview invite that arrives by email is invisible to Joe's board and to Venus's debrief until you record it here. Call it for any real employer response: interview/next-step invite, offer, or rejection. This is what puts an interview in front of Joe.",
       inputSchema: {
@@ -4096,6 +4168,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "email_move_spam": return toolEmailMoveSpam(args);
     case "inbox_unanswered": return toolInboxUnanswered(args);
     case "email_file": return toolEmailFile(args);
+    case "list_followup_due": return toolListFollowupDue(args);
     case "record_employer_reply": return toolRecordEmployerReply(args);
     case "email_request_send": return toolEmailRequestSend(args);
     case "email_list_pending_sends": return toolEmailListPendingSends(args);

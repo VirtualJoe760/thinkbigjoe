@@ -200,6 +200,17 @@ submitted) because only email knew.
 - Edward's report gained **OWED** and **EMPLOYER** sections; Venus's debrief gained 📬 **OWED**
   and folds employer invites into 🎉 **INTERVIEW**; `/command/inbox` renders all three as panels.
 
+**The follow-up loop (added the same day).** Fixing visibility only solved half of it: mail that
+*arrives* is now seen, but an application that is submitted, auto-confirmed, and then ignored
+forever still looked fine, because **`applied` reads as success**. A weekday cron (`TBJ Edward —
+Application Follow-up`, 11:30 Phoenix) now closes that: `list_followup_due` returns anything silent
+7+ days with no employer reply and no prior nudge, Edward drafts one short follow-up each into the
+existing ATS thread, and files a `job_followup_report` an hour before Venus's 12:30 debrief —
+`get_inbox_report` returns both, so it reaches Joe on Telegram the same day. Two guardrails worth
+keeping: it caps at **5 nudges per run** (a burst of identical mail from one domain is how you get
+filtered), and when an application has **no reachable human** it says so instead of mailing a
+no-reply address — a follow-up sent nowhere is worse than none, because it reads as done.
+
 **The lesson worth keeping:** *a report that can only see one folder and one time window will
 tell you everything is fine.* When an agent reports "nothing to do", check what it is
 structurally capable of seeing before believing it.
