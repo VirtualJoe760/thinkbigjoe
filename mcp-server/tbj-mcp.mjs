@@ -2089,9 +2089,16 @@ async function toolListGigAlerts({ since_minutes, limit } = {}) {
   try {
     await client.connect();
     try { await client.mailboxCreate(GIG_FOLDER); } catch { /* exists */ }
-    const lock = await client.getMailboxLock(GIG_FOLDER);
+    // Read the Upwork folder AND sweep INBOX for un-filed Upwork mail. Requiring a mail filter to
+    // exist first would make "no gigs" and "the filter isn't set up" look identical — a silent
+    // failure mode that costs a model call per run to discover. This way Destiny works the moment
+    // Joe turns alerts on; filing is a tidiness step, not a dependency.
+    for (const box of [GIG_FOLDER, "INBOX"]) {
+    const lock = await client.getMailboxLock(box);
     try {
-      const uids = await client.search({ since }, { uid: true });
+      const uids = box === "INBOX"
+        ? await client.search({ since, from: "upwork.com" }, { uid: true })
+        : await client.search({ since }, { uid: true });
       for (const uid of (uids || []).slice(-max).reverse()) {
         let parsed = null;
         for await (const m of client.fetch(uid, { source: true }, { uid: true })) {
@@ -2103,9 +2110,10 @@ async function toolListGigAlerts({ since_minutes, limit } = {}) {
         // is judgement, which is Destiny's job, not this tool's.
         const urls = [...new Set((body.match(/https?:\/\/[^\s)>\]]*upwork\.com\/[^\s)>\]]*/gi) || [])
           .map((u) => u.replace(/[.,;]+$/, "")))];
-        mails.push({ uid, date: parsed.date?.toISOString() || null, subject: parsed.subject || "", body: body.trim().slice(0, 6000), urls });
+        mails.push({ uid, folder: box, date: parsed.date?.toISOString() || null, subject: parsed.subject || "", body: body.trim().slice(0, 6000), urls });
       }
     } finally { lock.release(); }
+    }
   } catch (err) {
     return { content: [{ type: "text", text: `❌ Reading the ${GIG_FOLDER} folder failed: ${err?.message || err}` }], isError: true };
   } finally {
@@ -2113,7 +2121,7 @@ async function toolListGigAlerts({ since_minutes, limit } = {}) {
   }
 
   if (!mails.length) {
-    return { content: [{ type: "text", text: `📭 No Upwork alerts in the "${GIG_FOLDER}" folder in the last ${sinceMin} min.\n\nIf this stays empty, the saved-search alerts aren't set up yet (Joe configures those in Upwork's UI) or the mail filter isn't routing them to "${GIG_FOLDER}". Say so in your report rather than guessing — an empty folder is a setup problem, not "no gigs available".` }] };
+    return { content: [{ type: "text", text: `📭 No Upwork alert mail anywhere in the last ${sinceMin} min — I checked the "${GIG_FOLDER}" folder AND scanned INBOX for anything from upwork.com.\n\nThat almost certainly means Joe hasn't turned on his Upwork saved-search alerts yet (he sets those up in Upwork's own UI — nobody can do it for him). Report it as a SETUP GAP, not as "no gigs available", and don't invent gigs to fill the run.` }] };
   }
 
   // Dedupe: the same posting arrives in several saved-search alerts.
@@ -2129,7 +2137,7 @@ async function toolListGigAlerts({ since_minutes, limit } = {}) {
   const lines = [`📬 **${mails.length} Upwork alert email(s)** — read each and pull the gigs out yourself; I deliberately don't parse them for you:`, ""];
   for (const m of mails) {
     const fresh = m.urls.filter((u) => !seen.has(u));
-    lines.push(`━━ uid ${m.uid} · ${m.date || "?"} · ${m.subject}`);
+    lines.push(`━━ uid ${m.uid} · [${m.folder}] · ${m.date || "?"} · ${m.subject}`);
     if (m.urls.length) {
       lines.push(`  postings: ${m.urls.length} (${fresh.length} new, ${m.urls.length - fresh.length} already on the board)`);
       for (const u of fresh.slice(0, 12)) lines.push(`  • ${u}`);
@@ -3429,7 +3437,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.56.0" },
+  { name: "tbj-mcp", version: "2.57.0" },
   { capabilities: { tools: {} } },
 );
 

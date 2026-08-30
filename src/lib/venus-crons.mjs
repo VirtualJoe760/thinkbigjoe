@@ -376,9 +376,10 @@ Hard rules, always: you never send or schedule mail yourself — email_request_s
   },
   {
     // 🧊 SHIPS COLD (2026-08-30). Destiny is built, registered and wired end-to-end, but her cron is
-    // OFF until Joe (a) sets up Upwork saved-search alerts in Upwork's own UI and (b) adds a mail
-    // filter routing them to the "Upwork" folder. Without those the folder is empty and every run
-    // costs a model call to discover there is nothing to read. Turn on with enabled:true + venus:sync.
+    // OFF until Joe sets up Upwork saved-search alerts in Upwork's own UI — the ONE step nobody can
+    // do for him. Until then every run costs a model call to discover an empty mailbox. (A mail
+    // filter into the "Upwork" folder is optional tidiness: list_gig_alerts also sweeps INBOX for
+    // upwork.com mail, so a missing filter can't silently starve her.) Turn on: enabled:true + venus:sync.
     //
     // ⛔ THE CONSTRAINT THAT SHAPED THIS AGENT: Upwork permanently bans accounts for automation —
     // auto-submitting proposals, scraping the job feed, or letting a tool log in "as you" are all
