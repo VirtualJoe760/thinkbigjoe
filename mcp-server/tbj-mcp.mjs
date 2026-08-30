@@ -214,13 +214,25 @@ const DAILY_APPLY_CAP = 5;
 // Venus logs as 'venus'; her agent id is 'main'.
 const BUDGET_ACTOR = { main: "venus" };
 
+// Count RUNS, not log rows. This counted rows until 2026-08-30, which meant the budget punished
+// an agent for doing MORE work in a single wake-up: one good Edward sweep that files 23 emails
+// logs ~10 rows and blows a 4-turn cap instantly, even though it was one model call. That is
+// backwards — the cap exists to stop repeated *wake-ups* that do nothing, not to ration actions
+// within a productive run. Rows are grouped into runs by a 20-minute idle gap, so no per-agent
+// event-name registry is needed and a new event type can never silently inflate the count.
 async function turnsToday(agentId) {
   const actor = BUDGET_ACTOR[agentId] || agentId;
   const r = await query(
-    `SELECT count(*)::int n FROM activity_log
-      WHERE actor = $1
-        AND (created_at AT TIME ZONE 'America/Phoenix')::date
-          = (now() AT TIME ZONE 'America/Phoenix')::date`,
+    `WITH today AS (
+       SELECT created_at,
+              LAG(created_at) OVER (ORDER BY created_at) AS prev
+         FROM activity_log
+        WHERE actor = $1
+          AND (created_at AT TIME ZONE 'America/Phoenix')::date
+            = (now() AT TIME ZONE 'America/Phoenix')::date
+     )
+     SELECT count(*)::int n FROM today
+      WHERE prev IS NULL OR created_at - prev > interval '20 minutes'`,
     [actor],
   );
   return r.rows[0].n;
@@ -3215,7 +3227,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.53.0" },
+  { name: "tbj-mcp", version: "2.54.0" },
   { capabilities: { tools: {} } },
 );
 

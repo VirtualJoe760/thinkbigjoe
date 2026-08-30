@@ -211,6 +211,24 @@ keeping: it caps at **5 nudges per run** (a burst of identical mail from one dom
 filtered), and when an application has **no reachable human** it says so instead of mailing a
 no-reply address — a follow-up sent nowhere is worse than none, because it reads as done.
 
+**Two infrastructure bugs the same work surfaced** (both fixed 2026-08-30):
+
+- **Worker crons were fail-closing on delivery.** `openclaw cron add` defaults delivery to
+  channel `last`, which errors whenever more than one channel is configured *("Channel is
+  required when multiple channels are configured: discord, telegram")*. Edward's sweep cron had
+  **errored on 4 consecutive scheduled runs** — the agent work succeeded and filed its report, so
+  the data looked healthy while the cron showed `error`. A worker cron must never announce (it
+  reports via `activity_log`; Venus does the talking), and saying nothing in the manifest was not
+  enough because the CLI default is not "nothing". `sync-venus-crons.mjs` now emits
+  `--no-deliver` for any channel-less cron **and diffs delivery** like schedule/prompt/agent —
+  delivery drift was previously invisible to the sync, which is exactly how this survived.
+- **The daily turn cap counted log rows, not runs.** `turnsToday()` counted every `activity_log`
+  row, so one *productive* Edward sweep that files 23 emails logged ~10 rows and blew a 4-turn cap
+  instantly — the budget punished doing more work per wake-up, the opposite of its purpose (it
+  exists to stop repeated wake-ups that do nothing). It now groups rows into runs by a 20-minute
+  idle gap: Edward went from a reported 16 turns to an actual 2. No per-agent event registry, so a
+  new event type can never silently inflate the count.
+
 **The lesson worth keeping:** *a report that can only see one folder and one time window will
 tell you everything is fine.* When an agent reports "nothing to do", check what it is
 structurally capable of seeing before believing it.
