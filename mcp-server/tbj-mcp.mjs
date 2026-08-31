@@ -211,6 +211,28 @@ const DAILY_TURN_CAP = { whitney: 15, edward: 4, main: 4, destiny: 4 };
 // Whitney's real-world ceiling. ~2-5 applications/day is the healthy human cadence; more looks
 // like a bot and is what gets Joe's accounts flagged. This is a business limit, not a cost one.
 const DAILY_APPLY_CAP = 5;
+
+// --- Destiny's ceilings (Upwork) -------------------------------------------
+// Rewritten 2026-08-31: Destiny now drives a real browser on Joe's live Upwork account and
+// SUBMITS proposals he has approved. Every number below is a bot-protection limit first and a
+// cost limit second, and each is enforced server-side rather than trusted to her prompt --
+// a prompt rule is a suggestion, a tool that refuses is a control.
+//
+// Joe reviews TEN gigs at a time. A board he hasn't worked is a board she must not be filling:
+// past the cap she stops hunting entirely rather than browsing and discarding, which is how
+// Whitney burned an entire Ollama quota (69 of 96 runs did nothing but log "board full").
+const GIG_REVIEW_CAP = 10;
+// Proposals per day. A SOFT cap (Joe, 2026-08-31): normally it refuses, but an open directive
+// from him lifts it for the day — the same override dailyBudgetStop uses, because Joe asking for
+// something is never the runaway this limit exists to stop.
+// Why a limit at all: a burst of near-identical proposals is the exact pattern Upwork's
+// automation detection looks for, and it is real money — 14-25 Connects (~$2-4) a bid at a new
+// freelancer's ~2% win rate is roughly $60 of Connects per client won.
+const DAILY_GIG_SUBMIT_CAP = 5;
+// Minimum wall-clock gap between two submissions. A human does not file two considered
+// proposals ninety seconds apart; nothing else in the stack enforces rhythm ACROSS runs.
+const GIG_SUBMIT_GAP_MIN = 45;
+
 // Venus logs as 'venus'; her agent id is 'main'.
 const BUDGET_ACTOR = { main: "venus" };
 
@@ -272,6 +294,29 @@ async function appliedToday() {
           = (now() AT TIME ZONE 'America/Phoenix')::date`,
   );
   return r.rows[0].n;
+}
+
+/** Proposals Destiny has actually submitted on Upwork today (Phoenix day). */
+async function gigsSubmittedToday() {
+  const r = await query(
+    `SELECT count(*)::int n FROM gigs
+      WHERE submitted_at IS NOT NULL
+        AND (submitted_at AT TIME ZONE 'America/Phoenix')::date
+          = (now() AT TIME ZONE 'America/Phoenix')::date`,
+  );
+  return r.rows[0].n;
+}
+
+/**
+ * Whole minutes since the last proposal went out, or null if none ever has.
+ * The rhythm control: caps limit how MUCH she does in a day, this limits how FAST.
+ */
+async function minutesSinceLastGigSubmit() {
+  const r = await query(
+    `SELECT EXTRACT(EPOCH FROM (now() - max(submitted_at))) / 60 AS mins FROM gigs WHERE submitted_at IS NOT NULL`,
+  );
+  const m = r.rows[0]?.mins;
+  return m == null ? null : Math.floor(Number(m));
 }
 
 // ---------------------------------------------------------------------------
@@ -1542,6 +1587,27 @@ async function toolJobBoardCount() {
   return { content: [{ type: "text", text: `✅ Review board has room: ${n}/${REVIEW_CAP} awaiting review — you may surface up to ${room} more this turn.` }] };
 }
 
+// Two postings are the SAME job if they resolve to the same place. Whitney recorded one Instrumentl
+// Lever posting THREE times — "Senior Backend Engineer", "... (AI/ML)", "... (AI Features)" — because
+// the old dedup only compared company+role strings, and a reworded title slips straight past that.
+// She then re-applied and Lever answered "Your application was already submitted." Normalising kills
+// the fragment/query/trailing-slash noise that made identical URLs look different.
+function normalizeJobUrl(u) {
+  if (!u) return null;
+  try {
+    const x = new URL(String(u).trim());
+    x.hash = "";
+    for (const p of [...x.searchParams.keys()]) {
+      if (/^(utm_|ref|source|ms|gh_src|lever-source)/i.test(p)) x.searchParams.delete(p);
+    }
+    let out = `${x.hostname.replace(/^www\./, "").toLowerCase()}${x.pathname.replace(/\/+$/, "")}`;
+    const q = x.searchParams.toString();
+    return q ? `${out}?${q}` : out;
+  } catch {
+    return String(u).trim().toLowerCase().replace(/[#?].*$/, "").replace(/\/+$/, "");
+  }
+}
+
 async function toolRecordFoundJob({
   company, role, platform, url, location, pay,
   fit_reason, fit_score, interest_match, interest_score,
@@ -1568,13 +1634,30 @@ async function toolRecordFoundJob({
       ? `🧢 Joe's priority-target lane is full: ${capCheck.rows[0].n} directed roles awaiting review (cap ${cap}). Stop finding — he needs to work these before you surface more.`
       : `🧢 The review board is at its ${cap}-opportunity cap (${capCheck.rows[0].n} awaiting review). Stop general finding — Joe needs to approve or decline some before you surface more. You MAY still surface roles at the priority employers in his target profile: pass directed: true for those.` }] };
   }
-  // Dedup: same company + role already on the board (any status) → don't re-add.
+  // Dedup #1: same company + role already on the board (any status) → don't re-add.
   const dup = await query(
     `SELECT id, status FROM job_applications WHERE lower(company) = lower($1) AND lower(role) = lower($2) LIMIT 1`,
     [company, role],
   );
   if (dup.rows.length) {
     return { content: [{ type: "text", text: `⏭️ Already on the board: ${role} @ ${company} (#${dup.rows[0].id}, status: ${dup.rows[0].status}). Not re-added.` }] };
+  }
+  // Dedup #2 — the one that actually matters: the same POSTING under a different title. A title is
+  // whatever the board happened to render; the URL is the job. Without this, one posting becomes
+  // three rows and Whitney re-applies to a job she already submitted.
+  const normUrl = normalizeJobUrl(url);
+  if (normUrl) {
+    const urlDup = await query(
+      `SELECT id, role, status FROM job_applications
+        WHERE url IS NOT NULL AND url <> ''
+          AND regexp_replace(regexp_replace(lower(url), '^https?://(www\\.)?', ''), '[#?].*$', '') = $1
+        LIMIT 1`,
+      [normUrl.replace(/\?.*$/, "")],
+    );
+    if (urlDup.rows.length) {
+      const d = urlDup.rows[0];
+      return { content: [{ type: "text", text: `⏭️ Same POSTING already on the board as "${d.role}" (#${d.id}, status: ${d.status}) — the title differs but the URL is identical. Not re-added. Don't re-word a title to get a job past this: a duplicate application makes Joe look careless to that employer.` }] };
+    }
   }
   const clampScore = (n) => (Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : null);
   const res = await query(
@@ -1617,19 +1700,55 @@ async function toolListApprovedJobs() {
     return { content: [{ type: "text", text: `✅ Today's applications are done: ${appliedN}/${DAILY_APPLY_CAP}. That is the healthy human ceiling — more in one day looks automated and is what gets Joe's job-board accounts flagged. Do NOT apply to anything else today and do NOT go looking for more roles. End your turn; the queue will still be here tomorrow.` }] };
   }
   const res = await query(
-    `SELECT id, company, role, platform, url, location, pay, fit_reason, priority, approved_at,
-            job_description, company_website, contact_info
-     FROM job_applications
-     WHERE status = 'approved'
-     ORDER BY priority DESC, approved_at ASC NULLS LAST, created_at ASC
-     LIMIT 25`,
+    // The queue must never hand her a posting that was already submitted. Approving a job is Joe
+    // saying "go", not "go again" — and an employer that answers "your application was already
+    // submitted" (Instrumentl did, 2026-08-31) reads Joe as careless. A duplicate is any approved
+    // row whose URL matches one already worked, compared with the host/path only so a reworded
+    // title or a tracking param can't disguise it.
+    `WITH norm AS (
+       SELECT id, status,
+              regexp_replace(regexp_replace(lower(url), '^https?://(www\\.)?', ''), '[#?].*$', '') AS key
+         FROM job_applications
+        WHERE url IS NOT NULL AND url <> ''
+     )
+     SELECT a.id, a.company, a.role, a.platform, a.url, a.location, a.pay, a.fit_reason,
+            a.priority, a.approved_at, a.job_description, a.company_website, a.contact_info
+       FROM job_applications a
+       LEFT JOIN norm n ON n.id = a.id
+      WHERE a.status = 'approved'
+        AND (
+          n.key IS NULL
+          OR NOT EXISTS (
+            SELECT 1 FROM norm w
+             WHERE w.key = n.key AND w.id <> a.id
+               AND w.status IN ('applied','interview','rejected','closed')
+          )
+        )
+      ORDER BY a.priority DESC, a.approved_at ASC NULLS LAST, a.created_at ASC
+      LIMIT 25`,
   );
   if (!res.rows.length) {
     return { content: [{ type: "text", text: "📭 No approved jobs waiting. Nothing to apply to — switch to your filler role: find new jobs and record_found_job them for Joe to approve." }] };
   }
+  // A URL match can't catch every duplicate: an approved row pointing at a company's generic
+  // careers page has a different URL from the posting it leads to. That is exactly how Instrumentl
+  // #46 slipped through and got a second application. So also warn per-company.
+  let priorByCompany = new Map();
+  try {
+    const prior = await query(
+      `SELECT lower(company) AS c, id, role, status, applied_at FROM job_applications
+        WHERE status IN ('applied','interview','rejected') ORDER BY applied_at DESC NULLS LAST`,
+    );
+    for (const p of prior.rows) if (!priorByCompany.has(p.c)) priorByCompany.set(p.c, p);
+  } catch { /* the warning is a nicety; never block the queue on it */ }
+
   const lines = [`📬 **${res.rows.length} approved job(s) waiting** (top of queue first):`, ""];
   for (const r of res.rows) {
     lines.push(`**#${r.id} — ${r.role} @ ${r.company}**${r.location ? ` · ${r.location}` : ""}${r.pay ? ` · ${r.pay}` : ""}`);
+    const prev = priorByCompany.get(String(r.company).toLowerCase());
+    if (prev && prev.id !== r.id) {
+      lines.push(`⚠️ **You already applied at ${r.company}** — "${prev.role}" (#${prev.id}, ${prev.status}${prev.applied_at ? `, ${String(prev.applied_at).slice(0, 10)}` : ""}). BEFORE you fill anything: open this posting and confirm it is a genuinely DIFFERENT role. If the ATS says the application was already submitted, or it is the same job under a reworded title, STOP — call update_application_status(#${r.id}, 'closed') with a note saying it duplicates #${prev.id}, and move on. A second application to the same job makes Joe look careless to that employer.`);
+    }
     if (r.platform) lines.push(`Platform: ${r.platform}`);
     if (r.url) lines.push(`Apply: ${r.url}`);
     if (r.company_website) lines.push(`Company site: ${r.company_website}`);
@@ -2066,93 +2185,92 @@ async function toolEmailFile({ uid, uids, folder, from_folder } = {}) {
 }
 
 // ============================================================================
-// DESTINY — Upwork gig hunting. Draft-only, by design.
+// DESTINY — Upwork gig hunting. Browser-driven, human-gated, rate-limited.
 //
-// Upwork bans accounts permanently for automation: auto-submitting proposals, scraping the job
-// feed, or letting a tool log in "as you" are all prohibited. RSS was killed in Aug 2024 for
-// exactly that reason and the official API is gated behind partner approval we don't have. So the
-// ONLY compliant ingestion path is Upwork's own saved-search alert email, which Upwork pushes to
-// Joe. Reading our own mailbox is not automation against Upwork. Nothing here logs in, scrapes,
-// submits, or spends a Connect — Joe does that himself.
+// Rewritten 2026-08-31 (Joe's call). She was email-only and draft-only: she read Upwork's own
+// saved-search alerts and stopped, because Joe clicked submit himself. She now drives a real
+// browser on his live Upwork session — she hunts the feed, posts finds to /command/gigs, and
+// once JOE APPROVES a gig she writes the proposal and submits it under his account.
+//
+// What did NOT change is the risk. Upwork bans permanently and without appeal for automation,
+// and the first 2-3 contracts disproportionately set a Job Success Score that lasts for years.
+// So the human gate moved rather than disappeared: Joe still decides WHAT gets bid on, and the
+// limits that used to be prose in her prompt are now enforced HERE, where she cannot talk her
+// way past them:
+//
+//   • GIG_REVIEW_CAP       — 10 gigs awaiting Joe at a time. Past it she stops hunting outright.
+//   • DAILY_GIG_SUBMIT_CAP — 5 proposals a day (SOFT: an open directive from Joe lifts it),
+//                            counted from gigs.submitted_at.
+//   • GIG_SUBMIT_GAP_MIN   — 45 minutes between two submissions, enforced ACROSS runs.
+//   • dailyBudgetStop      — her shared-Claude turn budget, at every loop entry.
+//
+// The email path (list_gig_alerts + the "Upwork" IMAP folder) was deleted with this rewrite. It
+// ran 15-60 minutes behind the live feed, which made Joe structurally last to every posting; on
+// the feed directly, freshness is now something he can win on. Leaving a dead tool in her
+// surface would also cost schema tokens every single turn for a path she must never take.
 // ============================================================================
-const GIG_FOLDER = "Upwork";
 
-async function toolListGigAlerts({ since_minutes, limit } = {}) {
+/**
+ * The cheap question Destiny MUST ask before hunting. Mirrors job_board_count for Whitney.
+ *
+ * The failure this prevents is one the fleet has already paid for once: Whitney used to search,
+ * find, and THEN discover the board was full — burning a full model call, plus real traffic on
+ * Joe's account, to throw the results away. Ask first, and a full board costs one query.
+ */
+async function toolGigBoardCount() {
+  if (await isAgentPaused("destiny")) {
+    return { content: [{ type: "text", text: "⏸ Destiny is PAUSED by Joe. Stand down — do not browse Upwork, do not record gigs, do not submit anything. End your turn without acting." }] };
+  }
   const budget = await dailyBudgetStop("destiny");
   if (budget) return budget;
-  const client = zohoImap();
-  if (!client) return NO_MAIL_CREDS;
-  const sinceMin = Number.isFinite(since_minutes) ? since_minutes : 1440;
-  const max = Math.min(Number(limit) || 15, 40);
-  const since = new Date(Date.now() - sinceMin * 60 * 1000);
-  const mails = [];
+  let n, submitted, gap;
   try {
-    await client.connect();
-    try { await client.mailboxCreate(GIG_FOLDER); } catch { /* exists */ }
-    // Read the Upwork folder AND sweep INBOX for un-filed Upwork mail. Requiring a mail filter to
-    // exist first would make "no gigs" and "the filter isn't set up" look identical — a silent
-    // failure mode that costs a model call per run to discover. This way Destiny works the moment
-    // Joe turns alerts on; filing is a tidiness step, not a dependency.
-    for (const box of [GIG_FOLDER, "INBOX"]) {
-    const lock = await client.getMailboxLock(box);
-    try {
-      const uids = box === "INBOX"
-        ? await client.search({ since, from: "upwork.com" }, { uid: true })
-        : await client.search({ since }, { uid: true });
-      for (const uid of (uids || []).slice(-max).reverse()) {
-        let parsed = null;
-        for await (const m of client.fetch(uid, { source: true }, { uid: true })) {
-          try { parsed = await simpleParser(m.source); } catch { parsed = null; }
-        }
-        if (!parsed) continue;
-        const body = (parsed.text || parsed.html?.replace(/<[^>]+>/g, " ") || "").replace(/[ \t]+/g, " ");
-        // Deterministic only where it must be: the posting URL is the dedupe key. Everything else
-        // is judgement, which is Destiny's job, not this tool's.
-        const urls = [...new Set((body.match(/https?:\/\/[^\s)>\]]*upwork\.com\/[^\s)>\]]*/gi) || [])
-          .map((u) => u.replace(/[.,;]+$/, "")))];
-        mails.push({ uid, folder: box, date: parsed.date?.toISOString() || null, subject: parsed.subject || "", body: body.trim().slice(0, 6000), urls });
-      }
-    } finally { lock.release(); }
-    }
+    const r = await query(`SELECT count(*)::int n FROM gigs WHERE status = 'found'`);
+    n = r.rows[0].n;
+    [submitted, gap] = await Promise.all([gigsSubmittedToday(), minutesSinceLastGigSubmit()]);
   } catch (err) {
-    return { content: [{ type: "text", text: `❌ Reading the ${GIG_FOLDER} folder failed: ${err?.message || err}` }], isError: true };
-  } finally {
-    try { await client.logout(); } catch { /* ignore */ }
+    return { content: [{ type: "text", text: `❌ Board count failed: ${err?.message || err}` }], isError: true };
   }
+  const room = Math.max(0, GIG_REVIEW_CAP - n);
+  const pace = [
+    `Submissions today: ${submitted}/${DAILY_GIG_SUBMIT_CAP}.`,
+    gap == null ? "No proposal has ever been submitted." : `Last proposal went out ${gap} min ago (${GIG_SUBMIT_GAP_MIN} min minimum between two).`,
+  ].join(" ");
+  if (n >= GIG_REVIEW_CAP) {
+    return { content: [{ type: "text", text: `🧢 Joe's gig board is FULL: ${n} awaiting his review, cap ${GIG_REVIEW_CAP}. He reviews ten at a time, and gigs he hasn't looked at yet are not a queue for you to lengthen.
 
-  if (!mails.length) {
-    return { content: [{ type: "text", text: `📭 No Upwork alert mail anywhere in the last ${sinceMin} min — I checked the "${GIG_FOLDER}" folder AND scanned INBOX for anything from upwork.com.\n\nThat almost certainly means Joe hasn't turned on his Upwork saved-search alerts yet (he sets those up in Upwork's own UI — nobody can do it for him). Report it as a SETUP GAP, not as "no gigs available", and don't invent gigs to fill the run.` }] };
+Do NOT hunt this turn — no browsing the feed, no opening postings, no record_found_gig. If an APPROVED gig is waiting, work that instead (that is always the higher-value job anyway). Otherwise log one line and END THE TURN. Searching a full board costs Joe tokens and puts pointless traffic on his Upwork account for results you would have to throw away.
+
+${pace}` }] };
   }
+  return { content: [{ type: "text", text: `✅ Gig board has room: ${n}/${GIG_REVIEW_CAP} awaiting Joe — you may surface up to **${room}** more this turn, and not one beyond that.
 
-  // Dedupe: the same posting arrives in several saved-search alerts.
-  let seen = new Set();
-  try {
-    const all = mails.flatMap((m) => m.urls);
-    if (all.length) {
-      const r = await query(`SELECT url FROM gigs WHERE url = ANY($1::text[])`, [all]);
-      seen = new Set(r.rows.map((x) => x.url));
-    }
-  } catch { /* dedupe is a nicety; never block the run on it */ }
+Quality over quota: ${room} is a ceiling, not a target. A thin card wastes his review just as surely as a full board does.
 
-  const lines = [`📬 **${mails.length} Upwork alert email(s)** — read each and pull the gigs out yourself; I deliberately don't parse them for you:`, ""];
-  for (const m of mails) {
-    const fresh = m.urls.filter((u) => !seen.has(u));
-    lines.push(`━━ uid ${m.uid} · [${m.folder}] · ${m.date || "?"} · ${m.subject}`);
-    if (m.urls.length) {
-      lines.push(`  postings: ${m.urls.length} (${fresh.length} new, ${m.urls.length - fresh.length} already on the board)`);
-      for (const u of fresh.slice(0, 12)) lines.push(`  • ${u}`);
-    }
-    lines.push(m.body, "");
-  }
-  lines.push("Score each NEW posting on fit_score AND win_score, then record_found_gig the ones worth Joe's Connects. Postings already on the board need nothing. Drop the rest with a reason — a dropped gig with a stated reason is a useful output.");
-  return { content: [{ type: "text", text: lines.join("\n") }] };
+${pace}` }] };
 }
 
 async function toolRecordFoundGig(a = {}) {
   const { title, client, url, budget, scope, description, lane, proposals_so_far, client_hires, client_verified, fit_score, win_score, fit_reason, win_reason } = a;
+  if (await isAgentPaused("destiny")) {
+    return { content: [{ type: "text", text: "⏸ Destiny is PAUSED by Joe. Stand down — do not record gigs. End your turn without acting." }] };
+  }
+  const budgetStop = await dailyBudgetStop("destiny");
+  if (budgetStop) return budgetStop;
   if (!title) return { content: [{ type: "text", text: "❌ title is required." }], isError: true };
   if (!Number.isFinite(Number(fit_score)) || !Number.isFinite(Number(win_score))) {
     return { content: [{ type: "text", text: "❌ Both fit_score and win_score are required (0-100). win_score is the one that matters: can a profile with NO reviews win this?" }], isError: true };
+  }
+  // The cap again, at the point of writing. gig_board_count is the cheap check she is told to
+  // make first; this is the one she cannot skip. Belt and braces on purpose — the whole reason
+  // the board has a ceiling is that Joe's attention is the scarce resource, not the gigs.
+  let onBoard;
+  try {
+    const c = await query(`SELECT count(*)::int n FROM gigs WHERE status = 'found'`);
+    onBoard = c.rows[0].n;
+  } catch { onBoard = null; } // fail-open: a counting error must never wedge her
+  if (onBoard != null && onBoard >= GIG_REVIEW_CAP) {
+    return { content: [{ type: "text", text: `🧢 Not recorded — Joe's board is FULL (${onBoard}/${GIG_REVIEW_CAP} awaiting his review). He reviews ten at a time.\n\nSTOP hunting now: no more browsing, no more postings opened, no more record_found_gig this turn. Call gig_board_count FIRST next time and you will not waste a search on a board with no room. End the turn (or work an approved gig, which always outranks hunting).` }] };
   }
   try {
     const r = await query(
@@ -2167,7 +2285,11 @@ async function toolRecordFoundGig(a = {}) {
        Number(fit_score), Number(win_score), fit_reason ?? null, win_reason ?? null]);
     if (!r.rows.length) return { content: [{ type: "text", text: `↩️ Already on the board (same URL) — skipped, not duplicated.` }] };
     await audit("gig_found", `${title}${client ? ` @ ${client}` : ""} — fit ${fit_score} / win ${win_score}`, { actor: "destiny", target: String(r.rows[0].id) });
-    return { content: [{ type: "text", text: `✅ Gig #${r.rows[0].id} on the board for Joe: ${title}. fit ${fit_score} · win ${win_score}.` }] };
+    const left = onBoard == null ? null : Math.max(0, GIG_REVIEW_CAP - (onBoard + 1));
+    const tail = left == null ? ""
+      : left === 0 ? `\n\n🧢 That fills Joe's board (${GIG_REVIEW_CAP}/${GIG_REVIEW_CAP}). STOP hunting now — close the feed and end the turn.`
+      : `\n\nRoom for ${left} more on the board — a ceiling, not a target.`;
+    return { content: [{ type: "text", text: `✅ Gig #${r.rows[0].id} on the board for Joe: ${title}. fit ${fit_score} · win ${win_score}.${tail}` }] };
   } catch (err) {
     return { content: [{ type: "text", text: `❌ Could not record the gig: ${err?.message || err}` }], isError: true };
   }
@@ -2197,7 +2319,13 @@ async function toolListApprovedGigs({ limit } = {}) {
     if (g.notes) lines.push(`  Joe's note: ${g.notes}`);
     lines.push("");
   }
-  lines.push("Write the proposal per AGENTS.md — their problem in their words, name the fear, evidence from OUTSIDE Upwork, one honest line about being new plus a concrete first step. Then save_gig_proposal. Max 3 per run. Never send it.");
+  lines.push(`Work the TOP one to completion this run, then stop — one submission per run, ${DAILY_GIG_SUBMIT_CAP} per day.
+
+1. Open the posting LIVE and re-verify it: still open? proposal count exploded since you scored it? already hired? A stale approval is not a mandate to bid — dismiss it with the reason and move on.
+2. Check the Connects balance BEFORE spending it. Over 20 Connects for this bid, or a balance dropping under 40 → record_question instead. Never Boost.
+3. Write the proposal per AGENTS.md — their problem in their words, name the fear, evidence from OUTSIDE Upwork, one honest line about being new plus a concrete first step. Call save_gig_proposal FIRST, so the work survives a failed submit.
+4. Any field you cannot answer truthfully (exact rate, timeline, hours/week) → record_question, leave it approved, move on. Never invent a number — that is a contract Joe never agreed to.
+5. Submit, then update_gig_status "submitted" with a note recording the rate, the timeline and the Connects spent.`);
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
@@ -2215,7 +2343,7 @@ async function toolSaveGigProposal({ gig_id, proposal, note } = {}) {
       [proposal, note ?? null, Number(gig_id)]);
     if (!r.rows.length) return { content: [{ type: "text", text: `❌ Gig #${gig_id} isn't approved (or doesn't exist). Only gigs Joe approved can get a proposal.` }], isError: true };
     await audit("gig_proposal_drafted", `Proposal drafted for #${r.rows[0].id} ${r.rows[0].title}`, { actor: "destiny", target: String(r.rows[0].id) });
-    return { content: [{ type: "text", text: `✅ Proposal saved on #${r.rows[0].id}. It's on /command/gigs for Joe to review, edit, and submit himself. You do NOT submit it and you never spend a Connect.` }] };
+    return { content: [{ type: "text", text: `✅ Proposal saved on #${r.rows[0].id} and visible on /command/gigs.\n\nSaved is not sent. Submit it on Upwork yourself now, then call update_gig_status "submitted" with a note recording the rate, the timeline and the Connects spent. If anything blocks you at the submit step — a wall, a field you cannot answer truthfully, a Connect cost over 20 — STOP and record_question. The draft is safe here either way.` }] };
   } catch (err) {
     return { content: [{ type: "text", text: `❌ Save failed: ${err?.message || err}` }], isError: true };
   }
@@ -2226,18 +2354,47 @@ async function toolUpdateGigStatus({ gig_id, status, note } = {}) {
   if (!Number.isFinite(Number(gig_id)) || !GIG_STATUS.includes(status)) {
     return { content: [{ type: "text", text: `❌ gig_id + status required. status ∈ ${GIG_STATUS.join(", ")}.` }], isError: true };
   }
+  // 'submitted' is the one status that costs money, commits Joe to work, and touches his live
+  // Upwork account. It used to be human-only; since 2026-08-31 Destiny sends, so the protection
+  // moved from "she may not" to "she may not do it fast, often, or silently".
   if (status === "submitted") {
-    return { content: [{ type: "text", text: "❌ Only Joe marks a gig submitted — he's the one who sends it on Upwork. You draft and stop." }], isError: true };
+    if (await isAgentPaused("destiny")) {
+      return { content: [{ type: "text", text: "⏸ Destiny is PAUSED by Joe. Do NOT submit anything. End your turn." }] };
+    }
+    if (!note || String(note).trim().length < 20) {
+      return { content: [{ type: "text", text: "❌ A submission needs a `note` recording what you actually bid: the rate, the timeline, and the Connects spent. This note is the ONLY record of what Joe is now committed to — a submission without it is an obligation nobody can audit. Resend with the real numbers." }], isError: true };
+    }
+    let n, gap, directed;
+    try { [n, gap, directed] = await Promise.all([gigsSubmittedToday(), minutesSinceLastGigSubmit(), openDirectiveCount("destiny")]); }
+    catch { n = null; gap = null; directed = 0; } // fail-open on a counting error; never wedge her mid-submit
+    // SOFT cap: Joe asking for something outranks the ceiling. The 45-min rhythm below is NOT
+    // lifted by a directive — that one is bot protection, and haste is the tell regardless of
+    // who asked for the work.
+    if (n != null && n >= DAILY_GIG_SUBMIT_CAP && directed > 0) {
+      // fall through, but make the exception visible rather than silent
+      await audit("gig_status", `Daily cap ${n}/${DAILY_GIG_SUBMIT_CAP} overridden by an open directive`, { actor: "destiny", target: String(gig_id) });
+    } else if (n != null && n >= DAILY_GIG_SUBMIT_CAP) {
+      return { content: [{ type: "text", text: `🛑 Not recorded — that would be proposal ${n + 1} today and your ceiling is ${DAILY_GIG_SUBMIT_CAP}.\n\nSTOP submitting for today. This is a bot-protection limit before it is a cost one: more than ${DAILY_GIG_SUBMIT_CAP} proposals in a day from one account is the burst pattern Upwork's automation detection looks for, and a ban is permanent with no appeal. It is also real money — 14-25 Connects a bid.\n\nIt is a SOFT cap: if Joe gives you a direct instruction it lifts for the day. Do NOT go looking for one — he opens a directive, not you.\n\n⚠️ If you already clicked submit on Upwork, say so plainly in your log_activity report so Joe knows the board is behind reality. Then end the turn. The queue keeps until tomorrow.` }], isError: true };
+    }
+    if (gap != null && gap < GIG_SUBMIT_GAP_MIN) {
+      return { content: [{ type: "text", text: `🛑 Too fast — the last proposal went out ${gap} min ago and the minimum gap is ${GIG_SUBMIT_GAP_MIN}.\n\nA person does not file two considered proposals ${gap} minutes apart; a script does. Rhythm is the tell that gets accounts flagged, so this holds across runs, not just within one.\n\nEnd the turn — you may submit again in ${GIG_SUBMIT_GAP_MIN - gap} min. Do NOT wait it out in a loop: that burns Joe's token budget doing nothing.` }], isError: true };
+    }
   }
   try {
     const r = await query(
-      `UPDATE gigs SET status = $1,
+      `UPDATE gigs SET status = $1::text,
+              submitted_at = CASE WHEN $1::text = 'submitted' THEN now() ELSE submitted_at END,
               notes = CASE WHEN $2::text IS NULL THEN notes
                            WHEN COALESCE(notes,'') = '' THEN $2 ELSE notes || E'\n\n' || $2 END,
               updated_at = now()
         WHERE id = $3 RETURNING id, title, status`, [status, note ?? null, Number(gig_id)]);
     if (!r.rows.length) return { content: [{ type: "text", text: `❌ No gig #${gig_id}.` }], isError: true };
     await audit("gig_status", `#${r.rows[0].id} ${r.rows[0].title} → ${status}`, { actor: "destiny", target: String(r.rows[0].id) });
+    if (status === "submitted") {
+      const sent = await gigsSubmittedToday().catch(() => null);
+      const left = sent == null ? null : Math.max(0, DAILY_GIG_SUBMIT_CAP - sent);
+      return { content: [{ type: "text", text: `✅ #${r.rows[0].id} ${r.rows[0].title} → **submitted** on Upwork.${sent == null ? "" : `\n\nThat is ${sent}/${DAILY_GIG_SUBMIT_CAP} today${left === 0 ? " — your ceiling. Submit nothing else today." : `; ${left} left, and no sooner than ${GIG_SUBMIT_GAP_MIN} min from now.`}`}\n\nYou submit ONE per run. End the turn now: log_activity naming the gig, the rate you bid, and the Connects spent.` }] };
+    }
     return { content: [{ type: "text", text: `✅ #${r.rows[0].id} → ${status}.` }] };
   } catch (err) {
     return { content: [{ type: "text", text: `❌ Update failed: ${err?.message || err}` }], isError: true };
@@ -2269,7 +2426,7 @@ async function toolGetGigReport() {
   }
   lines.push(`Board: ${by.found ?? 0} awaiting Joe's approval · ${by.approved ?? 0} approved (proposal pending) · ${by.drafted ?? 0} drafted · ${by.submitted ?? 0} submitted · ${by.won ?? 0} won / ${by.lost ?? 0} lost`);
   if (ready.rows.length) {
-    lines.push("", `✍️ **${ready.rows.length} proposal(s) written and waiting on JOE to send** — he is the only one who can submit, so these stall until he acts:`);
+    lines.push("", `✍️ **${ready.rows.length} proposal(s) written but NOT submitted** — Destiny sends her own now, so a gig stuck at 'drafted' means something stopped her at the submit step (a Connect ceiling, a field she couldn't answer truthfully, or a wall on Upwork). Expect an open question on /command/gigs:`);
     for (const g of ready.rows) lines.push(`• #${g.id} ${g.title}${g.client ? ` — ${g.client}` : ""}`);
   }
   return { content: [{ type: "text", text: lines.join("\n") }] };
@@ -2512,8 +2669,21 @@ async function toolEmailRejectSend({ id, note } = {}) {
 // answer, a judgment call), she records a question against the job instead of guessing or
 // silently stopping. Joe answers on /command/applications; she reads the answer next run and
 // resumes. This is how "escalate rather than fabricate" becomes a resumable loop.
-async function toolRecordQuestion({ application_id, question, options, topic }) {
+// Two agents ask Joe questions now — Whitney about a job application, Destiny about an Upwork
+// gig — and each has its own board. Attribution is not cosmetic: a question rendered on the wrong
+// page is a blocked agent nobody can unblock, so the row carries `agent` and points at exactly one
+// of application_id / gig_id (or neither, for a general question).
+const QUESTION_BOARD = {
+  whitney: { who: "Whitney", url: "https://thinkbigjoe.com/command/applications", cancels: "cancels this application" },
+  destiny: { who: "Destiny", url: "https://thinkbigjoe.com/command/gigs", cancels: "dismisses this gig" },
+};
+
+async function toolRecordQuestion({ application_id, gig_id, agent, question, options, topic }) {
   if (!question) return { content: [{ type: "text", text: "❌ question is required." }], isError: true };
+  // Infer the asker when it wasn't passed: a gig question can only be Destiny's. Defaulting to
+  // whitney keeps every existing caller working unchanged.
+  const who = QUESTION_BOARD[agent] ? agent : gig_id ? "destiny" : "whitney";
+  const board = QUESTION_BOARD[who];
   // Ask-once: if this maps to a durable fact I already learned, don't ask Joe again.
   if (topic) {
     const known = await query(`SELECT fact FROM candidate_facts WHERE topic = $1`, [topic]);
@@ -2521,49 +2691,67 @@ async function toolRecordQuestion({ application_id, question, options, topic }) 
       return { content: [{ type: "text", text: `✅ Already known — ${topic}: ${known.rows[0].fact}\nUse this to answer; do NOT ask Joe again.` }] };
     }
   }
-  let appLabel = "";
+  let label = "";
   if (application_id) {
     const a = await query(`SELECT company, role FROM job_applications WHERE id = $1`, [application_id]);
-    if (a.rows.length) appLabel = ` about ${a.rows[0].role} @ ${a.rows[0].company}`;
+    if (a.rows.length) label = ` about ${a.rows[0].role} @ ${a.rows[0].company}`;
+  } else if (gig_id) {
+    const g = await query(`SELECT title, client FROM gigs WHERE id = $1`, [gig_id]);
+    if (g.rows.length) label = ` about ${g.rows[0].title}${g.rows[0].client ? ` — ${g.rows[0].client}` : ""}`;
   }
   const res = await query(
-    `INSERT INTO agent_questions (application_id, agent, question, status, options, topic)
-     VALUES ($1, 'whitney', $2, 'open', $3::jsonb, $4) RETURNING id`,
-    [application_id || null, question, Array.isArray(options) && options.length ? JSON.stringify(options) : null, topic || null],
+    `INSERT INTO agent_questions (application_id, gig_id, agent, question, status, options, topic)
+     VALUES ($1, $2, $3, $4, 'open', $5::jsonb, $6) RETURNING id`,
+    [application_id || null, gig_id || null, who, question,
+     Array.isArray(options) && options.length ? JSON.stringify(options) : null, topic || null],
   );
   const id = res.rows[0].id;
-  await audit("agent_question", `Whitney asked${appLabel}: ${String(question).slice(0, 160)}`, {
-    actor: "whitney", detail: { question_id: id, application_id: application_id || null },
+  await audit("agent_question", `${board.who} asked${label}: ${String(question).slice(0, 160)}`, {
+    actor: who, detail: { question_id: id, application_id: application_id || null, gig_id: gig_id || null },
   });
 
-  // Escalate to Joe's Telegram immediately. The board is passive — a blocked application
-  // sits dead until he looks at it — so the ping is what makes this loop actually resumable.
+  // Escalate to Joe's Telegram immediately. The board is passive — a blocked agent sits dead
+  // until he looks at it — so the ping is what makes this loop actually resumable.
   const opts = Array.isArray(options) && options.length
     ? `\n\nOptions: ${options.map((o) => tgEscape(o)).join(" · ")}`
     : "";
   const tgSent = await notifyJoeTelegram(
-    `🙋 <b>Whitney is blocked</b>${appLabel ? ` — ${tgEscape(appLabel.replace(/^ about /, ""))}` : ""}\n\n` +
+    `🙋 <b>${board.who} is blocked</b>${label ? ` — ${tgEscape(label.replace(/^ about /, ""))}` : ""}\n\n` +
       `<b>Q#${id}:</b> ${tgEscape(question)}${opts}\n\n` +
-      `Answer, or <b>Decline to answer</b> (declining cancels this application and frees her to move on):\n` +
-      `https://thinkbigjoe.com/command/applications`,
+      `Answer, or <b>Decline to answer</b> (declining ${board.cancels} and frees ${board.who} to move on):\n` +
+      `${board.url}`,
   );
 
-  return { content: [{ type: "text", text: `✅ Question posted for Joe (#${id})${appLabel}${tgSent ? " and sent to his Telegram" : ""}. He can ANSWER it, or DECLINE to answer — a decline cancels this application, and that's a legitimate outcome, not a failure. Either way I pick it up next run via list_answered_questions. Do not wait on this one now: move to the next thing.` }] };
+  return { content: [{ type: "text", text: `✅ Question posted for Joe (#${id})${label}${tgSent ? " and sent to his Telegram" : ""}, on ${board.url}. He can ANSWER it, or DECLINE to answer — a decline ${board.cancels}, and that's a legitimate outcome, not a failure. Either way you pick it up next run via list_answered_questions. Do not wait on it now: move to the next thing.` }] };
 }
 
-async function toolListAnsweredQuestions() {
+async function toolListAnsweredQuestions({ agent } = {}) {
+  // Scoped per agent, defaulting to whitney so every pre-existing caller behaves exactly as
+  // before. Destiny passes "destiny". Without this each agent would see — and could resolve —
+  // the other's decisions, which quietly loses one of them.
+  const who = QUESTION_BOARD[agent] ? agent : "whitney";
   const res = await query(
-    `SELECT q.id, q.application_id, q.question, q.answer, q.status, q.answered_at,
-            j.company, j.role, j.status AS job_status
+    `SELECT q.id, q.application_id, q.gig_id, q.question, q.answer, q.status, q.answered_at,
+            j.company, j.role, j.status AS job_status,
+            g.title AS gig_title, g.client AS gig_client, g.status AS gig_status
      FROM agent_questions q
      LEFT JOIN job_applications j ON j.id = q.application_id
-     WHERE q.status IN ('answered', 'declined')
+     LEFT JOIN gigs g ON g.id = q.gig_id
+     WHERE q.status IN ('answered', 'declined') AND q.agent = $1
      ORDER BY q.answered_at ASC NULLS LAST
      LIMIT 25`,
+    [who],
   );
   if (!res.rows.length) return { content: [{ type: "text", text: "📭 No decisions waiting. Nothing to resume from Joe's side." }] };
 
-  const where = (r) => (r.application_id ? `#${r.application_id} ${r.role} @ ${r.company} (job: ${r.job_status})` : "(general)");
+  const where = (r) =>
+    r.application_id ? `#${r.application_id} ${r.role} @ ${r.company} (job: ${r.job_status})`
+    : r.gig_id ? `gig #${r.gig_id} ${r.gig_title}${r.gig_client ? ` — ${r.gig_client}` : ""} (${r.gig_status})`
+    : "(general)";
+  const killed = (r) =>
+    r.application_id ? `Job #${r.application_id} is closed. Do NOT apply to it`
+    : r.gig_id ? `Gig #${r.gig_id} is dismissed. Do NOT bid on it`
+    : "Nothing is pending on it. Do NOT act on it";
   const answered = res.rows.filter((r) => r.status === "answered");
   const declined = res.rows.filter((r) => r.status === "declined");
   const lines = [];
@@ -2578,26 +2766,33 @@ async function toolListAnsweredQuestions() {
     }
   }
 
-  // Joe declining to answer is a DECISION, not a dead end. The application is already
-  // cancelled (job status 'closed') by the time this shows up — so there is nothing left
-  // to work, and nothing to chase. She acknowledges it and spends the turn elsewhere.
+  // Joe declining to answer is a DECISION, not a dead end. The work it was blocking is already
+  // cancelled by the time this shows up — so there is nothing left to work, and nothing to
+  // chase. Acknowledge it and spend the turn elsewhere.
   if (declined.length) {
-    lines.push(`🚫 **${declined.length} question(s) Joe DECLINED to answer** — the application is CANCELLED. This is a normal outcome, not a failure or a rejection of me:`, "");
+    lines.push(`🚫 **${declined.length} question(s) Joe DECLINED to answer** — the work it blocked is CANCELLED. This is a normal outcome, not a failure or a rejection of me:`, "");
     for (const r of declined) {
       lines.push(`**Q#${r.id} · ${where(r)}**`);
       lines.push(`Q: ${r.question}`);
-      lines.push(`→ Joe declined. Job #${r.application_id} is closed. Do NOT apply to it, do NOT ask again, do NOT ask a reworded version of this question.`);
+      lines.push(`→ Joe declined. ${killed(r)}, do NOT ask again, do NOT ask a reworded version of this question.`);
       lines.push("");
     }
-    lines.push("_For each declined one: mark_question_resolved it, then move on to the next job in the queue. Don't spend the turn on it._");
+    lines.push("_For each declined one: mark_question_resolved it, then move on to the next thing in the queue. Don't spend the turn on it._");
   }
 
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
-async function toolMarkQuestionResolved({ id }) {
-  const r = await query(`UPDATE agent_questions SET status = 'resolved' WHERE id = $1 RETURNING application_id`, [id]);
-  if (!r.rows.length) return { content: [{ type: "text", text: `❌ No question #${id}.` }], isError: true };
+async function toolMarkQuestionResolved({ id, agent } = {}) {
+  const who = QUESTION_BOARD[agent] ? agent : "whitney";
+  // Ownership guard: resolving another agent's decision would silently discard it — she would
+  // never see Joe's answer, and the work it unblocks would sit dead forever.
+  const owner = await query(`SELECT agent FROM agent_questions WHERE id = $1`, [id]);
+  if (!owner.rows.length) return { content: [{ type: "text", text: `❌ No question #${id}.` }], isError: true };
+  if (owner.rows[0].agent !== who) {
+    return { content: [{ type: "text", text: `❌ Question #${id} belongs to ${owner.rows[0].agent}, not you — leave it alone. If you ARE ${owner.rows[0].agent}, pass agent:"${owner.rows[0].agent}".` }], isError: true };
+  }
+  const r = await query(`UPDATE agent_questions SET status = 'resolved' WHERE id = $1 RETURNING application_id, gig_id`, [id]);
   return { content: [{ type: "text", text: `✅ Question #${id} resolved — I've used Joe's answer.` }] };
 }
 
@@ -3437,7 +3632,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.57.0" },
+  { name: "tbj-mcp", version: "2.59.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -3989,19 +4184,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: { type: "object", properties: {} },
     },
     {
-      name: "list_gig_alerts",
-      description: "Destiny: new Upwork saved-search ALERT EMAILS from the 'Upwork' mail folder — the only compliant source of gigs. Returns each alert's raw text plus the upwork.com posting URLs it contains, flagged against what is already on the board. It deliberately does NOT parse gigs for you: reading the post is your judgement, not the tool's. NOTE: nothing here logs into Upwork, scrapes, or submits — Upwork pushes these emails to Joe and we read our own mailbox.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          since_minutes: { type: "number", description: "How far back (default 1440 = 24h)." },
-          limit: { type: "number", description: "Max alert emails (default 15, cap 40)." },
-        },
-      },
+      name: "gig_board_count",
+      description: "Destiny: how many gigs are waiting on Joe's review board, and whether there is room under the cap. CALL THIS BEFORE YOU HUNT — always, it is one cheap query. Joe reviews TEN gigs at a time; if the board is full you must stop immediately without browsing the feed, opening postings, or calling record_found_gig. Searching a full board burns Joe's token budget and puts pointless traffic on his live Upwork account for results you would have to throw away. Also reports your submission pacing: how many proposals went out today and how long ago the last one was.",
+      inputSchema: { type: "object", properties: {} },
     },
     {
       name: "record_found_gig",
-      description: "Destiny: put a scored gig on Joe's board at /command/gigs. BOTH scores are required — fit_score (can Joe do this well?) and win_score (can a profile with NO reviews and no Job Success Score realistically WIN it?). win_score is the one that matters: Joe's alerts arrive 15-60 min late by design, so he can never win a speed race, and at 14-25 Connects a proposal a bad bid costs real money. Duplicate URLs are skipped automatically.",
+      description: "Destiny: put a scored gig on Joe's board at /command/gigs. CAPPED AT 10 awaiting his review — he works ten at a time, and this refuses past that, so call gig_board_count first rather than paying for a search you cannot use. BOTH scores are required — fit_score (can Joe do this well?) and win_score (can a profile with NO reviews and no Job Success Score realistically WIN it?). win_score is the one that decides, and since you read the posting live you have no excuse for guessing its inputs: pass the real proposals_so_far, client_hires and client_verified off the page. Freshness now counts FOR him — on the live feed he can reach a posting while it is still early, which the old email path never allowed. Duplicate URLs are skipped automatically.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4025,7 +4214,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "list_approved_gigs",
-      description: "Destiny: gigs Joe APPROVED on /command/gigs, oldest approval first — your work queue for writing proposals. Returns the posting text and both scores so you can write from the source. Max 3 proposals per run.",
+      description: "Destiny: gigs Joe APPROVED on /command/gigs, oldest approval first — your work queue for writing proposals. Returns the posting text and both scores so you can write from the source. Work the TOP one to completion, ONE submission per run.",
       inputSchema: { type: "object", properties: { limit: { type: "number", description: "Max rows (default 10, cap 25)." } } },
     },
     {
@@ -4043,7 +4232,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "update_gig_status",
-      description: "Destiny: move a gig through its stages (found → approved/dismissed → drafted → submitted → won/lost). You may NOT set 'submitted' — only Joe marks that, because only Joe sends.",
+      description: "Destiny: move a gig through its stages (found → approved/dismissed → drafted → submitted → won/lost). Setting 'submitted' records that you actually sent the proposal on Upwork and is RATE-LIMITED: max 5 a day (a soft cap — an open directive from Joe lifts it), and at least 45 minutes apart (that one is never lifted) — a burst of proposals is the pattern Upwork's automation detection looks for, and each bid costs 14-25 Connects of Joe's money. It also REQUIRES a note recording what you bid (rate, timeline, Connects spent); that note is the only record of what Joe is now committed to. Submit ONE per run, then end the turn.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4160,7 +4349,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: "object",
         properties: {
-          application_id: { type: "number", description: "The job_applications id this question is about (omit for a general question)." },
+          application_id: { type: "number", description: "WHITNEY: the job_applications id this question is about (omit for a general question)." },
+          gig_id: { type: "number", description: "DESTINY: the gigs id this question is about — e.g. she hit a Connect ceiling or a rate field she can't answer truthfully mid-submit. Passing it routes the question to /command/gigs and marks it hers." },
+          agent: { type: "string", enum: ["whitney", "destiny"], description: "Who is asking. Defaults to whitney (or destiny when gig_id is set). Pass it explicitly for a GENERAL question so it lands on your own board." },
           question: { type: "string", description: "The specific question for Joe — concrete so he can answer fast." },
           options: { type: "array", items: { type: "string" }, description: "For a multiple-choice question, the answer choices (Joe picks one via radio buttons)." },
           topic: { type: "string", description: "A short slug for a DURABLE fact about Joe (e.g. 'work_authorization', 'relocation', 'security_clearance'). When set, Joe's answer is remembered permanently and you never ask it again. Check get_candidate_facts / get_candidate_profile first." },
@@ -4187,15 +4378,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "list_answered_questions",
-      description: "Whitney: Joe's DECISIONS on your open questions — both the ones he ANSWERED and the ones he DECLINED to answer. Check this at the start of every run. An answer is how you resume a blocked application. A DECLINE means that application is cancelled (the job is already closed) — acknowledge it, don't re-ask, don't rephrase, don't apply anyway, just move to the next job. Call mark_question_resolved on each either way.",
-      inputSchema: { type: "object", properties: {} },
+      description: "Joe's DECISIONS on questions you asked, waiting for you. Check at the START of every run. Two kinds: an ANSWER (use it and resume that work now) or a DECLINE (he chose not to answer — the application/gig it blocked is already cancelled, which is a legitimate outcome; acknowledge it and move on, never re-ask or reword it). Scoped to ONE agent: pass agent \"destiny\" if you are Destiny, otherwise it returns Whitney's. Call mark_question_resolved on each either way.",
+      inputSchema: {
+        type: "object",
+        properties: { agent: { type: "string", enum: ["whitney", "destiny"], description: "Whose decisions to read. Defaults to whitney — Destiny MUST pass \"destiny\"." } },
+      },
     },
     {
       name: "mark_question_resolved",
-      description: "Whitney: close a question after you've used Joe's answer, so it doesn't come back next run.",
+      description: "Close a question after you've used Joe's answer (or acknowledged his decline), so it doesn't come back next run. You may only resolve your OWN questions — it refuses one belonging to another agent, because resolving someone else's silently discards Joe's answer.",
       inputSchema: {
         type: "object",
-        properties: { id: { type: "number", description: "The question id from list_answered_questions." } },
+        properties: {
+          id: { type: "number", description: "The question id from list_answered_questions." },
+          agent: { type: "string", enum: ["whitney", "destiny"], description: "Who you are. Defaults to whitney — Destiny MUST pass \"destiny\"." },
+        },
         required: ["id"],
       },
     },
@@ -4462,7 +4659,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "inbox_unanswered": return toolInboxUnanswered(args);
     case "email_file": return toolEmailFile(args);
     case "get_gig_report": return toolGetGigReport();
-    case "list_gig_alerts": return toolListGigAlerts(args);
+    case "gig_board_count": return toolGigBoardCount();
     case "record_found_gig": return toolRecordFoundGig(args);
     case "list_approved_gigs": return toolListApprovedGigs(args);
     case "save_gig_proposal": return toolSaveGigProposal(args);
@@ -4477,7 +4674,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "get_job_hunt_report": return toolGetJobHuntReport(args);
     case "send_telegram_update": return toolSendTelegramUpdate(args);
     case "record_question": return toolRecordQuestion(args);
-    case "list_answered_questions": return toolListAnsweredQuestions();
+    case "list_answered_questions": return toolListAnsweredQuestions(args);
     case "mark_question_resolved": return toolMarkQuestionResolved(args);
     case "get_candidate_profile": return toolGetCandidateProfile();
     case "get_candidate_facts": return toolGetCandidateFacts();
