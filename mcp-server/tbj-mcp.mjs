@@ -2211,6 +2211,25 @@ async function toolEmailFile({ uid, uids, folder, from_folder } = {}) {
 // ============================================================================
 
 /**
+ * The stable identity of an Upwork posting, used to make "never bid twice" enforceable.
+ *
+ * Upwork decorates its links freely — /jobs/~021234abcd, the same with ?source=link_search, an
+ * /freelance-jobs/apply/... variant — so the raw url is three different strings for one job, and
+ * a UNIQUE index on it dedupes nothing. Upwork's own ~0-prefixed job ciphertext is stable across
+ * every one of those forms, so that is the key when we can find it; otherwise fall back to the
+ * url with query string, fragment and trailing slash removed.
+ *
+ * Must stay in step with the backfill in scripts/db/2026-08-31-gig-dedupe.sql.
+ */
+function upworkJobKey(url) {
+  if (!url || typeof url !== "string") return null;
+  const id = url.match(/(~[0-9a-zA-Z]{10,})/);
+  if (id) return id[1];
+  const bare = url.split("#")[0].split("?")[0].replace(/\/+$/, "").trim();
+  return bare || null;
+}
+
+/**
  * The cheap question Destiny MUST ask before hunting. Mirrors job_board_count for Whitney.
  *
  * The failure this prevents is one the fleet has already paid for once: Whitney used to search,
@@ -2261,6 +2280,14 @@ async function toolRecordFoundGig(a = {}) {
   if (!Number.isFinite(Number(fit_score)) || !Number.isFinite(Number(win_score))) {
     return { content: [{ type: "text", text: "❌ Both fit_score and win_score are required (0-100). win_score is the one that matters: can a profile with NO reviews win this?" }], isError: true };
   }
+  // url is REQUIRED, and it is required for exactly one reason: it is the only thing that makes
+  // "don't bid on this twice" enforceable. Without it two rows for one posting dedupe against
+  // nothing, Joe approves both, and Destiny spends two lots of Connects pitching one client twice.
+  // She is reading the posting live, so she always has it.
+  const key = upworkJobKey(url);
+  if (!key) {
+    return { content: [{ type: "text", text: "❌ A posting URL is required — it is the dedupe key, and without it nothing stops this gig being recorded (and bid on) twice. You are on the posting; copy its address. If you genuinely cannot get one, do NOT record the gig." }], isError: true };
+  }
   // The cap again, at the point of writing. gig_board_count is the cheap check she is told to
   // make first; this is the one she cannot skip. Belt and braces on purpose — the whole reason
   // the board has a ceiling is that Joe's attention is the scarce resource, not the gigs.
@@ -2269,27 +2296,57 @@ async function toolRecordFoundGig(a = {}) {
     const c = await query(`SELECT count(*)::int n FROM gigs WHERE status = 'found'`);
     onBoard = c.rows[0].n;
   } catch { onBoard = null; } // fail-open: a counting error must never wedge her
+  // Duplicate check ahead of the insert. The unique index would silently swallow it, but
+  // "skipped" tells Destiny nothing — whether Joe already BID on this changes what she does next.
+  try {
+    const dupe = await query(
+      `SELECT id, title, status, submitted_at FROM gigs WHERE url_key = $1 LIMIT 1`, [key]);
+    if (dupe.rows.length) {
+      const d = dupe.rows[0];
+      const bid = ["submitted", "won", "lost"].includes(d.status);
+      return { content: [{ type: "text", text: bid
+        ? `🛑 ALREADY BID — gig #${d.id} "${d.title}" is the same posting and its proposal already went out${d.submitted_at ? ` (${new Date(d.submitted_at).toISOString().slice(0, 10)})` : ""}, status **${d.status}**.\n\nDo NOT record it, do NOT bid again, and do NOT open a second proposal on Upwork. A duplicate proposal spends Connects twice on one job and reads to the client as someone who does not track their own work. Move on to the next posting.`
+        : `↩️ Already on the board — gig #${d.id} "${d.title}" is the same posting (status **${d.status}**). Not recorded again. Nothing to do here; move to the next one.` }] };
+    }
+  } catch { /* the unique index still backstops this; never wedge her on a lookup */ }
+
+  // A RE-POST is different from a duplicate: same client, same work, brand new job id. That is a
+  // legitimate second posting and she may well want it — but she has to make that call knowingly,
+  // not discover it after the Connects are gone.
+  let repost = "";
+  try {
+    if (client) {
+      const r = await query(
+        `SELECT id, status FROM gigs
+          WHERE lower(client) = lower($1) AND lower(title) = lower($2) AND url_key <> $3
+          ORDER BY id DESC LIMIT 1`, [client, title, key]);
+      if (r.rows.length) {
+        repost = `\n\n⚠️ RE-POST? Gig #${r.rows[0].id} is the same title from the same client under a different job id (status ${r.rows[0].status}). If Joe already pitched that one, say so in your report and do NOT bid again unless the scope genuinely changed.`;
+      }
+    }
+  } catch { /* advisory only */ }
+
   if (onBoard != null && onBoard >= GIG_REVIEW_CAP) {
     return { content: [{ type: "text", text: `🧢 Not recorded — Joe's board is FULL (${onBoard}/${GIG_REVIEW_CAP} awaiting his review). He reviews ten at a time.\n\nSTOP hunting now: no more browsing, no more postings opened, no more record_found_gig this turn. Call gig_board_count FIRST next time and you will not waste a search on a board with no room. End the turn (or work an approved gig, which always outranks hunting).` }] };
   }
   try {
     const r = await query(
-      `INSERT INTO gigs (title, client, url, budget, scope, description, lane,
+      `INSERT INTO gigs (title, client, url, url_key, budget, scope, description, lane,
                          proposals_so_far, client_hires, client_verified,
                          fit_score, win_score, fit_reason, win_reason, status)
-       VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'ai-agent'),$8,$9,$10,$11,$12,$13,$14,'found')
-       ON CONFLICT (url) WHERE url IS NOT NULL DO NOTHING
+       VALUES ($1,$2,$3,$15,$4,$5,$6,COALESCE($7,'ai-agent'),$8,$9,$10,$11,$12,$13,$14,'found')
+       ON CONFLICT (url_key) WHERE url_key IS NOT NULL DO NOTHING
        RETURNING id`,
       [title, client ?? null, url ?? null, budget ?? null, scope ?? null, description ?? null, lane ?? null,
        proposals_so_far ?? null, client_hires ?? null, client_verified ?? null,
-       Number(fit_score), Number(win_score), fit_reason ?? null, win_reason ?? null]);
-    if (!r.rows.length) return { content: [{ type: "text", text: `↩️ Already on the board (same URL) — skipped, not duplicated.` }] };
+       Number(fit_score), Number(win_score), fit_reason ?? null, win_reason ?? null, key]);
+    if (!r.rows.length) return { content: [{ type: "text", text: `↩️ Already on the board (same posting) — skipped, not duplicated.` }] };
     await audit("gig_found", `${title}${client ? ` @ ${client}` : ""} — fit ${fit_score} / win ${win_score}`, { actor: "destiny", target: String(r.rows[0].id) });
     const left = onBoard == null ? null : Math.max(0, GIG_REVIEW_CAP - (onBoard + 1));
     const tail = left == null ? ""
       : left === 0 ? `\n\n🧢 That fills Joe's board (${GIG_REVIEW_CAP}/${GIG_REVIEW_CAP}). STOP hunting now — close the feed and end the turn.`
       : `\n\nRoom for ${left} more on the board — a ceiling, not a target.`;
-    return { content: [{ type: "text", text: `✅ Gig #${r.rows[0].id} on the board for Joe: ${title}. fit ${fit_score} · win ${win_score}.${tail}` }] };
+    return { content: [{ type: "text", text: `✅ Gig #${r.rows[0].id} on the board for Joe: ${title}. fit ${fit_score} · win ${win_score}.${repost}${tail}` }] };
   } catch (err) {
     return { content: [{ type: "text", text: `❌ Could not record the gig: ${err?.message || err}` }], isError: true };
   }
@@ -2360,6 +2417,21 @@ async function toolUpdateGigStatus({ gig_id, status, note } = {}) {
   if (status === "submitted") {
     if (await isAgentPaused("destiny")) {
       return { content: [{ type: "text", text: "⏸ Destiny is PAUSED by Joe. Do NOT submit anything. End your turn." }] };
+    }
+    // ── The duplicate-bid guard, on the row itself ──────────────────────────────────────────
+    // The url_key index stops one POSTING becoming two gigs. This stops one GIG being submitted
+    // twice — a retry after a timeout, a re-read of a stale queue, or simply losing her place
+    // mid-run. Both failures cost the same thing: a second bid on a job Joe already pitched.
+    let cur;
+    try {
+      const g = await query(`SELECT status, title, submitted_at FROM gigs WHERE id = $1`, [Number(gig_id)]);
+      cur = g.rows[0];
+    } catch { cur = null; } // fail-open on a lookup error; the note/pacing guards still apply
+    if (cur && ["submitted", "won", "lost"].includes(cur.status)) {
+      return { content: [{ type: "text", text: `🛑 ALREADY SUBMITTED — gig #${gig_id} "${cur.title}" is at status **${cur.status}**${cur.submitted_at ? `, sent ${new Date(cur.submitted_at).toISOString().slice(0, 16).replace("T", " ")} UTC` : ""}.\n\nJoe has already bid on this job. Do NOT submit a second proposal on Upwork: it spends 14-25 more Connects on work he already pitched, and to the client it reads as someone who doesn't track their own bids.\n\nIf you have NOT actually sent one this run, this is the board telling you the work is done — move on. If you just sent a SECOND one by mistake, say so plainly in your log_activity report so Joe can withdraw it.` }], isError: true };
+    }
+    if (cur && !["approved", "drafted"].includes(cur.status)) {
+      return { content: [{ type: "text", text: `🛑 Gig #${gig_id} is at status **${cur.status}** — only a gig Joe APPROVED can be submitted. He approves on /command/gigs; that is the human gate and you never step around it. Do not bid on this.` }], isError: true };
     }
     if (!note || String(note).trim().length < 20) {
       return { content: [{ type: "text", text: "❌ A submission needs a `note` recording what you actually bid: the rate, the timeline, and the Connects spent. This note is the ONLY record of what Joe is now committed to — a submission without it is an obligation nobody can audit. Resend with the real numbers." }], isError: true };
@@ -2678,7 +2750,7 @@ const QUESTION_BOARD = {
   destiny: { who: "Destiny", url: "https://thinkbigjoe.com/command/gigs", cancels: "dismisses this gig" },
 };
 
-async function toolRecordQuestion({ application_id, gig_id, agent, question, options, topic }) {
+async function toolRecordQuestion({ application_id, gig_id, agent, question, options, topic, resume_url, resume_state }) {
   if (!question) return { content: [{ type: "text", text: "❌ question is required." }], isError: true };
   // Infer the asker when it wasn't passed: a gig question can only be Destiny's. Defaulting to
   // whitney keeps every existing caller working unchanged.
@@ -2699,13 +2771,48 @@ async function toolRecordQuestion({ application_id, gig_id, agent, question, opt
     const g = await query(`SELECT title, client FROM gigs WHERE id = $1`, [gig_id]);
     if (g.rows.length) label = ` about ${g.rows[0].title}${g.rows[0].client ? ` — ${g.rows[0].client}` : ""}`;
   }
+  // Don't ask the same blocker twice. Her loop already refuses to re-ask an ANSWERED question, but
+  // nothing stopped her re-asking an OPEN one — so an hCaptcha wall she hits every hour became a
+  // fresh question and a fresh Telegram ping every hour. On 2026-08-31 that produced 14 open
+  // questions that were really 3 blockers: Instrumentl ×5, Resend ×6, Shortcut ×3. A pending
+  // question is already in front of Joe; asking again adds nothing and costs him attention.
+  if (application_id || gig_id) {
+    const openDup = await query(
+      `SELECT id, created_at, question FROM agent_questions
+        WHERE status = 'open'
+          AND ($1::int IS NOT NULL AND application_id = $1::int
+               OR $2::int IS NOT NULL AND gig_id = $2::int)
+        ORDER BY created_at ASC LIMIT 1`,
+      [application_id || null, gig_id || null],
+    );
+    if (openDup.rows.length) {
+      const d = openDup.rows[0];
+      const hrs = Math.round((Date.now() - new Date(d.created_at).getTime()) / 3600000);
+      // Keep the newer detail rather than losing it — append it to the question already pending.
+      try {
+        await query(
+          `UPDATE agent_questions
+              SET resume_url = COALESCE($2, resume_url),
+                  resume_state = COALESCE($3, resume_state)
+            WHERE id = $1`,
+          [d.id, resume_url || null, resume_state || null],
+        );
+      } catch { /* enrichment only */ }
+      return { content: [{ type: "text", text: `⏭️ You already have an OPEN question on this one — Q#${d.id}, posted ${hrs}h ago:\n\n"${String(d.question).slice(0, 200)}"\n\nJoe has it in front of him; asking again does not make it move faster, it just costs him another ping. ${resume_url ? "I attached your resume link to it. " : ""}**Do NOT re-ask, re-word, or retry this application this run.** Leave the page as it is, move to a different job, and pick this up via list_answered_questions once he replies.` }] };
+    }
+  }
   const res = await query(
-    `INSERT INTO agent_questions (application_id, gig_id, agent, question, status, options, topic)
-     VALUES ($1, $2, $3, $4, 'open', $5::jsonb, $6) RETURNING id`,
+    `INSERT INTO agent_questions (application_id, gig_id, agent, question, status, options, topic, resume_url, resume_state)
+     VALUES ($1, $2, $3, $4, 'open', $5::jsonb, $6, $7, $8) RETURNING id`,
     [application_id || null, gig_id || null, who, question,
-     Array.isArray(options) && options.length ? JSON.stringify(options) : null, topic || null],
+     Array.isArray(options) && options.length ? JSON.stringify(options) : null, topic || null,
+     resume_url || null, resume_state || null],
   );
   const id = res.rows[0].id;
+  // A question tied to an application, with no resume point, is a dead end for Joe: the half-filled
+  // form exists only in a browser tab that any restart destroys. Say so loudly rather than failing —
+  // refusing the question would be worse, because then the blocker isn't recorded at all.
+  const missingResume = (application_id || gig_id) && !resume_url;
   await audit("agent_question", `${board.who} asked${label}: ${String(question).slice(0, 160)}`, {
     actor: who, detail: { question_id: id, application_id: application_id || null, gig_id: gig_id || null },
   });
@@ -2715,14 +2822,23 @@ async function toolRecordQuestion({ application_id, gig_id, agent, question, opt
   const opts = Array.isArray(options) && options.length
     ? `\n\nOptions: ${options.map((o) => tgEscape(o)).join(" · ")}`
     : "";
+  // The resume point goes in the ping itself — Joe reads this on a phone and needs to land on the
+  // exact form, not go hunting for which tab it was.
+  const resumeBlock = resume_url
+    ? `\n\n📍 <b>Pick up here:</b>\n${tgEscape(resume_url)}` +
+      (resume_state ? `\n<i>${tgEscape(resume_state)}</i>` : "")
+    : "";
   const tgSent = await notifyJoeTelegram(
     `🙋 <b>${board.who} is blocked</b>${label ? ` — ${tgEscape(label.replace(/^ about /, ""))}` : ""}\n\n` +
-      `<b>Q#${id}:</b> ${tgEscape(question)}${opts}\n\n` +
+      `<b>Q#${id}:</b> ${tgEscape(question)}${opts}${resumeBlock}\n\n` +
       `Answer, or <b>Decline to answer</b> (declining ${board.cancels} and frees ${board.who} to move on):\n` +
       `${board.url}`,
   );
 
-  return { content: [{ type: "text", text: `✅ Question posted for Joe (#${id})${label}${tgSent ? " and sent to his Telegram" : ""}, on ${board.url}. He can ANSWER it, or DECLINE to answer — a decline ${board.cancels}, and that's a legitimate outcome, not a failure. Either way you pick it up next run via list_answered_questions. Do not wait on it now: move to the next thing.` }] };
+  const nudge = missingResume
+    ? ` ⚠️ You did NOT pass resume_url. Joe now has no way back to the page you were on — your open tab is not a handoff, it dies on any browser or gateway restart. Next time you're blocked mid-application, pass resume_url (the exact form page) and resume_state (what's filled, what's left).`
+    : "";
+  return { content: [{ type: "text", text: `✅ Question posted for Joe (#${id})${label}${tgSent ? " and sent to his Telegram" : ""}, on ${board.url}. He can ANSWER it, or DECLINE to answer — a decline ${board.cancels}, and that's a legitimate outcome, not a failure. Either way you pick it up next run via list_answered_questions. Do not wait on it now: move to the next thing.${nudge}\n\n🔖 LEAVE THE BLOCKED PAGE OPEN AS IT IS. Do not navigate it away, do not close it, do not reuse it. Open a NEW TAB for whatever you do next — Joe may be looking at that page.` }] };
 }
 
 async function toolListAnsweredQuestions({ agent } = {}) {
@@ -3632,7 +3748,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.59.0" },
+  { name: "tbj-mcp", version: "2.60.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -4190,13 +4306,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "record_found_gig",
-      description: "Destiny: put a scored gig on Joe's board at /command/gigs. CAPPED AT 10 awaiting his review — he works ten at a time, and this refuses past that, so call gig_board_count first rather than paying for a search you cannot use. BOTH scores are required — fit_score (can Joe do this well?) and win_score (can a profile with NO reviews and no Job Success Score realistically WIN it?). win_score is the one that decides, and since you read the posting live you have no excuse for guessing its inputs: pass the real proposals_so_far, client_hires and client_verified off the page. Freshness now counts FOR him — on the live feed he can reach a posting while it is still early, which the old email path never allowed. Duplicate URLs are skipped automatically.",
+      description: "Destiny: put a scored gig on Joe's board at /command/gigs. CAPPED AT 10 awaiting his review — he works ten at a time, and this refuses past that, so call gig_board_count first rather than paying for a search you cannot use. BOTH scores are required — fit_score (can Joe do this well?) and win_score (can a profile with NO reviews and no Job Success Score realistically WIN it?). win_score is the one that decides, and since you read the posting live you have no excuse for guessing its inputs: pass the real proposals_so_far, client_hires and client_verified off the page. Freshness now counts FOR him — on the live feed he can reach a posting while it is still early, which the old email path never allowed. NEVER TWICE: postings are deduped on Upwork's own ~0 job id, so a link with different tracking params is still the same gig — if Joe already bid on it this REFUSES and tells you so, and a re-post of the same title by the same client under a new job id comes back as a warning for you to judge.",
       inputSchema: {
         type: "object",
         properties: {
           title: { type: "string", description: "The gig title as posted." },
           client: { type: "string", description: "Client name/company if the alert shows one." },
-          url: { type: "string", description: "The upwork.com posting URL — the dedupe key. Always pass it when you have it." },
+          url: { type: "string", description: "REQUIRED — the upwork.com posting URL. It is the dedupe key: the ~0 job id is pulled out of it so the same posting can never be recorded (or bid on) twice, however the link was decorated. Without it nothing stops a double bid, so this refuses." },
           budget: { type: "string", description: "Budget or rate as posted, verbatim." },
           scope: { type: "string", description: "Size/duration as posted (e.g. 'small, under 1 month')." },
           description: { type: "string", description: "The posting text, enough for you to write a proposal from later." },
@@ -4209,7 +4325,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           fit_reason: { type: "string", description: "One line on the fit." },
           win_reason: { type: "string", description: "One line on why he can or can't win it — the honest read." },
         },
-        required: ["title", "fit_score", "win_score"],
+        required: ["title", "url", "fit_score", "win_score"],
       },
     },
     {
@@ -4232,7 +4348,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "update_gig_status",
-      description: "Destiny: move a gig through its stages (found → approved/dismissed → drafted → submitted → won/lost). Setting 'submitted' records that you actually sent the proposal on Upwork and is RATE-LIMITED: max 5 a day (a soft cap — an open directive from Joe lifts it), and at least 45 minutes apart (that one is never lifted) — a burst of proposals is the pattern Upwork's automation detection looks for, and each bid costs 14-25 Connects of Joe's money. It also REQUIRES a note recording what you bid (rate, timeline, Connects spent); that note is the only record of what Joe is now committed to. Submit ONE per run, then end the turn.",
+      description: "Destiny: move a gig through its stages (found → approved/dismissed → drafted → submitted → won/lost). Setting 'submitted' records that you actually sent the proposal on Upwork. It REFUSES a gig that is already submitted/won/lost (never bid on one job twice) and refuses any gig Joe has not APPROVED. It is also RATE-LIMITED: max 5 a day (a soft cap — an open directive from Joe lifts it), and at least 45 minutes apart (that one is never lifted) — a burst of proposals is the pattern Upwork's automation detection looks for, and each bid costs 14-25 Connects of Joe's money. It also REQUIRES a note recording what you bid (rate, timeline, Connects spent); that note is the only record of what Joe is now committed to. Submit ONE per run, then end the turn.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4345,7 +4461,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "record_question",
-      description: "Whitney: when you can't proceed truthfully — a form field you can't answer from Joe's profile/facts, a judgment call — post a QUESTION for Joe instead of guessing or stopping. It shows on /command/applications AND pings Joe's Telegram immediately, so he sees it while you're still working. He can ANSWER it, or DECLINE to answer — declining CANCELS that application, which is a legitimate outcome you should expect. You read his decision next run (list_answered_questions) and either resume or move on. Never block a whole turn waiting on him. For RECURRING facts (work authorization, sponsorship, relocation, security clearance, notice period), pass a `topic` slug: Joe's answer becomes a permanent fact you'll reuse — and if you pass a topic you ALREADY know, this refuses and hands you the known fact so you never ask twice. For multiple-choice, pass `options` and Joe answers with a radio button.",
+      description: "Whitney: when you can't proceed truthfully — a form field you can't answer from Joe's profile/facts, a judgment call — post a QUESTION for Joe instead of guessing or stopping. It shows on /command/applications AND pings Joe's Telegram immediately, so he sees it while you're still working. He can ANSWER it, or DECLINE to answer — declining CANCELS that application, which is a legitimate outcome you should expect. You read his decision next run (list_answered_questions) and either resume or move on. Never block a whole turn waiting on him. For RECURRING facts (work authorization, sponsorship, relocation, security clearance, notice period), pass a `topic` slug: Joe's answer becomes a permanent fact you'll reuse — and if you pass a topic you ALREADY know, this refuses and hands you the known fact so you never ask twice. For multiple-choice, pass `options` and Joe answers with a radio button. ⚠️ If you are blocked MID-APPLICATION, you MUST pass `resume_url` (the exact form page) and `resume_state` (what's filled, what's left) — otherwise Joe cannot get back to your half-finished work and it is wasted.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4355,6 +4471,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           question: { type: "string", description: "The specific question for Joe — concrete so he can answer fast." },
           options: { type: "array", items: { type: "string" }, description: "For a multiple-choice question, the answer choices (Joe picks one via radio buttons)." },
           topic: { type: "string", description: "A short slug for a DURABLE fact about Joe (e.g. 'work_authorization', 'relocation', 'security_clearance'). When set, Joe's answer is remembered permanently and you never ask it again. Check get_candidate_facts / get_candidate_profile first." },
+          resume_url: { type: "string", description: "THE EXACT PAGE Joe must reopen to finish this — the form you were filling, not the job listing. Required whenever you are blocked mid-application. Your open browser tab is NOT a safe handoff: it dies on any browser or gateway restart and Joe is left with no way back to what you needed. This URL is." },
+          resume_state: { type: "string", description: "What is ALREADY FILLED and what is LEFT, so Joe doesn't redo your work or hunt for the gap. e.g. 'Resume, contact info, all 5 screening questions done. Only the hCaptcha + Submit remain.'" },
         },
         required: ["question"],
       },

@@ -849,27 +849,6 @@ export const agents = pgTable("agents", {
 		}),
 ]);
 
-export const agentQuestions = pgTable("agent_questions", {
-	id: serial().primaryKey().notNull(),
-	applicationId: integer("application_id"),
-	agent: varchar({ length: 40 }).default('whitney').notNull(),
-	question: text().notNull(),
-	answer: text(),
-	status: varchar({ length: 16 }).default('open').notNull(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	answeredAt: timestamp("answered_at", { withTimezone: true, mode: 'string' }),
-	options: jsonb(),
-	topic: varchar({ length: 60 }),
-}, (table) => [
-	index("agent_questions_application_idx").using("btree", table.applicationId.asc().nullsLast().op("int4_ops")),
-	index("agent_questions_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
-	foreignKey({
-			columns: [table.applicationId],
-			foreignColumns: [jobApplications.id],
-			name: "agent_questions_application_id_fkey"
-		}).onDelete("cascade"),
-]);
-
 export const emailOutbox = pgTable("email_outbox", {
 	id: serial().primaryKey().notNull(),
 	toAddr: text("to_addr").notNull(),
@@ -964,9 +943,43 @@ export const gigs = pgTable("gigs", {
 	submittedAt: timestamp("submitted_at", { withTimezone: true, mode: 'string' }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	urlKey: text("url_key"),
 }, (table) => [
+	index("gigs_client_title_idx").using("btree", sql`lower(client)`, sql`lower(title)`),
 	index("gigs_created_at_idx").using("btree", table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
-	index("gigs_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops"), table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
+	index("gigs_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops"), table.createdAt.desc().nullsFirst().op("text_ops")),
+	uniqueIndex("gigs_url_key_uniq").using("btree", table.urlKey.asc().nullsLast().op("text_ops")).where(sql`(url_key IS NOT NULL)`),
 	uniqueIndex("gigs_url_uniq").using("btree", table.url.asc().nullsLast().op("text_ops")).where(sql`(url IS NOT NULL)`),
 	index("gigs_win_idx").using("btree", table.winScore.desc().nullsLast().op("int4_ops"), table.fitScore.desc().nullsLast().op("int4_ops")),
+]);
+
+export const agentQuestions = pgTable("agent_questions", {
+	id: serial().primaryKey().notNull(),
+	applicationId: integer("application_id"),
+	agent: varchar({ length: 40 }).default('whitney').notNull(),
+	question: text().notNull(),
+	answer: text(),
+	status: varchar({ length: 16 }).default('open').notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	answeredAt: timestamp("answered_at", { withTimezone: true, mode: 'string' }),
+	options: jsonb(),
+	topic: varchar({ length: 60 }),
+	gigId: integer("gig_id"),
+	resumeUrl: text("resume_url"),
+	resumeState: text("resume_state"),
+}, (table) => [
+	index("agent_questions_agent_status_idx").using("btree", table.agent.asc().nullsLast().op("text_ops"), table.status.asc().nullsLast().op("timestamptz_ops"), table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
+	index("agent_questions_application_idx").using("btree", table.applicationId.asc().nullsLast().op("int4_ops")),
+	index("agent_questions_gig_idx").using("btree", table.gigId.asc().nullsLast().op("int4_ops")),
+	index("agent_questions_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+	foreignKey({
+			columns: [table.applicationId],
+			foreignColumns: [jobApplications.id],
+			name: "agent_questions_application_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.gigId],
+			foreignColumns: [gigs.id],
+			name: "agent_questions_gig_id_fkey"
+		}).onDelete("cascade"),
 ]);

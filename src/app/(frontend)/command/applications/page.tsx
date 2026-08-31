@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { db, jobApplications, agents, agentQuestions } from "@/db";
 import { requireAdmin } from "@/lib/require-admin";
@@ -134,12 +134,16 @@ export default async function ApplicationsPage({
       question: agentQuestions.question,
       options: agentQuestions.options,
       createdAt: agentQuestions.createdAt,
+      resumeUrl: agentQuestions.resumeUrl,
+      resumeState: agentQuestions.resumeState,
       company: jobApplications.company,
       role: jobApplications.role,
     })
     .from(agentQuestions)
     .leftJoin(jobApplications, eq(agentQuestions.applicationId, jobApplications.id))
-    .where(eq(agentQuestions.status, "open"))
+    // Scoped to Whitney — Destiny asks questions too, and hers belong on /command/gigs where
+    // the gig they block actually lives. Unscoped, hers rendered here as "General question".
+    .where(and(eq(agentQuestions.status, "open"), eq(agentQuestions.agent, "whitney")))
     .orderBy(desc(agentQuestions.createdAt));
 
   const review = jobs.filter((j) => j.status === "found");
@@ -255,6 +259,23 @@ export default async function ApplicationsPage({
                   <p className="mt-1 text-xs leading-relaxed text-ink">
                     <span className="font-semibold text-amber-700">Whitney asked:</span> {q.question}
                   </p>
+                  {/* Where she was when she stopped. Her browser tab is a courtesy that dies on any
+                      restart; this link is the durable way back into a half-filled application. */}
+                  {q.resumeUrl && (
+                    <div className="mt-2 rounded-xl border border-amber-300 bg-white/70 px-3 py-2">
+                      <a
+                        href={q.resumeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-semibold text-brand underline break-all"
+                      >
+                        📍 Pick up where she stopped ↗
+                      </a>
+                      {q.resumeState && (
+                        <p className="mt-1 text-[11px] leading-relaxed text-ink-soft">{q.resumeState}</p>
+                      )}
+                    </div>
+                  )}
                   <form action={answerQuestion.bind(null, q.id)} className="mt-2">
                     {Array.isArray(q.options) && (q.options as string[]).length > 0 ? (
                       <div className="space-y-1.5">
