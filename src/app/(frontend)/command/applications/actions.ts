@@ -1,9 +1,9 @@
 "use server";
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ilike, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
-import { db, jobApplications, activityLog, agents, agentQuestions, agentDirectives, candidateFacts } from "@/db";
+import { db, jobApplications, activityLog, agents, agentQuestions, agentDirectives, employerBlacklist, candidateFacts } from "@/db";
 import { assertAdmin } from "@/lib/require-admin";
 
 // Joe's human gate. Whitney posts jobs at status 'found'; these actions are how
@@ -204,4 +204,55 @@ export async function cancelDirective(id: number): Promise<void> {
     .where(eq(agentDirectives.id, id));
   revalidatePath("/command/applications");
   revalidatePath("/command/inbox");
+}
+
+/** Normalizes an employer name the same way tbj-mcp's normEmployer() does, so one entry blocks
+ *  every variant a job board throws at us ("Zillow" also blocks "Zillow Group Technologies LLC").
+ *  Keep the two in sync — they are the same rule enforced on both sides of the DB. */
+function normEmployer(c: string): string {
+  return c.toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(inc|llc|ltd|corp|corporation|co|company|group|holdings|technologies|technology|labs|software|systems|solutions|the)\b/g, " ")
+    .replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Blacklist an employer — Joe will not work there, so Whitney must never surface it again.
+ * Enforced server-side in record_found_job, not just in her prompt: he should never have to
+ * decline the same company twice. Also clears anything from them still awaiting his review.
+ */
+export async function blacklistEmployer(formData: FormData): Promise<void> {
+  await assertAdmin();
+  const company = String(formData.get("company") || "").trim();
+  if (!company) return;
+  const reason = String(formData.get("reason") || "").trim() || null;
+  const key = normEmployer(company);
+  if (!key) return;
+
+  await db.insert(employerBlacklist).values({ company, normKey: key, reason })
+    .onConflictDoUpdate({ target: employerBlacklist.normKey, set: { company, reason } });
+
+  // Pull anything from them off the review board — leaving it there would just make him
+  // decline the same company a second time, which is the thing this exists to prevent.
+  const cleared = await db
+    .update(jobApplications)
+    .set({ status: "dismissed", updatedAt: new Date().toISOString() })
+    .where(and(eq(jobApplications.status, "found"), ilike(jobApplications.company, `%${company}%`)))
+    .returning({ id: jobApplications.id });
+
+  await db.insert(activityLog).values({
+    actor: "joe",
+    eventType: "employer_blacklisted",
+    summary: `Blacklisted ${company}${reason ? ` — ${reason}` : ""}${cleared.length ? ` (cleared ${cleared.length} from the board)` : ""}`,
+    metadata: { company, reason, cleared: cleared.length, via: "/command/applications" },
+  });
+  revalidatePath("/command/applications");
+}
+
+/** Remove an employer from the blacklist — Whitney may surface them again. */
+export async function unblacklistEmployer(id: number): Promise<void> {
+  await assertAdmin();
+  await db.delete(employerBlacklist).where(eq(employerBlacklist.id, id));
+  revalidatePath("/command/applications");
 }

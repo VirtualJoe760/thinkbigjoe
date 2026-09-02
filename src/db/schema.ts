@@ -917,6 +917,17 @@ export const agentDirectives = pgTable("agent_directives", {
 	index("agent_directives_agent_status_idx").using("btree", table.agent.asc().nullsLast().op("text_ops"), table.status.asc().nullsLast().op("text_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")),
 ]);
 
+export const employerBlacklist = pgTable("employer_blacklist", {
+	id: serial().primaryKey().notNull(),
+	company: text().notNull(),
+	normKey: text("norm_key").notNull(),
+	reason: text(),
+	createdBy: varchar("created_by", { length: 40 }).default('joe').notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	unique("employer_blacklist_norm_key_key").on(table.normKey),
+]);
+
 export const gigs = pgTable("gigs", {
 	id: serial().primaryKey().notNull(),
 	title: text().notNull(),
@@ -982,4 +993,45 @@ export const agentQuestions = pgTable("agent_questions", {
 			foreignColumns: [gigs.id],
 			name: "agent_questions_gig_id_fkey"
 		}).onDelete("cascade"),
+]);
+
+export const investors = pgTable("investors", {
+	id: serial().primaryKey().notNull(),
+	orgId: integer("org_id").notNull(),
+	name: text().notNull(),
+	firm: text(),
+	role: text(),
+	location: text(),
+	linkedinUrl: text("linkedin_url"),
+	xUrl: text("x_url"),
+	websiteUrl: text("website_url"),
+	email: text(),
+	emailSource: text("email_source"),
+	tier: varchar({ length: 2 }),
+	checkMin: integer("check_min"),
+	checkMax: integer("check_max"),
+	thesis: text(),
+	whyFit: text("why_fit"),
+	lastCheckAt: date("last_check_at"),
+	lastCheckEvidence: text("last_check_evidence"),
+	warmPath: text("warm_path"),
+	conflicts: text(),
+	sources: jsonb().default([]).notNull(),
+	status: varchar({ length: 24 }).default('qualified').notNull(),
+	disqualifiedReason: text("disqualified_reason"),
+	notes: text(),
+	dedupeKey: text("dedupe_key").notNull(),
+	createdBy: varchar("created_by", { length: 40 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("investors_org_dedupe_idx").using("btree", table.orgId.asc().nullsLast().op("text_ops"), table.dedupeKey.asc().nullsLast().op("text_ops")),
+	index("investors_org_status_tier_idx").using("btree", table.orgId.asc().nullsLast().op("int4_ops"), table.status.asc().nullsLast().op("timestamptz_ops"), table.tier.asc().nullsLast().op("timestamptz_ops"), table.updatedAt.desc().nullsFirst().op("int4_ops")),
+	foreignKey({
+			columns: [table.orgId],
+			foreignColumns: [organizations.id],
+			name: "investors_org_id_fkey"
+		}).onDelete("cascade"),
+	check("investors_status_check", sql`(status)::text = ANY ((ARRAY['qualified'::character varying, 'drafting'::character varying, 'awaiting_approval'::character varying, 'contacted'::character varying, 'replied'::character varying, 'passed'::character varying, 'disqualified'::character varying])::text[])`),
+	check("investors_tier_check", sql`(tier IS NULL) OR ((tier)::text = ANY ((ARRAY['T1'::character varying, 'T2'::character varying, 'T3'::character varying])::text[]))`),
 ]);

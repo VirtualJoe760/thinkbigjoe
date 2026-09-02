@@ -191,6 +191,71 @@ function tgEscape(s) {
 }
 
 // ---------------------------------------------------------------------------
+// EMPLOYER BLACKLIST — companies Joe will not work for.
+//
+// Enforced HERE rather than in her prompt, for the same reason as every other hard limit: a
+// prompt can be argued past, a query cannot. Joe should never have to decline the same employer
+// twice, and an application to one is worse than wasted — it is an application he'd be unhappy
+// to win.
+//
+// Normalisation strips punctuation and the Inc/LLC/Group-style noise so one entry covers the
+// variants a job board will throw at her: "Zillow" blocks "Zillow Group", "Zillow, Inc.",
+// "Zillow Group Technologies LLC".
+// ---------------------------------------------------------------------------
+function normEmployer(c) {
+  return String(c || "").toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(inc|llc|ltd|corp|corporation|co|company|group|holdings|technologies|technology|labs|software|systems|solutions|the)\b/g, " ")
+    .replace(/\s+/g, " ").trim();
+}
+
+// Her single "don't bother" reference: employers Joe has ruled out, AND everything she has
+// already applied to. Both answer the same question — "is this a dead end before I spend a run
+// on it?" — so they live in one call rather than making her remember two.
+async function toolListEmployerBlacklist() {
+  const [bl, applied] = await Promise.all([
+    query(`SELECT company, reason FROM employer_blacklist ORDER BY company`),
+    query(`SELECT company, role, status, applied_at FROM job_applications
+            WHERE status IN ('applied','interview','rejected') ORDER BY applied_at DESC NULLS LAST LIMIT 60`),
+  ]);
+  const lines = [];
+  lines.push(`🚫 **${bl.rows.length} BLACKLISTED employer(s)** — never surface, never research, never apply, under ANY job title or subsidiary name:`, "");
+  if (bl.rows.length) for (const r of bl.rows) lines.push(`• **${r.company}**${r.reason ? ` — ${r.reason}` : ""}`);
+  else lines.push("• (none yet)");
+  lines.push("");
+  lines.push(`📋 **Already applied (${applied.rows.length})** — don't re-apply to these. record_found_job also refuses duplicates on the posting URL, but check here first so you don't spend a run researching one:`, "");
+  const byCo = new Map();
+  for (const r of applied.rows) {
+    if (!byCo.has(r.company)) byCo.set(r.company, []);
+    byCo.get(r.company).push(`${r.role}${r.status === "rejected" ? " (rejected)" : r.status === "interview" ? " (INTERVIEW)" : ""}`);
+  }
+  for (const [co, roles] of byCo) lines.push(`• **${co}** — ${roles.join("; ")}`);
+  lines.push("", "_A rejection is NOT a blacklist: Joe may still want another role at that company later. Only the list above is off-limits._");
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+/** Returns the blacklist row when `company` is blocked, else null. Fail-open on a query error. */
+async function blacklistedEmployer(company) {
+  const key = normEmployer(company);
+  if (!key) return null;
+  try {
+    // Match either direction: a stored "zillow" must catch "Zillow Group Technologies", and a
+    // stored long name must still catch a shorter posting variant.
+    const r = await query(
+      `SELECT company, reason FROM employer_blacklist
+        WHERE $1 = norm_key OR $1 LIKE norm_key || ' %' OR $1 LIKE '% ' || norm_key
+           OR $1 LIKE '% ' || norm_key || ' %' OR norm_key LIKE $1 || ' %'
+        LIMIT 1`,
+      [key],
+    );
+    return r.rows[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // DAILY BUDGETS — the ceiling that survives a bad day.
 //
 // Cadence (the cron) controls how OFTEN an agent wakes. That is not a cap: one pathological
@@ -1642,6 +1707,13 @@ async function toolRecordFoundJob({
   }
   const budgetStop = await dailyBudgetStop("whitney");
   if (budgetStop) return budgetStop;
+  const banned = await blacklistedEmployer(company);
+  if (banned) {
+    await audit("employer_blacklisted", `Skipped blacklisted employer ${company} — ${role || "role"}`, {
+      actor: "whitney", target: company, detail: { role, reason: banned.reason || null },
+    });
+    return { content: [{ type: "text", text: `🚫 **${company} is BLACKLISTED** — Joe will not work there${banned.reason ? ` (${banned.reason})` : ""}. Not added.\n\nDo not surface this employer again, under any job title or subsidiary name, and don't spend another turn researching them. Check **list_employer_blacklist** before you research a company so you stop wasting runs on ones he has already ruled out.` }] };
+  }
   if (!company || !role) {
     return { content: [{ type: "text", text: "❌ company and role are required." }], isError: true };
   }
@@ -3803,12 +3875,351 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.63.0" },
+  { name: "tbj-mcp", version: "2.64.0" },
   { capabilities: { tools: {} } },
 );
 
+// ---------------------------------------------------------------------------
+// Investors — Vera's pipeline (agent id `angel-scout`), for ChatRealty.
+//
+// ChatRealty is a DIFFERENT COMPANY from ThinkBigJoe. It shares this app's
+// plumbing and nothing else, so every row here is scoped to the chatrealty org
+// and never to org 1. Getting that wrong would put a second company's cap-table
+// research on TBJ's board.
+//
+// The whole design turns on one thing: an unsourced investor record is worse
+// than no record. The documented failure mode of an LLM doing investor research
+// is inventing plausible funds, partners and email addresses — and downstream of
+// Vera sits Edward, who will draft a confident email on top of whatever she
+// wrote, and Joe, who will send it. So `sources` is enforced HERE, at the write,
+// not left to the persona file. A rule that lives only in a markdown file is a
+// rule that survives exactly until the model has a bad day.
+// ---------------------------------------------------------------------------
+
+let _chatrealtyOrgId = null;
+async function chatrealtyOrgId() {
+  if (_chatrealtyOrgId) return _chatrealtyOrgId;
+  const r = await query(`SELECT id FROM organizations WHERE slug = 'chatrealty' LIMIT 1`);
+  if (!r.rows.length) throw new Error("ChatRealty organization row missing — run scripts/db/2026-09-02-investors.sql");
+  _chatrealtyOrgId = r.rows[0].id;
+  return _chatrealtyOrgId;
+}
+
+// The dedupe key. LinkedIn URL when we have one because it is the one stable
+// identifier a person carries between firms; name+firm only as a fallback.
+// Whitney's re-application bug came from deduping on a field that collides
+// (job titles); the same mistake here emails an investor twice, which is a
+// first impression you only get to ruin once.
+function investorDedupeKey({ linkedin_url, name, firm }) {
+  if (linkedin_url) {
+    const m = String(linkedin_url).match(/linkedin\.com\/in\/([^/?#]+)/i);
+    if (m) return `li:${m[1].toLowerCase()}`;
+  }
+  const n = String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const f = String(firm || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return `nf:${n}|${f}`;
+}
+
+// Normalize + validate the source list. Returns { sources } or { error }.
+function normalizeSources(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { error: "❌ `sources` is required and must contain at least one entry. No URL, no record — that is the entire point of this pipeline. If you cannot cite a page you actually opened for this person, do not record them." };
+  }
+  const out = [];
+  for (const s of raw) {
+    const url = typeof s === "string" ? s : s?.url;
+    if (!url || !/^https?:\/\//i.test(String(url))) {
+      return { error: `❌ Every source needs a real http(s) URL. Got: ${JSON.stringify(s)}. A source that isn't a link isn't a source.` };
+    }
+    out.push({
+      url: String(url),
+      supports: String((typeof s === "object" && s?.supports) || "").slice(0, 300) || null,
+      checked_at: (typeof s === "object" && s?.checked_at) || new Date().toISOString().slice(0, 10),
+    });
+  }
+  return { sources: out };
+}
+
+async function toolAddInvestor(a = {}) {
+  if (await isAgentPaused("angel-scout")) {
+    return { content: [{ type: "text", text: "⏸ Vera is PAUSED by Joe. Stand down — do not record investors. End your turn without acting." }] };
+  }
+  const { name, firm, role, location, linkedin_url, x_url, website_url, email, email_source,
+          tier, check_min, check_max, thesis, why_fit, last_check_at, last_check_evidence,
+          warm_path, conflicts, status = "qualified", disqualified_reason, notes } = a;
+
+  if (!name) return { content: [{ type: "text", text: "❌ name is required." }], isError: true };
+
+  const { sources, error } = normalizeSources(a.sources);
+  if (error) return { content: [{ type: "text", text: error }], isError: true };
+
+  // An email with no provenance is the single most dangerous field in this table:
+  // it is the one an LLM most reliably invents, and the one that gets ACTED on.
+  // A guessed address bounces, which burns the sending domain's reputation for
+  // every other message Joe sends from it.
+  if (email && !email_source) {
+    return { content: [{ type: "text", text: "❌ You gave an email with no `email_source`. Never construct an address from a pattern — record it only if you READ it on a page you can cite, and cite that page here. If you didn't, leave email empty and put the introduction route in `warm_path` instead." }], isError: true };
+  }
+
+  // The why-fit line is the actual handoff. Edward cannot write a personal email
+  // from "interested in proptech"; a record without this line is homework passed
+  // downstream, so it doesn't get to be `qualified`.
+  if (status === "qualified" && !why_fit) {
+    return { content: [{ type: "text", text: "❌ A qualified investor needs `why_fit` — one specific sentence on why THIS person for ChatRealty, referencing something they actually did (a check, a post, a portfolio company). If you can't write it, they are not qualified yet: record them as `disqualified` with a reason, or do more reading." }], isError: true };
+  }
+  if (status === "disqualified" && !disqualified_reason) {
+    return { content: [{ type: "text", text: "❌ A disqualification needs `disqualified_reason`. The reason is the whole value — it is what stops this person being re-added in three weeks." }], isError: true };
+  }
+
+  const orgId = await chatrealtyOrgId();
+  const key = investorDedupeKey({ linkedin_url, name, firm });
+
+  const dupe = await query(`SELECT id, name, firm, status, tier FROM investors WHERE org_id = $1 AND dedupe_key = $2 LIMIT 1`, [orgId, key]);
+  if (dupe.rows.length) {
+    const d = dupe.rows[0];
+    return { content: [{ type: "text", text: `↩️ Already in the pipeline — #${d.id} ${d.name}${d.firm ? ` (${d.firm})` : ""}, ${d.tier || "untiered"}, status **${d.status}**. Not added again. If your research changed the facts, use \`update_investor\` on #${d.id} instead of adding a second row.` }] };
+  }
+
+  const r = await query(
+    `INSERT INTO investors (org_id, name, firm, role, location, linkedin_url, x_url, website_url,
+       email, email_source, tier, check_min, check_max, thesis, why_fit, last_check_at,
+       last_check_evidence, warm_path, conflicts, sources, status, disqualified_reason, notes,
+       dedupe_key, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22,$23,$24,'angel-scout')
+     RETURNING id`,
+    [orgId, name, firm || null, role || null, location || null, linkedin_url || null, x_url || null,
+     website_url || null, email || null, email_source || null, tier || null,
+     Number.isFinite(Number(check_min)) ? Number(check_min) : null,
+     Number.isFinite(Number(check_max)) ? Number(check_max) : null,
+     thesis || null, why_fit || null, last_check_at || null, last_check_evidence || null,
+     warm_path || null, conflicts || null, JSON.stringify(sources), status,
+     disqualified_reason || null, notes || null, key],
+  );
+  const id = r.rows[0].id;
+
+  await audit("investor_added", `Vera recorded ${name}${firm ? ` (${firm})` : ""} — ${tier || "untiered"}, ${status}`,
+    { target: name, detail: { id, tier, status, sources: sources.length }, actor: "angel-scout" });
+
+  const warn = status === "qualified" && !last_check_evidence
+    ? "\n\n⚠️ No `last_check_evidence`. You recorded them as qualified without a citable recent check — that is the axis that kills most candidates, and the one you are most likely to be wrong about. Go find the filing or the dated portfolio entry, then `update_investor`."
+    : "";
+  return { content: [{ type: "text", text: `✅ #${id} ${name}${firm ? ` — ${firm}` : ""} recorded (${tier || "untiered"}, ${status}, ${sources.length} source${sources.length === 1 ? "" : "s"}).${warn}` }] };
+}
+
+async function toolListInvestors(a = {}) {
+  const orgId = await chatrealtyOrgId();
+  const where = ["org_id = $1"];
+  const params = [orgId];
+  if (a.status) { params.push(a.status); where.push(`status = $${params.length}`); }
+  if (a.tier) { params.push(a.tier); where.push(`tier = $${params.length}`); }
+  params.push(Math.min(Number(a.limit) || 25, 100));
+  const r = await query(
+    `SELECT id, name, firm, role, tier, status, why_fit, warm_path, email, last_check_at,
+            jsonb_array_length(sources) AS n_sources, updated_at
+       FROM investors WHERE ${where.join(" AND ")}
+      ORDER BY (tier IS NULL), tier ASC, updated_at DESC
+      LIMIT $${params.length}`, params);
+
+  if (!r.rows.length) return { content: [{ type: "text", text: "Pipeline empty for that filter. Nothing recorded yet." }] };
+
+  const counts = await query(
+    `SELECT status, count(*)::int n FROM investors WHERE org_id = $1 GROUP BY status`, [orgId]);
+  const summary = counts.rows.map((c) => `${c.status} ${c.n}`).join(" · ");
+
+  const lines = r.rows.map((i) =>
+    `#${i.id} ${i.name}${i.firm ? ` (${i.firm})` : ""} — ${i.tier || "untiered"} · ${i.status} · ${i.n_sources} src` +
+    `${i.last_check_at ? ` · last check ${String(i.last_check_at).slice(0, 10)}` : ""}` +
+    `${i.email ? ` · ${i.email}` : ""}` +
+    `${i.why_fit ? `\n     ${i.why_fit}` : ""}` +
+    `${i.warm_path ? `\n     warm: ${i.warm_path}` : ""}`);
+  return { content: [{ type: "text", text: `INVESTORS (ChatRealty) — ${summary}\n\n${lines.join("\n")}` }] };
+}
+
+// Edward's read. Deliberately narrow: qualified, has a why-fit line, not yet
+// contacted, best tier first. A record that doesn't clear that bar never reaches
+// him — which is the point. He can only write a personal email from a specific
+// reason, so handing him a thin record just produces a generic one.
+async function toolListInvestorsForOutreach(a = {}) {
+  const orgId = await chatrealtyOrgId();
+  const limit = Math.min(Number(a.limit) || 10, 50);
+  const r = await query(
+    `SELECT id, name, firm, role, location, tier, email, email_source, thesis, why_fit,
+            warm_path, last_check_at, last_check_evidence, linkedin_url, website_url, sources
+       FROM investors
+      WHERE org_id = $1 AND status = 'qualified' AND why_fit IS NOT NULL
+      ORDER BY tier ASC NULLS LAST, updated_at DESC
+      LIMIT $2`, [orgId, limit]);
+
+  if (!r.rows.length) {
+    return { content: [{ type: "text", text: "No investors ready for outreach. Either Vera hasn't qualified anyone yet, or everyone qualified is already in flight. Nothing to draft — do not go looking for names yourself; sourcing is Vera's job." }] };
+  }
+  const blocks = r.rows.map((i) => {
+    const srcs = Array.isArray(i.sources) ? i.sources : [];
+    return [
+      `#${i.id} — ${i.name}${i.firm ? `, ${i.firm}` : ""}${i.role ? ` (${i.role})` : ""} — ${i.tier || "untiered"}`,
+      `WHY: ${i.why_fit}`,
+      i.thesis ? `THESIS: ${i.thesis}` : null,
+      i.last_check_at ? `LAST CHECK: ${String(i.last_check_at).slice(0, 10)}${i.last_check_evidence ? ` — ${i.last_check_evidence}` : ""}` : null,
+      i.email ? `EMAIL: ${i.email} (source: ${i.email_source || "UNSOURCED — do not use"})` : `EMAIL: none on file — this is a warm-intro ask, not a cold email.`,
+      i.warm_path ? `WARM PATH: ${i.warm_path}` : null,
+      srcs.length ? `SOURCES: ${srcs.map((s) => s.url).join(" · ")}` : null,
+    ].filter(Boolean).join("\n");
+  });
+  return { content: [{ type: "text", text:
+    `READY FOR OUTREACH — ${r.rows.length} (ChatRealty raise)\n\n${blocks.join("\n\n")}\n\n` +
+    `Draft from the WHY line — it is the only thing that makes the email personal, and it is why Vera bothered. ` +
+    `Then \`update_investor\` status → 'drafting', and queue it with \`email_request_send\` as always: Venus approves, Joe sends. ` +
+    `Never write to an investor whose EMAIL line says none on file.` }] };
+}
+
+async function toolUpdateInvestor(a = {}) {
+  const { id } = a;
+  if (!id) return { content: [{ type: "text", text: "❌ id is required (from list_investors)." }], isError: true };
+  const orgId = await chatrealtyOrgId();
+
+  const cur = await query(`SELECT * FROM investors WHERE id = $1 AND org_id = $2`, [id, orgId]);
+  if (!cur.rows.length) return { content: [{ type: "text", text: `❌ No investor #${id} in the ChatRealty pipeline.` }], isError: true };
+  const before = cur.rows[0];
+
+  const sets = [];
+  const params = [];
+  const settable = ["name", "firm", "role", "location", "linkedin_url", "x_url", "website_url",
+    "email", "email_source", "tier", "check_min", "check_max", "thesis", "why_fit",
+    "last_check_at", "last_check_evidence", "warm_path", "conflicts", "status",
+    "disqualified_reason", "notes"];
+  for (const f of settable) {
+    if (a[f] === undefined) continue;
+    params.push(a[f] === "" ? null : a[f]);
+    sets.push(`${f} = $${params.length}`);
+  }
+
+  if (a.email && !(a.email_source || before.email_source)) {
+    return { content: [{ type: "text", text: "❌ Setting an email needs an `email_source`. Same rule as recording one: cite the page you read it on, or leave it empty and use the warm path." }], isError: true };
+  }
+  if (a.status === "disqualified" && !(a.disqualified_reason || before.disqualified_reason)) {
+    return { content: [{ type: "text", text: "❌ Disqualifying needs `disqualified_reason` — without it someone re-adds them next month." }], isError: true };
+  }
+
+  // add_source appends rather than replaces: provenance accumulates, it never
+  // gets overwritten by the most recent thing anyone looked at.
+  if (a.add_source) {
+    const { sources, error } = normalizeSources([a.add_source]);
+    if (error) return { content: [{ type: "text", text: error }], isError: true };
+    params.push(JSON.stringify(sources));
+    sets.push(`sources = sources || $${params.length}::jsonb`);
+  }
+  if (!sets.length) return { content: [{ type: "text", text: "Nothing to change — pass at least one field." }] };
+
+  sets.push("updated_at = now()");
+  params.push(id, orgId);
+  await query(`UPDATE investors SET ${sets.join(", ")} WHERE id = $${params.length - 1} AND org_id = $${params.length}`, params);
+
+  const changed = Object.keys(a).filter((k) => k !== "id");
+  await audit("investor_updated", `${before.name} updated: ${changed.join(", ")}`,
+    { target: before.name, detail: { id, changed }, actor: a.actor || "angel-scout" });
+  return { content: [{ type: "text", text: `✅ #${id} ${before.name} updated (${changed.join(", ")}).` }] };
+}
+
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
+    {
+      name: "add_investor",
+      description: "Vera (angel-scout): record a researched angel investor for the ChatRealty raise. REQUIRES `sources` — at least one real URL you actually opened, with what each supports. This is enforced, not advisory: an unsourced record is worse than no record, because Edward drafts a confident email on top of it and Joe sends it. NEVER construct an email address from a name pattern — an email is accepted only with an `email_source` citing where you read it; otherwise leave it empty and put the introduction route in `warm_path`. A `qualified` record also needs `why_fit`: one specific sentence on why THIS person for ChatRealty, referencing something they actually did (a check, a post, a portfolio company) — if you cannot write that sentence, they are not qualified yet. Deduped on LinkedIn URL (falling back to name+firm), so the same person cannot be recorded twice however you found them.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "The investor's full name." },
+          firm: { type: "string", description: "Fund or company, if they have one. Solo angels often don't." },
+          role: { type: "string", description: "e.g. 'angel', 'GP', 'operator angel — ex-VP Eng, Compass'." },
+          location: { type: "string", description: "City/region — geography is one of the six axes." },
+          linkedin_url: { type: "string", description: "Their LinkedIn profile. Also the dedupe key: pass it whenever you have it." },
+          x_url: { type: "string", description: "Their X/Twitter profile." },
+          website_url: { type: "string", description: "Personal or fund site — usually the best source for a stated thesis." },
+          email: { type: "string", description: "ONLY if you read it on a citable page. Never guessed, never inferred from a pattern. Requires email_source." },
+          email_source: { type: "string", description: "The URL you read the email address on. Required whenever email is set." },
+          tier: { type: "string", enum: ["T1", "T2", "T3"], description: "T1 passes all six axes AND has a warm path · T2 passes all six, cold · T3 passes but stretches one axis. Tier is fit, not enthusiasm." },
+          check_min: { type: "number", description: "Low end of their typical check, USD." },
+          check_max: { type: "number", description: "High end of their typical check, USD. Our band is 25k-250k." },
+          thesis: { type: "string", description: "What they invest in, in THEIR stated words — not your read of their vibe." },
+          why_fit: { type: "string", description: "REQUIRED to be qualified. One specific sentence: why this person, why now, referencing something they actually did. 'Interested in proptech' is not this." },
+          last_check_at: { type: "string", description: "Date of their most recent VERIFIED investment (YYYY-MM-DD). Older than ~12 months and they are probably dormant." },
+          last_check_evidence: { type: "string", description: "URL proving that check happened — an SEC Form D filing, a dated portfolio entry, an announcement." },
+          warm_path: { type: "string", description: "Who could make the introduction, and how you know that. This is what makes a T1." },
+          conflicts: { type: "string", description: "Competing MLS-search or agent-website portfolio companies. A real conflict is a disqualification, not a footnote." },
+          status: { type: "string", enum: ["qualified", "disqualified"], description: "Default qualified. Record disqualifications too — the reason is what stops someone re-adding them." },
+          disqualified_reason: { type: "string", description: "Required when status is disqualified. Which axis failed, and the evidence." },
+          notes: { type: "string", description: "Anything else worth carrying forward." },
+          sources: {
+            type: "array",
+            description: "REQUIRED, non-empty. Every page you actually opened for this person.",
+            items: {
+              type: "object",
+              properties: {
+                url: { type: "string", description: "The http(s) URL." },
+                supports: { type: "string", description: "Which claim this page backs up (e.g. 'check size', 'still at the firm', 'led the Mar 2026 seed')." },
+                checked_at: { type: "string", description: "YYYY-MM-DD you read it. Defaults to today." },
+              },
+              required: ["url"],
+            },
+          },
+        },
+        required: ["name", "sources"],
+      },
+    },
+    {
+      name: "list_investors",
+      description: "Read the ChatRealty investor pipeline. Vera MUST call this before searching for new names — it is what stops the same person being researched and recorded twice. Filter by status (qualified / drafting / awaiting_approval / contacted / replied / passed / disqualified) and tier.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          status: { type: "string", description: "Filter by status. Omit for all." },
+          tier: { type: "string", enum: ["T1", "T2", "T3"], description: "Filter by tier." },
+          limit: { type: "number", description: "Max rows (default 25, cap 100)." },
+        },
+      },
+    },
+    {
+      name: "list_investors_for_outreach",
+      description: "Edward: the investors Vera has qualified and written a why-fit line for, best tier first, not yet contacted. Returns the bio you draft from — the why-fit line, the thesis, the sources, and either a sourced email address or an explicit 'none on file', which means this is a warm-introduction ask rather than a cold email. Draft from the WHY line; a generic email wastes the name. Then set the investor to 'drafting' with update_investor and queue the message with email_request_send as usual — Venus approves, Joe sends. Never write to an investor with no email on file.",
+      inputSchema: {
+        type: "object",
+        properties: { limit: { type: "number", description: "Max investors (default 10, cap 50)." } },
+      },
+    },
+    {
+      name: "update_investor",
+      description: "Change an existing investor record rather than adding a second row for the same person: move status along the pipeline, re-tier, add notes, or append a newly-found source with add_source (sources accumulate, they are never overwritten). Setting an email still requires an email_source; disqualifying still requires a reason.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "number", description: "Investor id from list_investors." },
+          status: { type: "string", enum: ["qualified", "drafting", "awaiting_approval", "contacted", "replied", "passed", "disqualified"], description: "Where they are in the pipeline." },
+          tier: { type: "string", enum: ["T1", "T2", "T3"] },
+          why_fit: { type: "string" },
+          thesis: { type: "string" },
+          email: { type: "string", description: "Requires email_source, here as at creation." },
+          email_source: { type: "string" },
+          last_check_at: { type: "string", description: "YYYY-MM-DD." },
+          last_check_evidence: { type: "string" },
+          warm_path: { type: "string" },
+          conflicts: { type: "string" },
+          disqualified_reason: { type: "string", description: "Required when status becomes disqualified." },
+          notes: { type: "string" },
+          actor: { type: "string", description: "Which agent is making this change (angel-scout or edward). For the audit trail." },
+          add_source: {
+            type: "object",
+            description: "Append one source. Does not replace the existing list.",
+            properties: {
+              url: { type: "string" },
+              supports: { type: "string" },
+              checked_at: { type: "string" },
+            },
+            required: ["url"],
+          },
+        },
+        required: ["id"],
+      },
+    },
     {
       name: "get_status",
       description: "Get current ThinkBigJoe pipeline status: prospects in DB, drafts awaiting review, approved connections ready to send, sent this week, and follow-ups due today.",
@@ -4224,6 +4635,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
         required: ["id"],
       },
+    },
+    {
+      name: "list_employer_blacklist",
+      description: "Whitney: the 'don't bother' list — employers Joe has ruled out entirely, plus every role you have already applied to. CHECK IT BEFORE YOU RESEARCH A COMPANY, so you never spend a run on a dead end. Blacklisted employers are refused by record_found_job server-side anyway, but by then you have already wasted the research. A rejection is not a blacklist.",
+      inputSchema: { type: "object", properties: {} },
     },
     {
       name: "record_found_job",
@@ -4784,6 +5200,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args } = req.params;
   switch (name) {
+    case "add_investor": return toolAddInvestor(args);
+    case "list_investors": return toolListInvestors(args);
+    case "list_investors_for_outreach": return toolListInvestorsForOutreach(args);
+    case "update_investor": return toolUpdateInvestor(args);
     case "get_status": return toolGetStatus();
     case "list_pending_replies": return toolListPendingReplies();
     case "handle_reply": return toolHandleReply(args);
@@ -4821,6 +5241,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     case "mark_sent": return toolMarkSent(args);
     case "list_my_directives": return toolListMyDirectives(args);
     case "complete_directive": return toolCompleteDirective(args);
+    case "list_employer_blacklist": return toolListEmployerBlacklist();
     case "record_found_job": return toolRecordFoundJob(args);
     case "list_approved_jobs": return toolListApprovedJobs();
     case "job_board_count": return toolJobBoardCount();
