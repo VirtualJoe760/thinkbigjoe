@@ -1595,11 +1595,19 @@ async function toolJobBoardCount() {
       ? `✅ BUT Joe's PRIORITY EMPLOYERS (listed in your USER.md target profile) are exempt — that lane has room for ${dirRoom} more. You may go straight to those employers' own careers pages, and record what you find with **directed: true**. Nothing else this turn.`
       : `Joe's priority-employer lane is also full (${dir.rows[0].n}/${DIRECTED_CAP}) — end your turn now.`}` }] };
   }
-  if (n < REVIEW_FLOOR) {
-    const approved = await query(`SELECT count(*)::int n FROM job_applications WHERE status = 'approved'`);
-    return { content: [{ type: "text", text: `🔻 **Review board is LOW: ${n}/${REVIEW_CAP} awaiting Joe's review** (floor ${REVIEW_FLOOR}).\n\n**FINDING IS A PRIORITY THIS RUN — even though ${approved.rows[0].n} approved job(s) are waiting.** Do NOT skip it as "filler". Joe can only approve what you surface, so an empty board starves the whole funnel a day or two later: you drain the approved queue, he opens the board, and there is nothing there. Surface up to ${room} well-researched roles now, then apply if budget remains.` }] };
-  }
-  return { content: [{ type: "text", text: `✅ Review board has room: ${n}/${REVIEW_CAP} awaiting review — you may surface up to ${room} more this turn. Applying comes first while the board is above the floor of ${REVIEW_FLOOR}.` }] };
+  // Joe's standing goal (2026-09-02): FILL the board to ${REVIEW_CAP} every day, so he always has a
+  // full slate to review. Room is therefore never "permission to search if you feel like it" — it's
+  // a quota. Urgency scales as the board empties, but there is no comfortable middle where finding
+  // stops being expected.
+  const approved = await query(`SELECT count(*)::int n FROM job_applications WHERE status = 'approved'`);
+  const urgent = n < REVIEW_FLOOR;
+  return { content: [{ type: "text", text:
+    `${urgent ? "🔻" : "📋"} **Review board: ${n}/${REVIEW_CAP}. Room for ${room} more.**\n\n` +
+    `Joe's standing goal is a **FULL board of ${REVIEW_CAP}** every day — that is a quota, not an option. ` +
+    (urgent
+      ? `The board is BELOW the floor of ${REVIEW_FLOOR}, so **finding outranks applying this run**, even though ${approved.rows[0].n} approved job(s) are waiting. Surface roles FIRST, then apply with whatever budget is left.`
+      : `Apply first, then **surface more before you end the turn** — do not finish a run leaving the board short while you still have budget.`) +
+    `\n\nCast WIDE. His floor is now $100k (any six-figure role, especially remote), the fit-gate is ~60% of core requirements, and he would rather see a role and pass on it than never see it. Remember the priority verticals: generative-AI × front-end tooling (ComfyUI / ffmpeg / ElevenLabs / Krea / Seedance class), real-estate tech, and LOCAL Coachella Valley technical roles — local counts even when it is on-site.` }] };
 }
 
 // Two postings are the SAME job if they resolve to the same place. Whitney recorded one Instrumentl
@@ -3795,7 +3803,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.62.0" },
+  { name: "tbj-mcp", version: "2.63.0" },
   { capabilities: { tools: {} } },
 );
 
