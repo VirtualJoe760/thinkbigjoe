@@ -208,9 +208,13 @@ function tgEscape(s) {
 // budgeted the moment it exists — no code change needed to keep it from running away.
 const DEFAULT_TURN_CAP = 8;
 const DAILY_TURN_CAP = { whitney: 15, edward: 4, main: 4, destiny: 4 };
-// Whitney's real-world ceiling. ~2-5 applications/day is the healthy human cadence; more looks
-// like a bot and is what gets Joe's accounts flagged. This is a business limit, not a cost one.
-const DAILY_APPLY_CAP = 5;
+// Whitney's daily application ceiling. Raised 5 -> 10 on 2026-09-02 at Joe's call: she hit 5 on
+// three consecutive days (08-30, 08-31, 09-01) and then spent every remaining afternoon run
+// standing down, so the cap — not her speed — was the throughput limit.
+// Still capped, and still a BUSINESS limit rather than a cost one: the flagging risk lives on the
+// job boards (LinkedIn Easy Apply / Indeed), far less on the employer ATS submissions she actually
+// makes, but a human job-hunting hard does not file 30 tailored applications in a day either.
+const DAILY_APPLY_CAP = 10;
 
 // --- Destiny's ceilings (Upwork) -------------------------------------------
 // Rewritten 2026-08-31: Destiny now drives a real browser on Joe's live Upwork account and
@@ -2951,9 +2955,11 @@ async function toolGetJobHuntReport({ since_hours } = {}) {
   const label = (r) => `${r.role} @ ${r.company}`;
 
   const [applied, interview, working, blocked, queued, review, notes] = await Promise.all([
-    query(`SELECT id, company, role, applied_at FROM job_applications
-           WHERE status IN ('applied','interview') AND applied_at > now() - ($1 || ' hours')::interval
-           ORDER BY applied_at DESC`, [String(hours)]),
+    query(`SELECT id, company, role, applied_at, location, pay, platform, url,
+                  fit_score, interest_score, contact_info
+             FROM job_applications
+            WHERE status IN ('applied','interview') AND applied_at > now() - ($1 || ' hours')::interval
+            ORDER BY applied_at DESC`, [String(hours)]),
     query(`SELECT id, company, role FROM job_applications WHERE status = 'interview' ORDER BY updated_at DESC`),
     query(`SELECT id, company, role, status FROM job_applications
            WHERE status IN ('account_created','verified') ORDER BY updated_at DESC`),
@@ -2970,8 +2976,38 @@ async function toolGetJobHuntReport({ since_hours } = {}) {
   const lines = [`📮 **Job hunt — last ${hours}h** (from the tables, not self-reported)`, ""];
 
   lines.push(`**APPLIED (${applied.rows.length}):**`);
-  if (applied.rows.length) for (const r of applied.rows) lines.push(`• #${r.id} ${label(r)}`);
-  else lines.push("• none in this window");
+  if (applied.rows.length) {
+    let noContact = 0;
+    for (const r of applied.rows) {
+      // A named human, not a no-reply ATS address — that distinction is the whole difference
+      // between an application that can be chased and one that dies in silence.
+      let c = r.contact_info;
+      if (typeof c === "string") { try { c = JSON.parse(c); } catch { c = null; } }
+      // A CHASEABLE contact is a person. A company LinkedIn page, a careers URL or a no-reply
+      // ATS address are not — Edward's follow-up runs kept reporting "unreachable" precisely
+      // because those were being stored as if they counted. Only accept a name, a real mailbox,
+      // or a personal /in/ profile.
+      const email = c?.email && !/no-?reply|donotreply|notifications?@/i.test(c.email) ? c.email : null;
+      const personal = c?.linkedin && /linkedin\.com\/in\//i.test(c.linkedin) ? c.linkedin : null;
+      const who = (c && (c.recruiter_name || email || personal)) || null;
+      if (!who) noContact++;
+      const meta = [
+        r.location,
+        r.pay,
+        r.platform,
+        r.fit_score != null ? `fit ${r.fit_score}%` : null,
+        r.interest_score != null ? `interest ${r.interest_score}%` : null,
+      ].filter(Boolean).join(" · ");
+      lines.push(`• **#${r.id} ${label(r)}**`);
+      if (meta) lines.push(`  ${meta}`);
+      lines.push(`  contact: ${who ? String(who).slice(0, 80) : "⚠️ none — cannot be followed up"}`);
+      if (r.url) lines.push(`  ${r.url}`);
+    }
+    if (noContact) {
+      lines.push("");
+      lines.push(`⚠️ ${noContact} of these have NO reachable contact — Edward cannot chase them, so they die in silence unless Joe finds someone on LinkedIn himself. Say this plainly in the debrief.`);
+    }
+  } else lines.push("• none in this window");
   lines.push("");
 
   if (interview.rows.length) {
@@ -3748,7 +3784,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.60.0" },
+  { name: "tbj-mcp", version: "2.61.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -4188,7 +4224,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           company_website: { type: "string", description: "The company's own website (not the job board)." },
           company_reviews: { type: "array", description: "REAL sourced reviews of the company as an employer. Each: { source (e.g. 'Glassdoor'), rating (number, e.g. 4.1), count (number of reviews), url, summary (what employees say — pros/cons in a sentence) }. Source these by searching; do not invent. Empty array if none found.", items: { type: "object", properties: { source: { type: "string" }, rating: { type: "number" }, count: { type: "number" }, url: { type: "string" }, summary: { type: "string" } } } },
           directed: { type: "boolean", description: "TRUE only when this role is at one of the PRIORITY EMPLOYERS in Joe's target profile (USER.md) — an employer he named himself. Directed finds have their own review lane, so they are still allowed when the general board is full. Never set it to sneak an ordinary find past the cap; the point is that Joe already chose these employers." },
-          contact_info: { type: "object", description: "A way to reach the company/recruiter: { recruiter_name, email, phone, careers_url, linkedin }. Whatever you can find from the posting or the company site.", properties: { recruiter_name: { type: "string" }, email: { type: "string" }, phone: { type: "string" }, careers_url: { type: "string" }, linkedin: { type: "string" } } },
+          contact_info: { type: "object", description: "A NAMED HUMAN who can be chased later — {recruiter_name, email, phone, careers_url, linkedin}. A company LinkedIn page, a careers URL or a no-reply ATS address does NOT count and will be treated as no contact at all: Edward's follow-up runs can only nudge a real person, and an application with no reachable human dies in silence. Look for the recruiter or hiring manager on LinkedIn (a /in/ profile) or a named address on the careers page before you submit.", properties: { recruiter_name: { type: "string" }, email: { type: "string" }, phone: { type: "string" }, careers_url: { type: "string" }, linkedin: { type: "string" } } },
           fit_reason: { type: "string", description: "One line: why Joe fits against the CORE requirements (skills/experience)." },
           fit_score: { type: "number", description: "0–100 skills/experience fit against the CORE requirements." },
           interest_match: { type: "string", description: "One line: why this matches JOE'S PERSONAL INTERESTS (mission, domain, tech, culture) per his target profile — not just whether he's qualified." },
