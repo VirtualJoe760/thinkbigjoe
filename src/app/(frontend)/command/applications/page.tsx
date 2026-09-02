@@ -135,8 +135,6 @@ export default async function ApplicationsPage({
       question: agentQuestions.question,
       options: agentQuestions.options,
       createdAt: agentQuestions.createdAt,
-      resumeUrl: agentQuestions.resumeUrl,
-      resumeState: agentQuestions.resumeState,
       company: jobApplications.company,
       role: jobApplications.role,
     })
@@ -262,23 +260,11 @@ export default async function ApplicationsPage({
                   <p className="mt-1 text-xs leading-relaxed text-ink">
                     <span className="font-semibold text-amber-700">Whitney asked:</span> {q.question}
                   </p>
-                  {/* Where she was when she stopped. Her browser tab is a courtesy that dies on any
-                      restart; this link is the durable way back into a half-filled application. */}
-                  {q.resumeUrl && (
-                    <div className="mt-2 rounded-xl border border-amber-300 bg-white/70 px-3 py-2">
-                      <a
-                        href={q.resumeUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs font-semibold text-brand underline break-all"
-                      >
-                        📍 Pick up where she stopped ↗
-                      </a>
-                      {q.resumeState && (
-                        <p className="mt-1 text-[11px] leading-relaxed text-ink-soft">{q.resumeState}</p>
-                      )}
-                    </div>
-                  )}
+                  {/* NO "pick up where she left off" link here, deliberately (Joe, 2026-09-02).
+                      It was a false promise: the URL only ever reached the job POSTING, never the
+                      half-filled form, because form state lives in the browser session and nowhere
+                      else. Offering it made a dead end look like a handoff. The real handoff is
+                      that she LEAVES THE TAB OPEN — see her AGENTS.md. */}
                   <form action={answerQuestion.bind(null, q.id)} className="mt-2">
                     {Array.isArray(q.options) && (q.options as string[]).length > 0 ? (
                       <div className="space-y-1.5">

@@ -2845,7 +2845,7 @@ const QUESTION_BOARD = {
   destiny: { who: "Destiny", url: "https://thinkbigjoe.com/command/gigs", cancels: "dismisses this gig" },
 };
 
-async function toolRecordQuestion({ application_id, gig_id, agent, question, options, topic, resume_url, resume_state }) {
+async function toolRecordQuestion({ application_id, gig_id, agent, question, options, topic }) {
   if (!question) return { content: [{ type: "text", text: "❌ question is required." }], isError: true };
   // Infer the asker when it wasn't passed: a gig question can only be Destiny's. Defaulting to
   // whitney keeps every existing caller working unchanged.
@@ -2887,27 +2887,22 @@ async function toolRecordQuestion({ application_id, gig_id, agent, question, opt
       try {
         await query(
           `UPDATE agent_questions
-              SET resume_url = COALESCE($2, resume_url),
-                  resume_state = COALESCE($3, resume_state)
+              SET question = question
             WHERE id = $1`,
-          [d.id, resume_url || null, resume_state || null],
+          [d.id],
         );
       } catch { /* enrichment only */ }
-      return { content: [{ type: "text", text: `⏭️ You already have an OPEN question on this one — Q#${d.id}, posted ${hrs}h ago:\n\n"${String(d.question).slice(0, 200)}"\n\nJoe has it in front of him; asking again does not make it move faster, it just costs him another ping. ${resume_url ? "I attached your resume link to it. " : ""}**Do NOT re-ask, re-word, or retry this application this run.** Leave the page as it is, move to a different job, and pick this up via list_answered_questions once he replies.` }] };
+      return { content: [{ type: "text", text: `⏭️ You already have an OPEN question on this one — Q#${d.id}, posted ${hrs}h ago:\n\n"${String(d.question).slice(0, 200)}"\n\nJoe has it in front of him; asking again does not make it move faster, it just costs him another ping. **Do NOT re-ask, re-word, or retry this application this run.** Leave the page as it is, move to a different job, and pick this up via list_answered_questions once he replies.` }] };
     }
   }
   const res = await query(
-    `INSERT INTO agent_questions (application_id, gig_id, agent, question, status, options, topic, resume_url, resume_state)
+    `INSERT INTO agent_questions (application_id, gig_id, agent, question, status, options, topic)
      VALUES ($1, $2, $3, $4, 'open', $5::jsonb, $6, $7, $8) RETURNING id`,
     [application_id || null, gig_id || null, who, question,
      Array.isArray(options) && options.length ? JSON.stringify(options) : null, topic || null,
-     resume_url || null, resume_state || null],
+    ],
   );
   const id = res.rows[0].id;
-  // A question tied to an application, with no resume point, is a dead end for Joe: the half-filled
-  // form exists only in a browser tab that any restart destroys. Say so loudly rather than failing —
-  // refusing the question would be worse, because then the blocker isn't recorded at all.
-  const missingResume = (application_id || gig_id) && !resume_url;
   await audit("agent_question", `${board.who} asked${label}: ${String(question).slice(0, 160)}`, {
     actor: who, detail: { question_id: id, application_id: application_id || null, gig_id: gig_id || null },
   });
@@ -2917,21 +2912,19 @@ async function toolRecordQuestion({ application_id, gig_id, agent, question, opt
   const opts = Array.isArray(options) && options.length
     ? `\n\nOptions: ${options.map((o) => tgEscape(o)).join(" · ")}`
     : "";
-  // The resume point goes in the ping itself — Joe reads this on a phone and needs to land on the
-  // exact form, not go hunting for which tab it was.
-  const resumeBlock = resume_url
-    ? `\n\n📍 <b>Pick up here:</b>\n${tgEscape(resume_url)}` +
-      (resume_state ? `\n<i>${tgEscape(resume_state)}</i>` : "")
-    : "";
   const tgSent = await notifyJoeTelegram(
     `🙋 <b>${board.who} is blocked</b>${label ? ` — ${tgEscape(label.replace(/^ about /, ""))}` : ""}\n\n` +
-      `<b>Q#${id}:</b> ${tgEscape(question)}${opts}${resumeBlock}\n\n` +
+      `<b>Q#${id}:</b> ${tgEscape(question)}${opts}\n\n` +
       `Answer, or <b>Decline to answer</b> (declining ${board.cancels} and frees ${board.who} to move on):\n` +
       `${board.url}`,
   );
 
-  const nudge = missingResume
-    ? ` ⚠️ You did NOT pass resume_url. Joe now has no way back to the page you were on — your open tab is not a handoff, it dies on any browser or gateway restart. Next time you're blocked mid-application, pass resume_url (the exact form page) and resume_state (what's filled, what's left).`
+  // NO resume_url nag, and no resume link anywhere (Joe, 2026-09-02). It was a false promise: the
+  // URL only ever reached the job POSTING, never the half-filled form, because form state lives in
+  // the browser session and nowhere else. It made a dead end look like a handoff, and Joe followed
+  // one to a blank application form. The ONLY real handoff is the open tab — hence the rule below.
+  const nudge = (application_id || gig_id)
+    ? ` 🚨 LEAVE THE TAB OPEN. The filled-in form exists ONLY in that browser tab — there is no link that restores it, and no way for Joe to finish the application if you close it. Do NOT close the tab, do NOT close or quit the browser window, do NOT navigate that tab anywhere else, and do NOT end your run by tidying up. Open a NEW TAB for your next job and leave this one exactly as it is.`
     : "";
   return { content: [{ type: "text", text: `✅ Question posted for Joe (#${id})${label}${tgSent ? " and sent to his Telegram" : ""}, on ${board.url}. He can ANSWER it, or DECLINE to answer — a decline ${board.cancels}, and that's a legitimate outcome, not a failure. Either way you pick it up next run via list_answered_questions. Do not wait on it now: move to the next thing.${nudge}\n\n🔖 LEAVE THE BLOCKED PAGE OPEN AS IT IS. Do not navigate it away, do not close it, do not reuse it. Open a NEW TAB for whatever you do next — Joe may be looking at that page.` }] };
 }
@@ -3875,7 +3868,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.64.0" },
+  { name: "tbj-mcp", version: "2.65.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -4932,7 +4925,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "record_question",
-      description: "Whitney: when you can't proceed truthfully — a form field you can't answer from Joe's profile/facts, a judgment call — post a QUESTION for Joe instead of guessing or stopping. It shows on /command/applications AND pings Joe's Telegram immediately, so he sees it while you're still working. He can ANSWER it, or DECLINE to answer — declining CANCELS that application, which is a legitimate outcome you should expect. You read his decision next run (list_answered_questions) and either resume or move on. Never block a whole turn waiting on him. For RECURRING facts (work authorization, sponsorship, relocation, security clearance, notice period), pass a `topic` slug: Joe's answer becomes a permanent fact you'll reuse — and if you pass a topic you ALREADY know, this refuses and hands you the known fact so you never ask twice. For multiple-choice, pass `options` and Joe answers with a radio button. ⚠️ If you are blocked MID-APPLICATION, you MUST pass `resume_url` (the exact form page) and `resume_state` (what's filled, what's left) — otherwise Joe cannot get back to your half-finished work and it is wasted.",
+      description: "Whitney: when you can't proceed truthfully — a form field you can't answer from Joe's profile/facts, a judgment call — post a QUESTION for Joe instead of guessing or stopping. It shows on /command/applications AND pings Joe's Telegram immediately, so he sees it while you're still working. He can ANSWER it, or DECLINE to answer — declining CANCELS that application, which is a legitimate outcome you should expect. You read his decision next run (list_answered_questions) and either resume or move on. Never block a whole turn waiting on him. For RECURRING facts (work authorization, sponsorship, relocation, security clearance, notice period), pass a `topic` slug: Joe's answer becomes a permanent fact you'll reuse — and if you pass a topic you ALREADY know, this refuses and hands you the known fact so you never ask twice. For multiple-choice, pass `options` and Joe answers with a radio button. 🚨 If you are blocked MID-APPLICATION: LEAVE THE TAB OPEN and say so in the question. The filled form lives ONLY in that browser tab — there is no URL that restores it. Never close the tab, never close or quit the browser, never navigate that tab elsewhere. Open a NEW TAB for your next job.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4942,8 +4935,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           question: { type: "string", description: "The specific question for Joe — concrete so he can answer fast." },
           options: { type: "array", items: { type: "string" }, description: "For a multiple-choice question, the answer choices (Joe picks one via radio buttons)." },
           topic: { type: "string", description: "A short slug for a DURABLE fact about Joe (e.g. 'work_authorization', 'relocation', 'security_clearance'). When set, Joe's answer is remembered permanently and you never ask it again. Check get_candidate_facts / get_candidate_profile first." },
-          resume_url: { type: "string", description: "THE EXACT PAGE Joe must reopen to finish this — the form you were filling, not the job listing. Required whenever you are blocked mid-application. Your open browser tab is NOT a safe handoff: it dies on any browser or gateway restart and Joe is left with no way back to what you needed. This URL is." },
-          resume_state: { type: "string", description: "What is ALREADY FILLED and what is LEFT, so Joe doesn't redo your work or hunt for the gap. e.g. 'Resume, contact info, all 5 screening questions done. Only the hCaptcha + Submit remain.'" },
         },
         required: ["question"],
       },
