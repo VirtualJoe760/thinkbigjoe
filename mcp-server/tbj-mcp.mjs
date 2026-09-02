@@ -377,6 +377,13 @@ const REVIEW_CAP = 25;
 // It's still capped, just separately, so a directed run can't run away either.
 const DIRECTED_CAP = 20;
 
+// The review board needs a FLOOR as well as a cap. Her loop made finding a last-resort filler —
+// "only if NO approved jobs are waiting" — and with approved jobs always waiting she never reached
+// it: zero new roles found between 2026-08-31 and 09-02 while she applied 5/day, until Joe opened
+// the board and had nothing left to approve. A cap alone starves the funnel; below this floor,
+// topping the board up outranks applying.
+const REVIEW_FLOOR = 10;
+
 // ---------------------------------------------------------------------------
 // Shared constants
 // ---------------------------------------------------------------------------
@@ -1588,7 +1595,11 @@ async function toolJobBoardCount() {
       ? `✅ BUT Joe's PRIORITY EMPLOYERS (listed in your USER.md target profile) are exempt — that lane has room for ${dirRoom} more. You may go straight to those employers' own careers pages, and record what you find with **directed: true**. Nothing else this turn.`
       : `Joe's priority-employer lane is also full (${dir.rows[0].n}/${DIRECTED_CAP}) — end your turn now.`}` }] };
   }
-  return { content: [{ type: "text", text: `✅ Review board has room: ${n}/${REVIEW_CAP} awaiting review — you may surface up to ${room} more this turn.` }] };
+  if (n < REVIEW_FLOOR) {
+    const approved = await query(`SELECT count(*)::int n FROM job_applications WHERE status = 'approved'`);
+    return { content: [{ type: "text", text: `🔻 **Review board is LOW: ${n}/${REVIEW_CAP} awaiting Joe's review** (floor ${REVIEW_FLOOR}).\n\n**FINDING IS A PRIORITY THIS RUN — even though ${approved.rows[0].n} approved job(s) are waiting.** Do NOT skip it as "filler". Joe can only approve what you surface, so an empty board starves the whole funnel a day or two later: you drain the approved queue, he opens the board, and there is nothing there. Surface up to ${room} well-researched roles now, then apply if budget remains.` }] };
+  }
+  return { content: [{ type: "text", text: `✅ Review board has room: ${n}/${REVIEW_CAP} awaiting review — you may surface up to ${room} more this turn. Applying comes first while the board is above the floor of ${REVIEW_FLOOR}.` }] };
 }
 
 // Two postings are the SAME job if they resolve to the same place. Whitney recorded one Instrumentl
@@ -3784,7 +3795,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.61.0" },
+  { name: "tbj-mcp", version: "2.62.0" },
   { capabilities: { tools: {} } },
 );
 
