@@ -449,6 +449,34 @@ const DIRECTED_CAP = 20;
 // topping the board up outranks applying.
 const REVIEW_FLOOR = 10;
 
+// Max LIVE applications at any one employer. 3 is the DEFAULT, and Joe's own words on it:
+// "I think 3 is a fine cap for most companies, I'll specify in the future if I want more."
+// He was glad she went deep at Anthropic (4) and xAI (6) — depth is right for a company he
+// really wants — but that is his call to make per company, not her default behaviour. Without a
+// ceiling the named-employer lists would let her pile up at one company forever instead of
+// widening the funnel.
+// HOW HE ASKS FOR MORE: a directive. An open directive already lifts the daily turn cap, and a
+// directive naming an employer is how he says "go deep here" — the same override path as
+// everything else, rather than a second mechanism.
+const COMPANY_APPLY_CAP = 3;
+
+/** How many live (applied/interview/approved) roles Joe already has at this employer. */
+async function liveAtCompany(company) {
+  const key = normEmployer(company);
+  if (!key) return 0;
+  try {
+    const r = await query(
+      `SELECT count(*)::int n FROM job_applications
+        WHERE status IN ('applied','interview','approved')
+          AND lower(regexp_replace(company, '[^A-Za-z0-9]+', ' ', 'g')) LIKE '%' || $1 || '%'`,
+      [key],
+    );
+    return r.rows[0].n;
+  } catch {
+    return 0;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Shared constants
 // ---------------------------------------------------------------------------
@@ -1707,6 +1735,10 @@ async function toolRecordFoundJob({
   }
   const budgetStop = await dailyBudgetStop("whitney");
   if (budgetStop) return budgetStop;
+  const atCap = await liveAtCompany(company);
+  if (atCap >= COMPANY_APPLY_CAP) {
+    return { content: [{ type: "text", text: `🧢 **Joe already has ${atCap} live applications at ${company}** (cap ${COMPANY_APPLY_CAP}). Not added.\n\nMore roles at the same employer do NOT improve his odds — they read as scattershot to whoever screens them, and each one spends a daily application slot a different company could have had. Move to a DIFFERENT employer. If one of the existing ones is rejected or closed, room opens up here automatically.` }] };
+  }
   const banned = await blacklistedEmployer(company);
   if (banned) {
     await audit("employer_blacklisted", `Skipped blacklisted employer ${company} — ${role || "role"}`, {
@@ -1855,6 +1887,16 @@ async function toolListApprovedJobs() {
     if (r.fit_reason) lines.push(`Why it fits: ${r.fit_reason}`);
     if (r.job_description) lines.push(`JD: ${String(r.job_description).replace(/\s+/g, " ").slice(0, 500)}${r.job_description.length > 500 ? "…" : ""}`);
     lines.push("");
+  }
+  // Flag any queued role at an employer already at the per-company cap — she should skip it
+  // rather than deepen a stack Joe has already said is too big.
+  const seen = new Map();
+  for (const r of res.rows) {
+    if (!seen.has(r.company)) seen.set(r.company, await liveAtCompany(r.company));
+  }
+  const over = [...seen.entries()].filter(([, n]) => n > COMPANY_APPLY_CAP).map(([c, n]) => `${c} (${n})`);
+  if (over.length) {
+    lines.push(`⚠️ **Already at/over the ${COMPANY_APPLY_CAP}-per-employer cap: ${over.join(", ")}.** SKIP those and work a role at a different company — more applications at one employer don't help Joe, they just look scattershot.`, "");
   }
   lines.push("_Work the TOP one to completion: create account → verify by email (inbox_search) → tailor → submit, calling update_application_status at each stage. One approved job per turn._");
   return { content: [{ type: "text", text: lines.join("\n") }] };
@@ -3868,7 +3910,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.65.0" },
+  { name: "tbj-mcp", version: "2.66.0" },
   { capabilities: { tools: {} } },
 );
 
