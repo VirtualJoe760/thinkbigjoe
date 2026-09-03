@@ -140,6 +140,8 @@ export default async function MoneyDeskPage() {
       overrideReason: moneyDeskVerdicts.overrideReason,
       decidedAt: moneyDeskVerdicts.decidedAt,
       reportPath: moneyDeskVerdicts.reportPath,
+      retracted: moneyDeskVerdicts.retracted,
+      retractedWhy: moneyDeskVerdicts.retractedWhy,
     })
     .from(moneyDeskVerdicts)
     .orderBy(desc(moneyDeskVerdicts.decidedAt))
@@ -231,10 +233,21 @@ export default async function MoneyDeskPage() {
               const noDissent = !v.dissent || /^\(none recorded/i.test(v.dissent);
 
               return (
-                <article key={v.id} className="rounded-lg border border-line bg-white p-4">
+                <article
+                  key={v.id}
+                  className={`rounded-lg border p-4 ${v.retracted ? "border-line bg-surface opacity-70" : "border-line bg-white"}`}
+                >
+                  {/* A withdrawn verdict is kept, not deleted — what they concluded and why it
+                      stopped being true is the useful history. But it must never read as live
+                      advice, so the whole card is dimmed and the reason leads. */}
+                  {v.retracted ? (
+                    <p className="mb-2 rounded bg-red-50 px-3 py-2 text-xs text-red-700">
+                      <strong>⊘ Withdrawn</strong> — {v.retractedWhy}
+                    </p>
+                  ) : null}
                   <header className="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <h3 className="font-semibold text-ink">{v.topic}</h3>
+                      <h3 className={`font-semibold text-ink ${v.retracted ? "line-through decoration-2" : ""}`}>{v.topic}</h3>
                       <p className="text-xs text-ink-soft">
                         <span className={a.cls}>
                           {a.emoji} {a.name}
@@ -244,8 +257,8 @@ export default async function MoneyDeskPage() {
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                      <span className={`rounded px-2 py-0.5 text-xs font-semibold ${band.cls}`}>{band.label}</span>
-                      <span className={`rounded px-2 py-0.5 text-xs font-semibold ${vd.cls}`}>{vd.label}</span>
+                      <span className={`rounded px-2 py-0.5 text-xs font-semibold ${v.retracted ? "bg-surface text-ink-soft" : band.cls}`}>{band.label}</span>
+                      <span className={`rounded px-2 py-0.5 text-xs font-semibold ${v.retracted ? "bg-surface text-ink-soft" : vd.cls}`}>{v.retracted ? "Withdrawn" : vd.label}</span>
                     </div>
                   </header>
 

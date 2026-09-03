@@ -137,13 +137,15 @@ try {
       `INSERT INTO money_desk_verdicts
          (topic, owner, verdict, what_to_do, how, practicality, time_to_first_dollar_days,
           cost_to_start_usd, who_pays, evidence, dissent, override_reason, decided_at,
-          reported_to_venus, report_path, report_html, dedupe_key)
-       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14,$15,$16,$17)
+          reported_to_venus, report_path, report_html, retracted, retracted_why, dedupe_key)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        ON CONFLICT (dedupe_key) DO UPDATE SET
          verdict = EXCLUDED.verdict,
          dissent = EXCLUDED.dissent,
          reported_to_venus = EXCLUDED.reported_to_venus,
          report_path = EXCLUDED.report_path,
+         retracted = EXCLUDED.retracted,
+         retracted_why = EXCLUDED.retracted_why,
          -- never null out HTML we already pulled
          report_html = COALESCE(EXCLUDED.report_html, money_desk_verdicts.report_html)`,
       [
@@ -152,7 +154,8 @@ try {
         c.time_to_first_dollar_days ?? null, c.cost_to_start_usd ?? null,
         c.who_pays ?? null, JSON.stringify(c.evidence ?? []),
         c.dissent ?? null, c.override_reason ?? null, c.at,
-        Boolean(c.reported_to_venus), c.report_path ?? null, html, key,
+        Boolean(c.reported_to_venus), c.report_path ?? null, html,
+        Boolean(c.retracted), c.retracted_why ?? null, key,
       ],
     );
     newVerdicts += r.rowCount;

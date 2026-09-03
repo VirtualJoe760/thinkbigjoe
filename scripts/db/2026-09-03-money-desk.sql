@@ -79,3 +79,14 @@ CREATE TABLE IF NOT EXISTS money_desk_verdicts (
 );
 
 CREATE INDEX IF NOT EXISTS money_desk_verdicts_decided_idx ON money_desk_verdicts (decided_at DESC);
+
+-- 2026-09-03 (later the same day) — retraction.
+--
+-- Joe said the home-services niche was wrong, which quietly invalidated a live `pursue` verdict
+-- telling him to go call home-services owners. A stale green verdict is worse than no verdict: it
+-- is a confident instruction resting on something nobody believes any more, and the board renders
+-- it identically to a good one. So a conclusion can now be WITHDRAWN with a reason, rather than
+-- deleted — the history of what they thought, and why it stopped being true, is the useful part.
+ALTER TABLE money_desk_verdicts
+  ADD COLUMN IF NOT EXISTS retracted     boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS retracted_why text;

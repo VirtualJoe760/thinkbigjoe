@@ -1079,6 +1079,8 @@ export const moneyDeskVerdicts = pgTable("money_desk_verdicts", {
 	reportPath: text("report_path"),
 	reportHtml: text("report_html"),
 	dedupeKey: text("dedupe_key").notNull(),
+	retracted: boolean().default(false).notNull(),
+	retractedWhy: text("retracted_why"),
 }, (table) => [
 	index("money_desk_verdicts_decided_idx").using("btree", table.decidedAt.desc().nullsFirst().op("timestamptz_ops")),
 	unique("money_desk_verdicts_dedupe_key_key").on(table.dedupeKey),
