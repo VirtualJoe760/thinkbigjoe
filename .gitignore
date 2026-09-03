@@ -60,3 +60,6 @@ mcp-server/research/node_modules
 mcp-server/research/preview/
 mcp-server/research/cowork-plugin/
 mcp-server/research/deploy/*.env
+
+# holds the research server bearer token — never commit
+.mcp.json

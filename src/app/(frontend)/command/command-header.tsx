@@ -42,6 +42,14 @@ const LINKS: NavLink[] = [
     group: "Agents",
   },
   {
+    // Max 💸 + Ryan 🔍 — the money desk. Sits next to Whitney because it's the same shape of work:
+    // an agent pair hunting for Joe personally, with him as the only one who acts on it.
+    href: "/command/money",
+    label: "Quick Money",
+    icon: "M13 2L4.5 13h6L10 22l8.5-11h-6z",
+    group: "Agents",
+  },
+  {
     href: "/command/gigs",
     label: "Destiny",
     icon: "M20 7h-4V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2H4a1 1 0 00-1 1v11a1 1 0 001 1h16a1 1 0 001-1V8a1 1 0 00-1-1zM10 5h4v2h-4V5z",
@@ -51,6 +59,12 @@ const LINKS: NavLink[] = [
     href: "/command/inbox",
     label: "Inbox",
     icon: "M3 8l9 6 9-6M4 6h16a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V7a1 1 0 011-1z",
+    group: "Agents",
+  },
+  {
+    href: "/command/investors",
+    label: "Vera",
+    icon: "M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z",
     group: "Agents",
   },
   {

@@ -152,6 +152,22 @@ tool-by-tool → UI-surface map):
   that `src/lib/telegram.ts` uses. Same chat id, different conversation: sending agent messages
   from the alerts bot delivers them successfully into a thread Joe isn't reading. Route any new
   agent-facing notification through here, not through the app's helper.
+- **Investor pipeline (angel-scout / Vera)** (v2.64.0): `add_investor`, `list_investors`,
+  `update_investor`, and `list_investors_for_outreach` — the ChatRealty raise, so these rows are
+  scoped to the **`chatrealty` organization**, not TBJ's org #1. They are the clearest example in
+  this file of **enforcing a rule in the tool rather than the prompt.** The documented failure mode
+  of an LLM doing investor research is fabricating investors — plausible fund names, plausible
+  partners, plausible email addresses — and downstream of Vera sits Edward, who drafts a confident
+  email on top of whatever she wrote, and Joe, who sends it. A markdown rule survives until the
+  model has a bad day; a rejected write doesn't. So `add_investor` **refuses**: a record with an
+  empty `sources` array, an `email` with no `email_source` (never a constructed address), a
+  `qualified` record with no `why_fit` line, and a disqualification with no reason. Dedupe is
+  `investors.dedupe_key` (LinkedIn URL → name+firm), UNIQUE per org — the constraint that stops
+  Edward emailing one investor twice, which is the same shape as Whitney's title-based
+  re-application bug at a higher price. `list_investors_for_outreach` is **Edward's** read and
+  returns either a sourced address or an explicit "none on file — warm intro only". There is
+  deliberately **no tool that contacts an investor**: Vera → Edward → Venus → Joe.
+  See [OPENCLAW.md](OPENCLAW.md)'s `angel-scout` row.
 - **Every state-changing tool in every group calls `audit(...)`** — the mechanism behind
   `/command/jobs`'s "verified" rows. See VENUS_UI_MAPPING.md's Audit log section.
 

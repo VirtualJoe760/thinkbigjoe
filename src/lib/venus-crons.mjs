@@ -683,8 +683,9 @@ Hard rules, unchanged: you never send — email_request_send and stop. You never
     //
     // Their state is a FILE, not the DB: ~/.openclaw/shared/max-ryan/desk.json, driven by
     // desk.mjs, which is where the claim lock / round cap / 7-day bar are actually enforced.
-    // That is why tools[] and uiSurface[] are empty. A /command board + MCP tools are the
-    // deferred full-stack half — see docs/OPENCLAW.md.
+    // Vercel cannot read that file, so scripts/money-desk-sync.mjs (launchd, every 5 min)
+    // mirrors it into money_desk_* and /command/money reads the mirror. One way only — a write
+    // from the app would be clobbered on the next pass AND desync the lock. See VENUS_UI_MAPPING.md.
     enabled: false,
     name: "Money Desk — Max (speed)",
     id: "1cbadd77-8caf-4aed-aeaa-2f7feebe14c1",
@@ -694,7 +695,7 @@ Hard rules, unchanged: you never send — email_request_send and stop. You never
     stagger: "exact",
     summary: "Max hunts fastest-cash money plays 4x/day (8/11/2/5, on the hour), answers Ryan on the shared desk, attacks Ryan's picks for being too slow, and converges verdicts. Research only — he never executes. Ships COLD.",
     tools: ["log_activity"],
-    uiSurface: ["/command (activity feed)"],
+    uiSurface: ["/command/money"],
     eventTypes: ["money_desk_turn", "money_desk_verdict"],
     prompt: `This is a desk run. Work your SOP (AGENTS.md) in order, and keep it to ONE topic — depth beats breadth here.
 
@@ -728,7 +729,7 @@ Hard rules: you research and recommend, you NEVER execute — no selling, listin
     stagger: "exact",
     summary: "Ryan hunts verifiable money plays 4x/day (8:30/11:30/2:30/5:30, half an hour behind Max), answers Max on the shared desk, attacks Max's picks for being unproven, and keeps the graveyard. Research only — he never executes. Ships COLD.",
     tools: ["log_activity"],
-    uiSurface: ["/command (activity feed)"],
+    uiSurface: ["/command/money"],
     eventTypes: ["money_desk_turn", "money_desk_verdict"],
     prompt: `This is a desk run. Work your SOP (AGENTS.md) in order, and keep it to ONE topic — depth beats breadth here.
 

@@ -1035,3 +1035,51 @@ export const investors = pgTable("investors", {
 	check("investors_status_check", sql`(status)::text = ANY ((ARRAY['qualified'::character varying, 'drafting'::character varying, 'awaiting_approval'::character varying, 'contacted'::character varying, 'replied'::character varying, 'passed'::character varying, 'disqualified'::character varying])::text[])`),
 	check("investors_tier_check", sql`(tier IS NULL) OR ((tier)::text = ANY ((ARRAY['T1'::character varying, 'T2'::character varying, 'T3'::character varying])::text[]))`),
 ]);
+
+export const moneyDeskState = pgTable("money_desk_state", {
+	id: integer().default(1).primaryKey().notNull(),
+	turn: text(),
+	claims: jsonb().default({}).notNull(),
+	graveyard: jsonb().default([]).notNull(),
+	deskUpdatedAt: timestamp("desk_updated_at", { withTimezone: true, mode: 'string' }),
+	syncedAt: timestamp("synced_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	check("money_desk_state_single_row", sql`id = 1`),
+]);
+
+export const moneyDeskMessages = pgTable("money_desk_messages", {
+	id: serial().primaryKey().notNull(),
+	at: timestamp({ withTimezone: true, mode: 'string' }).notNull(),
+	fromAgent: text("from_agent").notNull(),
+	toAgent: text("to_agent").notNull(),
+	kind: text().notNull(),
+	body: text().notNull(),
+	dedupeKey: text("dedupe_key").notNull(),
+}, (table) => [
+	index("money_desk_messages_at_idx").using("btree", table.at.desc().nullsFirst().op("timestamptz_ops")),
+	unique("money_desk_messages_dedupe_key_key").on(table.dedupeKey),
+]);
+
+export const moneyDeskVerdicts = pgTable("money_desk_verdicts", {
+	id: serial().primaryKey().notNull(),
+	topic: text().notNull(),
+	owner: text().notNull(),
+	verdict: text().notNull(),
+	whatToDo: text("what_to_do"),
+	how: jsonb(),
+	practicality: integer(),
+	timeToFirstDollarDays: integer("time_to_first_dollar_days"),
+	costToStartUsd: numeric("cost_to_start_usd"),
+	whoPays: text("who_pays"),
+	evidence: jsonb(),
+	dissent: text(),
+	overrideReason: text("override_reason"),
+	decidedAt: timestamp("decided_at", { withTimezone: true, mode: 'string' }).notNull(),
+	reportedToVenus: boolean("reported_to_venus").default(false).notNull(),
+	reportPath: text("report_path"),
+	reportHtml: text("report_html"),
+	dedupeKey: text("dedupe_key").notNull(),
+}, (table) => [
+	index("money_desk_verdicts_decided_idx").using("btree", table.decidedAt.desc().nullsFirst().op("timestamptz_ops")),
+	unique("money_desk_verdicts_dedupe_key_key").on(table.dedupeKey),
+]);
