@@ -347,11 +347,22 @@ CONTACT CAPTURE — do this on EVERY application, it is not optional. Before you
 Finish with **log_activity** (actor: "whitney") summarizing what you did — **name the role + company** for anything you applied to or advanced (e.g. "Applied: Senior Solutions Consultant @ Northgate Capital"), or "surfaced N new roles". Venus reads these notes into Joe's Telegram job-hunt debrief, so a bare count is useless to him — he wants the names. You still don't message Joe directly; Venus does the debriefing.`,
   },
   {
-    // ✅ ON (2026-08-28, Joe): he wants Whitney + Edward as the only two workers operating.
-    // ✅ 2026-08-30: the claude-cli auth blocker noted here is RESOLVED (`claude auth status` →
-    // loggedIn:true) and Edward has been running. Sweeps now cover EVERY folder + the unanswered
-    // backlog — see the 2026-08-30 mail audit in docs/OPENCLAW.md for why that mattered.
-    enabled: true,
+    // ⏸ OFF (2026-09-04, Joe): "Edward is not working correctly. I do not like his functionality,
+    // lets turn him off for now and we will rework him later." Both his crons are off and his
+    // `agents` row is enabled=false/status=off/paused=true, which his MCP tools read and stand
+    // down on. **Nothing was deleted** — registration, persona files (~/.openclaw/agents/edward/)
+    // and history are untouched, so the rework starts from what he already is, not from scratch.
+    //
+    // Nothing was left stranded: `email_outbox` held no pending or approved-unsent rows at
+    // shutdown (6 rejected, 5 sent, all terminal). Worth carrying into the rework — Venus rejected
+    // MORE of his drafts than she approved, which is the measurable version of Joe's complaint.
+    //
+    // To bring him back: flip these two to `enabled: true`, `npm run venus:sync`, and set the
+    // agents row back (enabled=true, status='running', paused=false).
+    //
+    // History: was ✅ ON 2026-08-28 (fleet narrowed to Whitney + Edward + Venus); the claude-cli
+    // auth blocker was resolved 2026-08-30 and sweeps covered every folder + the unanswered backlog.
+    enabled: false,
     name: "TBJ Edward — Inbox Sweep",
     id: "9e596bde-e170-4267-ad0f-2896d810d722",
     agent: "edward",
@@ -482,7 +493,23 @@ If a run turns up nothing worth bidding on, say exactly that. A quiet week is da
     // Following up on a Saturday reads as noise to an employer, so Mon-Fri. Costs +5 Edward turns
     // a week on the shared Claude Max cap; that is the price of never letting an application die
     // in silence.
-    enabled: true,
+    // ⏸ OFF (2026-09-04, Joe): "Edward is not working correctly. I do not like his functionality,
+    // lets turn him off for now and we will rework him later." Both his crons are off and his
+    // `agents` row is enabled=false/status=off/paused=true, which his MCP tools read and stand
+    // down on. **Nothing was deleted** — registration, persona files (~/.openclaw/agents/edward/)
+    // and history are untouched, so the rework starts from what he already is, not from scratch.
+    //
+    // Nothing was left stranded: `email_outbox` held no pending or approved-unsent rows at
+    // shutdown (6 rejected, 5 sent, all terminal). Worth carrying into the rework — Venus rejected
+    // MORE of his drafts than she approved, which is the measurable version of Joe's complaint.
+    //
+    // To bring him back: flip these two to `enabled: true`, `npm run venus:sync`, and set the
+    // agents row back (enabled=true, status='running', paused=false).
+    //
+    // History: was ✅ ENABLED 2026-08-30 to close the "applied looks like success" gap — an
+    // application nobody chases dies in silence. That gap is REAL and comes back with the rework;
+    // turning Edward off does not make it go away, it just means nobody is watching it right now.
+    enabled: false,
     name: "TBJ Edward — Application Follow-up",
     id: "082df93c-d2c9-498d-a4db-b9c53cdb2849",
     agent: "edward",
@@ -548,7 +575,9 @@ Honesty rules: if you could not actually reach anyone, say that plainly — "que
     eventTypes: ["org_debrief", "email_send_approved", "email_send_rejected", "email_sent"],
     prompt: `Org debrief (morning / midday / evening). You gather from BOTH workers, then send Joe ONE message. You DELIVER it yourself with **send_telegram_update** — your final text is NOT auto-delivered, so if you don't call that tool, Joe hears nothing.
 
-1. **get_inbox_report** — Edward's latest report + every send awaiting your approval. His report now carries sections you must not drop: **OWED** (people still waiting on a reply, with how many days) and **EMPLOYER** (employer responses he recorded, with deadlines). On weekdays it also returns his **follow-up report** — applications that have gone silent and the nudges he queued for you. Those are the ones that cost Joe real money when they're missed.
+0. ‼️ **EDWARD IS OFF (2026-09-04, Joe's call — being reworked).** Skip step 1 entirely and omit the 📥 INBOX, 📤 SENT/DECIDED, 📬 OWED and 🔁 FOLLOW-UPS sections. **Do NOT report his silence as a problem** — it is deliberate, and flagging it twice a day is noise Joe has to re-read every time. Mention him only if he somehow files a report, which would mean a cron came back on by mistake. Your debrief is Whitney + Destiny until he returns.
+
+1. *(while Edward is off, skip this)* **get_inbox_report** — Edward's latest report + every send awaiting your approval. His report now carries sections you must not drop: **OWED** (people still waiting on a reply, with how many days) and **EMPLOYER** (employer responses he recorded, with deadlines). On weekdays it also returns his **follow-up report** — applications that have gone silent and the nudges he queued for you. Those are the ones that cost Joe real money when they're missed.
 2. **DECIDE each pending send now** (this is yours, not Joe's): email_approve_send if the draft reads like Joe — plain, warm, short — and commits him to nothing he hasn't agreed to; email_reject_send with a reason if not. Unsure? Don't approve: put it in the debrief and ask him.
 3. **get_job_hunt_report** — set since_hours to cover the gap since your last debrief: ~12 on the 6:30 run, ~6 on the 12:30 and 18:30 runs. Those numbers come from the tables, so trust them over Whitney's own notes if the two disagree — and say so if they do.
 
@@ -570,7 +599,7 @@ Honesty rules: if you could not actually reach anyone, say that plainly — "que
 5. **send_telegram_update** with the finished text. One call, the whole thing. If it errors, Joe did NOT get it — say so in your log rather than assuming it landed.
 6. **log_activity** (actor "venus", event_type "org_debrief") with a one-line record of what you sent.
 
-Honesty rules, always: if Edward hasn't filed a report, say so plainly — that means his sweep didn't run, and Joe needs to know that more than he needs a tidy summary. Same if Whitney applied to nothing all day while approved jobs sat in her queue, or if the review board is full and throttling her. A debrief that smooths over a stalled agent is worse than no debrief. No filler, no "hope you're well" — Joe reads this three times a day.`,
+Honesty rules, always: **while Edward is switched off (2026-09-04) his silence is expected and gets no mention at all** — that rule exists to catch a sweep that failed quietly, not one Joe turned off on purpose. If he is ever back on and files nothing, then say so plainly: that means his sweep didn't run, and Joe needs to know that more than he needs a tidy summary. Same if Whitney applied to nothing all day while approved jobs sat in her queue, or if the review board is full and throttling her. A debrief that smooths over a stalled agent is worse than no debrief. No filler, no "hope you're well" — Joe reads this three times a day.`,
   },
   {
     // 🧊 SHIPS COLD (2026-09-02). Vera is brand new and the raise she researches for is
