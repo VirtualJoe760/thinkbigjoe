@@ -1724,6 +1724,27 @@ function normalizeJobUrl(u) {
   }
 }
 
+// The identity of a posting, for dedup. Host+path IS the job on every ATS we've met (Greenhouse,
+// Lever, Ashby, Workday all carry the job id in the path) — except Indeed, whose canonical URL is
+// indeed.com/viewjob?jk=<jobkey>: the path is identical for every posting and the identity lives
+// in the query. Keying on host+path there collapses every Indeed job into ONE "duplicate": the
+// second Indeed find would be refused as "same posting", and an approved Indeed job would vanish
+// from list_approved_jobs the moment any other Indeed job was applied/closed. Indeed became a
+// first-class channel on 2026-09-14, so both forms below (JS + SQL) key Indeed on its jk and must
+// stay in agreement.
+function jobUrlKey(u) {
+  const norm = normalizeJobUrl(u);
+  if (!norm) return null;
+  const jk = norm.match(/^(?:[a-z0-9-]+\.)*indeed\.com\/.*[?&]jk=([0-9a-z]+)/i);
+  if (jk) return `indeed.com/viewjob/jk/${jk[1].toLowerCase()}`;
+  return norm.replace(/\?.*$/, "");
+}
+const JOB_URL_KEY_SQL = `CASE
+  WHEN lower(url) ~ '^https?://([a-z0-9-]+\\.)*indeed\\.com/.*[?&]jk=[0-9a-z]+'
+    THEN 'indeed.com/viewjob/jk/' || substring(lower(url) from '[?&]jk=([0-9a-z]+)')
+  ELSE regexp_replace(regexp_replace(lower(url), '^https?://(www\\.)?', ''), '[#?].*$', '')
+END`;
+
 async function toolRecordFoundJob({
   company, role, platform, url, location, pay,
   fit_reason, fit_score, interest_match, interest_score,
@@ -1772,14 +1793,14 @@ async function toolRecordFoundJob({
   // Dedup #2 — the one that actually matters: the same POSTING under a different title. A title is
   // whatever the board happened to render; the URL is the job. Without this, one posting becomes
   // three rows and Whitney re-applies to a job she already submitted.
-  const normUrl = normalizeJobUrl(url);
-  if (normUrl) {
+  const urlKey = jobUrlKey(url);
+  if (urlKey) {
     const urlDup = await query(
       `SELECT id, role, status FROM job_applications
         WHERE url IS NOT NULL AND url <> ''
-          AND regexp_replace(regexp_replace(lower(url), '^https?://(www\\.)?', ''), '[#?].*$', '') = $1
+          AND ${JOB_URL_KEY_SQL} = $1
         LIMIT 1`,
-      [normUrl.replace(/\?.*$/, "")],
+      [urlKey],
     );
     if (urlDup.rows.length) {
       const d = urlDup.rows[0];
@@ -1834,7 +1855,7 @@ async function toolListApprovedJobs() {
     // title or a tracking param can't disguise it.
     `WITH norm AS (
        SELECT id, status,
-              regexp_replace(regexp_replace(lower(url), '^https?://(www\\.)?', ''), '[#?].*$', '') AS key
+              ${JOB_URL_KEY_SQL} AS key
          FROM job_applications
         WHERE url IS NOT NULL AND url <> ''
      )
@@ -1877,6 +1898,9 @@ async function toolListApprovedJobs() {
       lines.push(`⚠️ **You already applied at ${r.company}** — "${prev.role}" (#${prev.id}, ${prev.status}${prev.applied_at ? `, ${String(prev.applied_at).slice(0, 10)}` : ""}). BEFORE you fill anything: open this posting and confirm it is a genuinely DIFFERENT role. If the ATS says the application was already submitted, or it is the same job under a reworded title, STOP — call update_application_status(#${r.id}, 'closed') with a note saying it duplicates #${prev.id}, and move on. A second application to the same job makes Joe look careless to that employer.`);
     }
     if (r.platform) lines.push(`Platform: ${r.platform}`);
+    if (String(r.platform || "").toLowerCase() === "indeed" || /(^|\.)indeed\.com\//i.test(String(r.url || "").replace(/^https?:\/\//i, ""))) {
+      lines.push(`🟦 Indeed posting → apply in your SIGNED-IN Indeed session (openclaw browser profile). "Apply now" = Indeed Apply: no account to create, so skip account_created/verified — tailor the screening answers, upload your tailored PDF if the resume step offers "upload a different resume" (otherwise Joe's Indeed resume goes as-is; never edit it), and call update_application_status(applied) only once Indeed shows the application was submitted. "Apply on company site" = follow it to the employer's ATS and use the normal flow. If Indeed shows "Sign in" instead of Joe's account, STOP on this job: record_question with topic indeed_login (Joe signs in by hand — never type credentials or codes into Indeed) and work a non-Indeed job instead.`);
+    }
     if (r.url) lines.push(`Apply: ${r.url}`);
     if (r.company_website) lines.push(`Company site: ${r.company_website}`);
     if (r.contact_info) {
@@ -3910,7 +3934,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.66.0" },
+  { name: "tbj-mcp", version: "2.67.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -4684,8 +4708,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           company: { type: "string", description: "Employer / company name." },
           role: { type: "string", description: "Job title as posted." },
-          platform: { type: "string", description: "Where it lives: 'linkedin' | 'indeed' | 'greenhouse' | 'lever' | 'workday' | 'direct' | other." },
-          url: { type: "string", description: "Posting or apply URL." },
+          platform: { type: "string", description: "Where it lives: 'linkedin' | 'indeed' | 'greenhouse' | 'lever' | 'workday' | 'direct' | other. Use 'indeed' for anything found on Indeed — you'll apply to it there (Indeed Apply, or its 'Apply on company site' link)." },
+          url: { type: "string", description: "Posting or apply URL. For an Indeed posting ALWAYS pass the canonical https://www.indeed.com/viewjob?jk=<jobkey> form — the jk IS the posting's identity and dedup keys on it; never a search-results page or an rc/clk redirect link." },
           location: { type: "string", description: "JOB location + arrangement, e.g. 'Remote (US)' or 'Phoenix, AZ · hybrid'." },
           pay: { type: "string", description: "Comp as posted, if any (freeform, e.g. '$170k–200k')." },
           job_description: { type: "string", description: "The FULL job description (or a faithful, substantial summary) — responsibilities, requirements, must-haves. This is what Joe reviews to decide." },
@@ -4728,7 +4752,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "inbox_search",
-      description: "Whitney: read joe@thinkbigjoe.com for a SPECIFIC purpose — the verification link/code for an account you just created, or an interview invite. Returns matching messages newest-first with sender, subject, a snippet, and any links extracted (the verification link is usually among them). BODY.PEEK: never marks mail read. Not for browsing his mail.",
+      description: "Whitney: read joe@thinkbigjoe.com for a SPECIFIC purpose — the verification link/code for an account you just created, or an interview invite. Returns matching messages newest-first with sender, subject, a snippet, and any links extracted (the verification link is usually among them). BODY.PEEK: never marks mail read. Not for browsing his mail. ⚠️ Indeed does NOT write to this mailbox (Joe's Indeed account is on a different address) — Indeed sign-in codes, application confirmations and employer messages are read on Indeed itself (My jobs → Applied, Messages), never here.",
       inputSchema: {
         type: "object",
         properties: {
@@ -4878,7 +4902,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "record_employer_reply",
-      description: "Edward: write an employer's emailed reply back onto the job application. Whitney only records what SHE does, so an interview invite that arrives by email is invisible to Joe's board and to Venus's debrief until you record it here. Call it for any real employer response: interview/next-step invite, offer, or rejection. This is what puts an interview in front of Joe.",
+      description: "Edward (email) / Whitney (Indeed Messages, read in the browser): write an employer's reply back onto the job application. An interview invite that arrives by email or in Indeed Messages is invisible to Joe's board and to Venus's debrief until it is recorded here. Call it for any real employer response: interview/next-step invite, offer, or rejection. This is what puts an interview in front of Joe.",
       inputSchema: {
         type: "object",
         properties: {
