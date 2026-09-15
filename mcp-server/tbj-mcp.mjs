@@ -1700,7 +1700,7 @@ async function toolJobBoardCount() {
     (urgent
       ? `The board is BELOW the floor of ${REVIEW_FLOOR}, so **finding outranks applying this run**, even though ${approved.rows[0].n} approved job(s) are waiting. Surface roles FIRST, then apply with whatever budget is left.`
       : `Apply first, then **surface more before you end the turn** — do not finish a run leaving the board short while you still have budget.`) +
-    `\n\nCast WIDE. His floor is now $100k (any six-figure role, especially remote), the fit-gate is ~60% of core requirements, and he would rather see a role and pass on it than never see it. Junior / entry-level web and front-end roles are in scope too (2026-09-14) and are EXEMPT from that floor — surface them with the pay shown plainly and let Joe decide. Remember the priority verticals: generative-AI × front-end tooling (ComfyUI / ffmpeg / ElevenLabs / Krea / Seedance class), real-estate tech, and LOCAL Coachella Valley technical roles — local counts even when it is on-site.` }] };
+    `\n\nCast WIDE. Money floors are by LOCATION, judged on the BOTTOM of the posted range (Joe, 2026-09-14): $80k remote or Coachella Valley, $100k Arizona, $120k anywhere else on-site/hybrid. The fit-gate is ~60% of core requirements, junior / entry-level web and front-end roles are in scope (same floors — so worth surfacing when remote or local), and he would rather see a role and pass on it than never see it. Remember the priority verticals: generative-AI × front-end tooling (ComfyUI / ffmpeg / ElevenLabs / Krea / Seedance class), real-estate tech, and LOCAL Coachella Valley technical roles — local counts even when it is on-site.` }] };
 }
 
 // Two postings are the SAME job if they resolve to the same place. Whitney recorded one Instrumentl
@@ -3934,7 +3934,7 @@ async function toolDropVoicemail({ site_id, text = true } = {}) {
 // MCP server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "tbj-mcp", version: "2.68.0" },
+  { name: "tbj-mcp", version: "2.69.0" },
   { capabilities: { tools: {} } },
 );
 
