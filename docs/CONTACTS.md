@@ -124,3 +124,12 @@ the agents only read `public`, so none of it shows anywhere. It still holds the 
 `archive_2026_10` phones/emails before any first touch.** To restore a row:
 `INSERT INTO public.<t> SELECT * FROM archive_2026_10.<t> WHERE id = …`.
 
+
+**Sites kept for reuse (2026-10-26).** 31 old lead sites were deleted from Vercel (their archived
+rows carry `site_deleted_at`). These 10 stay live as starting points for Coachella Valley leads —
+their `forge_sites` rows are in the archive: `tbj-summit-ridge-roofing`,
+`tbj-aspen-roofing-and-exteriors-inc`, `tbj-gil-roofing-building-supply`,
+`tbj-carlos-mendoza-handyman-services`, `tbj-house-calls-handyman-services`,
+`tbj-holland-handyman`, `tbj-a-z-stucco-and-drywall-repair`,
+`tbj-palacios-ornamental-iron-works`, `tbj-dw-s-fence-landscape`, `tbj-canyon-air-hvac`.
+Plus `tbj-sunrise-plumbing-drain` (the demo, still in `public`).
