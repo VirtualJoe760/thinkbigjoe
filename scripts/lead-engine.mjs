@@ -136,6 +136,8 @@ async function maps(q, loc, max = 40) {
     if (error) { note = `Apify error ${error} — credit/budget exhausted; browser scraping takes over`; break; }
     for (const b of items || []) {
       if (NO_WEBSITE_ONLY && b.website) continue;
+      // Joe works these leads by phone — a lead with no number is useless (2026-10-26).
+      if (!b.phone) continue;
       if (!CV_CITY.test(`${b.city || ""} ${b.address || ""}`)) continue;
       if (!TRADE_CATEGORY.test([b.categoryName, ...(b.categories || [])].filter(Boolean).join(" "))) continue;
       const sl = slug(b.title);
