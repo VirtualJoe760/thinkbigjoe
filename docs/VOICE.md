@@ -47,6 +47,17 @@ code/account → walk claim → point to portal plans → set up voice / book Jo
 
 ## The call flow (TBJ's own front desk)
 
+> **2026-10-26 — Ivy is now Maddie, and her job changed.** Renamed (`ASSISTANT_NAME` in
+> `agent-config.mjs`) and re-scoped from *claim concierge* to **general intake + booking**: most
+> callers are Coachella Valley owners who found us, not claim-code holders. Main path: learn the
+> business (name, trade, area, contact, current site, what they need, best time) → **`save_intake`**
+> → **`/api/voice/intake`** (queues a `forge_sites` row `status='approved'`, `source='voice_intake'`,
+> de-duped by phone; creates the CRM contact; emails + Telegrams Joe) → book Joe (`reason: "intake"`).
+> It's the phone twin of the portal intake (`/portal/build` → `requestSiteBuild`, `source='portal_intake'`),
+> where every new account without a site now lands. Claim codes, priority callback codes and
+> receptionist setup are side branches. The numbered flow below is the older claim-concierge
+> description — still accurate for those branches.
+
 The agent is **Ivy**, Joe's assistant (persona name in `ASSISTANT_NAME`, `agent-config.mjs`). Most
 callers are local owners who got our outreach — Ivy is a **claim concierge**, not a switchboard:
 

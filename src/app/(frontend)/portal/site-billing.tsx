@@ -59,7 +59,7 @@ export function SiteBilling({ siteId }: { siteId: number }) {
       <input type="hidden" name="plan" value={plan} />
       <input type="hidden" name="interval" value={interval} />
 
-      {/* Step 1 — one-time setup (NOT a website — that's a separate call-Ivy purchase now) */}
+      {/* Step 1 — one-time setup (NOT a website — that's a separate call-Maddie purchase now) */}
       <section>
         <div className="flex items-center gap-2">
           <span className={stepNum}>1</span>

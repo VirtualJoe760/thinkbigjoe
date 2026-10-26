@@ -1,7 +1,7 @@
 /**
  * VOICE-LED RECEPTIONIST ONBOARDING — the security boundary, in one file.
  *
- * Ivy interviews a paying customer over the phone and fills in their receptionist config, instead
+ * Maddie interviews a paying customer over the phone and fills in their receptionist config, instead
  * of making them type prose into /portal/receptionist. The onboarding call doubles as the demo:
  * someone buying an AI receptionist experiences one doing intake on them.
  *

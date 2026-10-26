@@ -50,7 +50,7 @@ export async function getAutoProvisionStatus(): Promise<AutoProvisionStatus> {
   const autoBuildEnabled = cfg?.autoBuildEnabled ?? DEFAULTS.autoBuildEnabled;
 
   // One round trip for all three counts — Neon egress is metered, and none of these scan a big table.
-  // Spend excludes internal lines (TBJ's own Ivy line): the budget counts CUSTOMER numbers we bought,
+  // Spend excludes internal lines (TBJ's own Maddie line): the budget counts CUSTOMER numbers we bought,
   // not the seeded internal tenant row (which was never a provisioner purchase).
   const res = await db.execute(sql`
     SELECT

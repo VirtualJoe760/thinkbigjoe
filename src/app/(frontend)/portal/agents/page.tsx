@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 };
 
 /**
- * The Agents tab — the roster (design doc: Option A as a tab, Ring 2's home). Ivy is the first
+ * The Agents tab — the roster (design doc: Option A as a tab, Ring 2's home). Maddie is the first
  * employee card, backed by real line + call data; the rest of the roster comes from plans.ts
  * AGENTS (the entitlement source of truth, so cards can't drift from what tiers actually include).
  *
@@ -75,7 +75,7 @@ export default async function AgentsPage({
     </>
   );
 
-  // Ivy's real state for the selected site (only when there is one).
+  // Maddie's real state for the selected site (only when there is one).
   let line: { phoneNumber: string; status: string } | null = null;
   let answered = 0;
   let booked = 0;
@@ -156,14 +156,14 @@ export default async function AgentsPage({
 
       {/* ---- The roster ---- */}
       <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {/* Ivy — the live card, driven by real line + call data. */}
+        {/* Maddie — the live card, driven by real line + call data. */}
         <div className="rounded-2xl border border-line bg-background p-5">
           <div className="flex items-center gap-3">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand text-sm font-bold text-white" aria-hidden>
               IV
             </span>
             <div className="min-w-0">
-              <h3 className="text-sm font-bold">Ivy — Receptionist</h3>
+              <h3 className="text-sm font-bold">Maddie — Receptionist</h3>
               <p className="truncate text-xs tabular-nums text-ink-soft">
                 {line ? line.phoneNumber : "no line yet"}
               </p>
@@ -239,28 +239,28 @@ export default async function AgentsPage({
                 {r.chip}
               </span>
               {r.tone === "plan" && (
-                <span className="text-[11px] font-semibold text-brand">Ask Ivy about early access</span>
+                <span className="text-[11px] font-semibold text-brand">Ask Maddie about early access</span>
               )}
             </div>
           </div>
         ))}
       </div>
 
-      {/* ---- Custom agents: the existing call-Ivy flow, unchanged in spirit ---- */}
+      {/* ---- Custom agents: the existing call-Maddie flow, unchanged in spirit ---- */}
       <section className="mt-10">
         <h2 className="text-xs font-semibold uppercase tracking-widest text-ink-soft">
           Something custom
         </h2>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-soft">
           Follow-up, reactivation, review requests, recruiting — custom AI agents wired into how you
-          actually work. Tell Ivy what you&apos;re trying to fix and we&apos;ll scope it.
+          actually work. Tell Maddie what you&apos;re trying to fix and we&apos;ll scope it.
         </p>
         <div className="mt-4">
           <CallIvy
-            heading="Call Ivy about custom agents"
+            heading="Call Maddie about custom agents"
             blurb="Tell her the busywork or the leaks you want handled — chasing unsold quotes, reactivating old customers, staffing. She scopes it and Joe builds it."
             steps={[
-              "Tell Ivy what work you want off your plate.",
+              "Tell Maddie what work you want off your plate.",
               "She captures the specifics and passes it to Joe.",
               "Joe scopes a plan and follows up to build it.",
             ]}

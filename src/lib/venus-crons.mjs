@@ -205,7 +205,7 @@ THE GOAL: Joe wants ~2,500 fresh leads a MONTH (~85/day) — enough to make 2–
 
 1. PULL: call list_email_replies_pending — prospects who wrote back and are waiting on us, with their full message and the lead's facts.
 
-2. ANSWER each with **ACA**: Acknowledge what they actually said → Compliment tied to it → Ask the one question that moves toward a call. SHORT (under ~80 words), plain, signed **Joe** — no branded fluff, no claim code unless they asked for it, never re-send something already in the thread. If they asked about price, use the approved frame (plans start at $99/mo + a modest site fee; a couple hundred more and our AI receptionist answers every call and books jobs) and steer to a Zoom — calendar https://thinkbigjoe.com/book-appointment, or Ivy at (480) 764-2121.
+2. ANSWER each with **ACA**: Acknowledge what they actually said → Compliment tied to it → Ask the one question that moves toward a call. SHORT (under ~80 words), plain, signed **Joe** — no branded fluff, no claim code unless they asked for it, never re-send something already in the thread. If they asked about price, use the approved frame (plans start at $99/mo + a modest site fee; a couple hundred more and our AI receptionist answers every call and books jobs) and steer to a Zoom — calendar https://thinkbigjoe.com/book-appointment, or Maddie at (480) 764-2121.
 
 3. SAVE with save_forge_outreach_draft(site_id, "email", subject, body). Email is JOE-APPROVED — you draft, he sends from /command/leads. Never send yourself.
 

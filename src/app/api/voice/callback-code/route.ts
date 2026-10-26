@@ -10,9 +10,9 @@ export const dynamic = "force-dynamic";
 /**
  * Retell custom function: `verify_callback_code`.
  * A caller who was given a priority callback code (dropped in our outreach text or
- * a voicemail) reads it to Ivy. We check it against `callback_codes`; if it's active
- * and unexpired, Ivy is told to warm-transfer the caller to Joe (via the
- * transfer_to_joe tool). Invalid/absent → Ivy just continues the normal flow, so
+ * a voicemail) reads it to Maddie. We check it against `callback_codes`; if it's active
+ * and unexpired, Maddie is told to warm-transfer the caller to Joe (via the
+ * transfer_to_joe tool). Invalid/absent → Maddie just continues the normal flow, so
  * random inbound callers never ring Joe.
  * → { valid, name?, message }
  */
@@ -96,13 +96,13 @@ export async function POST(req: Request) {
     .catch(() => {});
 
   notifyTelegram(
-    `📞➡️ Priority callback${name ? ` from ${name}` : ""} (code ${code})${fromPhone ? ` at ${fromPhone}` : ""} — Ivy is transferring them to you.`,
+    `📞➡️ Priority callback${name ? ` from ${name}` : ""} (code ${code})${fromPhone ? ` at ${fromPhone}` : ""} — Maddie is transferring them to you.`,
   ).catch(() => {});
 
   return NextResponse.json({
     valid: true,
     name,
-    // Ivy reads this, then invokes transfer_to_joe.
+    // Maddie reads this, then invokes transfer_to_joe.
     message: `Verified${name ? ` — this is ${name}` : ""}. Tell them you're connecting them to Joe now, then transfer the call.`,
   });
 }

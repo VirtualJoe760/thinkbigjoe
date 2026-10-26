@@ -2,12 +2,12 @@ import { and, eq } from "drizzle-orm";
 
 import { db, callbackCodes } from "@/db";
 
-/** The number leads text/call (the Twilio A2P sender). Calls to it reach Ivy. */
+/** The number leads text/call (the Twilio A2P sender). Calls to it reach Maddie. */
 export const TBJ_PHONE_PRETTY = "760-262-0014";
 
 /**
  * The message we text a lead so they can reach Joe directly: they call the TBJ
- * number, give the code, Ivy verifies it and transfers them straight to Joe.
+ * number, give the code, Maddie verifies it and transfers them straight to Joe.
  */
 export function callbackCodeMessage(code: string, firstName?: string | null): string {
   const hi = firstName ? ` ${firstName}` : "";

@@ -9,7 +9,7 @@ import { isVerifiedForCall } from "@/lib/voice-onboarding";
 export const dynamic = "force-dynamic";
 
 /**
- * Ivy tool: `save_receptionist_answers`.
+ * Maddie tool: `save_receptionist_answers`.
  *
  * Step 3 of 3, and the only one that WRITES. Everything above exists to protect this call: the
  * fields below decide where a business's phone calls and emergency transfers go, so rewriting them
@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
  * Buying a Retell line costs real money per number, so it stays a human step.
  */
 
-/** Merge only the keys Ivy actually collected, so a partial interview never wipes prior answers. */
+/** Merge only the keys Maddie actually collected, so a partial interview never wipes prior answers. */
 function put(target: Record<string, unknown>, key: string, value: unknown) {
   if (value === undefined || value === null) return;
   const s = String(value).trim();
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
     put(config, "doNot", args.do_not);
     put(config, "booking", args.booking);
 
-    // The two that replace the ambiguous free-text field. Validated, and echoed back so Ivy can
+    // The two that replace the ambiguous free-text field. Validated, and echoed back so Maddie can
     // read the digits to the caller for confirmation.
     const notifyPhone = normalizePhone(String(args.notify_phone ?? ""));
     const escalationPhone = normalizePhone(String(args.escalation_phone ?? ""));
@@ -88,7 +88,7 @@ export async function POST(req: Request) {
     config.updatedAt = new Date().toISOString();
     config.capturedBy = "ivy-onboarding";
 
-    // MERGE IN THE DATABASE, not in JS. Ivy saves incrementally, so several tool calls land close
+    // MERGE IN THE DATABASE, not in JS. Maddie saves incrementally, so several tool calls land close
     // together; a read-modify-write of the whole jsonb blob lets a slower one overwrite a faster
     // one's field with a stale copy. `||` merges right-into-left in a single statement, so each
     // save only ever touches the keys it actually carries.

@@ -20,9 +20,9 @@ export const metadata: Metadata = {
 /**
  * The Knowledge page — everything the receptionist knows about this business, shown back as a
  * living reference (SalesAi's "Knowledge Library" pillar, on our stack). This is
- * `receptionist_config` resold as a feature: same rows Ivy reads on every call, zero new tables.
+ * `receptionist_config` resold as a feature: same rows Maddie reads on every call, zero new tables.
  *
- * READ-ONLY by design: changes happen by calling Ivy (the portal's setup form was deliberately
+ * READ-ONLY by design: changes happen by calling Maddie (the portal's setup form was deliberately
  * retired for the phone-first flow). This page's job is to make what she knows inspectable, so
  * "why did she say that?" always has an answer.
  */
@@ -60,7 +60,7 @@ export default async function KnowledgePage({
     <>
       <p className="text-xs font-semibold uppercase tracking-widest text-brand">Knowledge</p>
       <h1 className="mt-1 text-3xl font-extrabold tracking-tight">
-        {site ? `What Ivy knows about ${site.businessName}` : "What your receptionist knows"}
+        {site ? `What Maddie knows about ${site.businessName}` : "What your receptionist knows"}
       </h1>
     </>
   );
@@ -92,14 +92,14 @@ export default async function KnowledgePage({
       <PortalShell active="/portal/knowledge" site={shellSite}>
         {header}
         <p className="mt-3 leading-relaxed text-ink-soft">
-          Ivy doesn&apos;t know anything about{" "}
+          Maddie doesn&apos;t know anything about{" "}
           <span className="font-semibold text-ink">{site.businessName}</span> yet. One phone call fixes
           that — she&apos;ll ask about your services, hours, and where to send messages.
         </p>
         <div className="mt-6">
           <CallIvy
             heading="Teach your receptionist"
-            blurb={`Call Ivy and she'll learn ${site.businessName} in about five minutes — everything she needs to answer your phone like she works there.`}
+            blurb={`Call Maddie and she'll learn ${site.businessName} in about five minutes — everything she needs to answer your phone like she works there.`}
           />
         </div>
       </PortalShell>
@@ -107,10 +107,10 @@ export default async function KnowledgePage({
   }
 
   // The knowledge rows — every field the runtime actually reads (src/lib/voice-tenant.ts), in the
-  // order a caller experiences them. A missing value states the SAFE DEFAULT Ivy falls back to,
+  // order a caller experiences them. A missing value states the SAFE DEFAULT Maddie falls back to,
   // never a blank — "what will she actually say?" must always have an answer here.
   const rows: Row[] = [
-    { label: "How Ivy answers", hint: "the greeting callers hear", value: cfg.greeting?.trim() || null },
+    { label: "How Maddie answers", hint: "the greeting callers hear", value: cfg.greeting?.trim() || null },
     { label: "What you do", hint: "services she can speak to", value: cfg.services?.trim() || null },
     { label: "Hours", hint: "when you're open", value: cfg.hours?.trim() || null },
     { label: "Service area", hint: "where you work", value: cfg.serviceArea?.trim() || null },
@@ -123,7 +123,7 @@ export default async function KnowledgePage({
   // variables are built from (voice-vars.ts), never paraphrased. Quoting different words here than
   // she speaks on a real call is a lie about the product.
   const DEFAULTS: Record<string, string> = {
-    "How Ivy answers": `“${TENANT_DEFAULTS.greeting(site.businessName)}”`,
+    "How Maddie answers": `“${TENANT_DEFAULTS.greeting(site.businessName)}”`,
     "What you do": `“${TENANT_DEFAULTS.services}”`,
     "Hours": `“${TENANT_DEFAULTS.hours}”`,
     "Service area": `“${TENANT_DEFAULTS.serviceArea}”`,
@@ -141,7 +141,7 @@ export default async function KnowledgePage({
     <PortalShell active="/portal/knowledge" site={shellSite}>
       {header}
       <p className="mt-1 text-sm text-ink-soft">
-        This is what she reads on every call. If something looks wrong, call Ivy and she&apos;ll update it.
+        This is what she reads on every call. If something looks wrong, call Maddie and she&apos;ll update it.
       </p>
 
       {sites.length > 1 && (
@@ -197,7 +197,7 @@ export default async function KnowledgePage({
             <ul className="divide-y divide-line text-sm">
               <li className="px-4 py-3.5">
                 <p className="font-bold">Messages text to</p>
-                <p className="mt-0.5 text-ink-soft">{notifyTo || "Not set — messages have nowhere to go. Call Ivy to fix this first."}</p>
+                <p className="mt-0.5 text-ink-soft">{notifyTo || "Not set — messages have nowhere to go. Call Maddie to fix this first."}</p>
               </li>
               <li className="px-4 py-3.5">
                 <p className="font-bold">Emergencies transfer to</p>
@@ -223,7 +223,7 @@ export default async function KnowledgePage({
           <CallIvy
             compact
             heading="Something wrong or missing?"
-            blurb="Call Ivy — tell her what changed (new hours, new services, a different number) and she updates this for you."
+            blurb="Call Maddie — tell her what changed (new hours, new services, a different number) and she updates this for you."
           />
         </div>
       </div>

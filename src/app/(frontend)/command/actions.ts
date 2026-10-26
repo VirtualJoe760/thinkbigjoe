@@ -275,7 +275,7 @@ export async function logContactAttempt(siteId: string, channel: "call" | "text"
 /**
  * One-click "text a priority callback code" from the lead page. Mints a code tied
  * to this lead, texts it via our Twilio number, and drops it on the lead's
- * timeline. When the lead calls the TBJ number and gives the code, Ivy verifies it
+ * timeline. When the lead calls the TBJ number and gives the code, Maddie verifies it
  * and transfers them straight to Joe. Gracefully degrades if SMS isn't live yet
  * (still mints + returns the code + message so Joe can send it by hand).
  */

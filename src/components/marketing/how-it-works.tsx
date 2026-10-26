@@ -2,27 +2,27 @@ import Link from "next/link";
 
 import { Card } from "@/components/ui";
 
-// Plain language (2026-10-26). Same funnel as before — we build first, they claim with a code,
-// then pick services — just said the way an owner would say it.
+// The no-claim-code front door (2026-10-26): free account → business intake → talk with Joe →
+// we build. (Claim codes still work — that path is on the intake page and the hero.)
 const STEPS = [
   {
     n: "01",
-    title: "We build your website first",
-    body: "We make a website for your business before you ever ask, so you can see it before you decide anything.",
+    title: "Create a free account",
+    body: "Takes a minute. No credit card, no commitment.",
   },
   {
     n: "02",
-    title: "Claim it with your code",
-    body: "We send you a code by text, email or phone. Make a free account, type in the code, and the site is yours to look over.",
+    title: "Tell us about your business",
+    body: "A few quick questions: what you do, where you work, and what you need — a website, AI that answers your calls, or a full custom system.",
   },
   {
     n: "03",
-    title: "Pick what helps you most",
-    body: "Talk with our team about what you need — a better website, AI that handles calls and follow-ups, or a full custom system. We size it to your business.",
+    title: "Talk with Joe",
+    body: "Book a call right from your account. We'll figure out what will make the biggest difference and size it to your business.",
   },
   {
     n: "04",
-    title: "We set it up and keep it running",
+    title: "We build it and keep it running",
     body: "You run your jobs. We handle the setup, the updates and the fixes.",
   },
 ];
@@ -63,8 +63,8 @@ export function HowItWorks() {
             <Card className="mt-8">
               <p className="text-sm font-semibold text-ink">Prefer to talk?</p>
               <p className="mt-1 text-sm leading-relaxed text-ink-soft">
-                Call any time — we&apos;ll walk you through setting up your
-                account and claiming your site.
+                Call any time — Maddie, our assistant, can take your details
+                and set up a time for you to talk with Joe.
               </p>
               <a
                 href="tel:+14807642121"
@@ -76,16 +76,16 @@ export function HowItWorks() {
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
-                href="/portal/claim"
+                href="/login"
                 className="inline-flex items-center justify-center rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-dark"
               >
-                Claim your site
+                Create a free account
               </Link>
               <Link
-                href="/login"
+                href="/portal/claim"
                 className="inline-flex items-center justify-center rounded-full border border-line bg-background px-6 py-3 text-sm font-semibold text-ink transition-colors hover:bg-surface"
               >
-                Create an account
+                Have a code? Claim your site
               </Link>
             </div>
           </div>

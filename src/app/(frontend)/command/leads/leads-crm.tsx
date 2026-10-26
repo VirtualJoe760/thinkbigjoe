@@ -926,13 +926,13 @@ function ContactDetail({
                 )}
                 {!vmMsg && (
                   <p className="mt-1.5 text-[11px] text-ink-soft">
-                    Drops a pre-recorded voicemail in their inbox (no ring), then texts them the site link. Callbacks reach Ivy.
+                    Drops a pre-recorded voicemail in their inbox (no ring), then texts them the site link. Callbacks reach Maddie.
                   </p>
                 )}
               </>
             )}
 
-            {/* Text a priority callback code — they call the TBJ number, give the code, Ivy transfers them to Joe. */}
+            {/* Text a priority callback code — they call the TBJ number, give the code, Maddie transfers them to Joe. */}
             {item.phone && (
               <>
                 <button
@@ -947,7 +947,7 @@ function ContactDetail({
                 )}
                 {!codeMsg && (
                   <p className="mt-1.5 text-[11px] text-ink-soft">
-                    Auto-texts them a code from our number. When they call it and give the code, Ivy sends the call straight to you.
+                    Auto-texts them a code from our number. When they call it and give the code, Maddie sends the call straight to you.
                   </p>
                 )}
               </>

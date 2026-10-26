@@ -4,9 +4,9 @@ import { calls, db } from "@/db";
 import { IVY_PHONE_PRETTY } from "@/lib/contact";
 
 /**
- * ADMIN-ONLY. Ivy's own call history — TBJ's receptionist line.
+ * ADMIN-ONLY. Maddie's own call history — TBJ's receptionist line.
  *
- * Reads the `calls` table (site 1395, TBJ internal): since 2026-07-25 Ivy's agent posts to
+ * Reads the `calls` table (site 1395, TBJ internal): since 2026-07-25 Maddie's agent posts to
  * /api/voice/webhook like any tenant line, so her calls PERSIST — transcript, summary, and a
  * Blob-hosted recording that outlives Retell's 10-minute link. History before that date was
  * backfilled transcript-only (scripts/backfill-ivy-calls.mjs).
@@ -36,7 +36,7 @@ export async function IvyCalls({ limit = 15 }: { limit?: number }) {
     <section className="mt-10 rounded-2xl border border-brand/30 bg-brand-tint/40 p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-widest text-brand">
-          Ivy — your own line {IVY_PHONE_PRETTY}
+          Maddie — your own line {IVY_PHONE_PRETTY}
         </h2>
         <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">Admin · persisted</span>
       </div>

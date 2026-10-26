@@ -5,10 +5,10 @@ import { normalizePhone, verifyTwilioSignature } from "@/lib/sms";
 export const dynamic = "force-dynamic";
 
 // Where inbound CALLS to the Twilio number ring through to — the Retell AI
-// receptionist ("Ivy"). Overridable via env; defaults to the live TBJ voice line.
+// receptionist ("Maddie"). Overridable via env; defaults to the live TBJ voice line.
 const VOICE_FORWARD_TO = normalizePhone(process.env.VOICE_FORWARD_TO) || "+14807642121";
 
-// If Ivy doesn't pick up (Retell down, timeout, congestion), send the caller to a human
+// If Maddie doesn't pick up (Retell down, timeout, congestion), send the caller to a human
 // instead of hanging up on them. Falls back to the same number used for priority transfers.
 const VOICE_FALLBACK_TO =
   normalizePhone(process.env.VOICE_FALLBACK_TO) || normalizePhone(process.env.CALLBACK_TRANSFER_TO);
@@ -30,7 +30,7 @@ function selfUrl(req: Request, path: string): string {
 /**
  * Twilio Voice webhook. When someone CALLS the ThinkBigJoe number, Twilio POSTs
  * here and we return TwiML that dials the Retell AI receptionist, so the call is
- * answered by "Ivy" instead of ringing a dead SMS-only line. The caller's number
+ * answered by "Maddie" instead of ringing a dead SMS-only line. The caller's number
  * passes through as caller ID (standard forwarding), which Retell's identify flow
  * uses to recognize returning claimants.
  *

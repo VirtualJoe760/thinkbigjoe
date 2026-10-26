@@ -6,7 +6,7 @@ import { verifyChallenge } from "@/lib/voice-onboarding";
 export const dynamic = "force-dynamic";
 
 /**
- * Ivy tool: `verify_receptionist_code`.
+ * Maddie tool: `verify_receptionist_code`.
  *
  * Step 2 of 3. The caller reads back the code we sent to their on-file number. This is the step
  * that turns "identified" into "authorized" — nothing may write receptionist config until it passes.

@@ -91,6 +91,10 @@ export default async function PortalPage({
     // just without the customer billing/domain/trial chrome (an internal site is always Active).
     .where(and(eq(forgeSites.claimedByUserId, user.id), ne(forgeSites.status, "deleted")));
 
+  // No-claim-code front door (2026-10-26): a customer with no site yet goes straight to the
+  // business intake instead of an empty portal. Admins never get redirected.
+  if (!isAdmin && mySites.length === 0) redirect("/portal/build?welcome=1");
+
   // Upcoming strategy call for this user (the booking flow stores it on `leads`,
   // matched by email). Future, booked slots only — past calls shouldn't nag.
   const upcomingCalls = await db
@@ -520,10 +524,10 @@ export default async function PortalPage({
             >
               <span className="text-2xl">🛠️</span>
               <span className="mt-1 font-semibold tracking-tight group-hover:text-brand">
-                Build a new site
+                Tell us about another business
               </span>
               <span className="mt-1 text-sm text-ink-soft">
-                No site yet? Call Ivy and tell her about your business — we&apos;ll build one.
+                Fill out a quick intake and Joe will reach out about what you need.
               </span>
             </Link>
             <Link
@@ -560,7 +564,7 @@ export default async function PortalPage({
                   : "Custom AI agents built around how your business actually works — to solve problems, scale the work, and close more sales."}
               </p>
               <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand">
-                {hasAgents ? "Open your agents" : "Call Ivy to get started"}
+                {hasAgents ? "Open your agents" : "Call Maddie to get started"}
                 <span aria-hidden>→</span>
               </span>
             </Link>
@@ -575,7 +579,7 @@ export default async function PortalPage({
               </h3>
               <p className="mt-2 leading-relaxed text-ink-soft">
                 An AI receptionist that answers your phone, helps callers, and books
-                jobs around the clock. See what it&apos;s handled — or call Ivy to set one up.
+                jobs around the clock. See what it&apos;s handled — or call Maddie to set one up.
               </p>
               <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand">
                 Open your receptionist

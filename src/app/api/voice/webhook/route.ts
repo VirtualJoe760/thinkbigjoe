@@ -153,7 +153,7 @@ export async function POST(req: Request) {
   const toNumber = normalizePhone(str(call.to_number) ?? undefined);
   const tenant = await tenantByNumber(toNumber);
   if (!tenant) {
-    // A number we don't serve, or one whose customer was released. (Ivy's own line USED to be
+    // A number we don't serve, or one whose customer was released. (Maddie's own line USED to be
     // dropped here too — since 2026-07-20 she has a voice_lines row on the internal TBJ site, so
     // her calls resolve and persist like any tenant's.) Nothing to attribute — drop it quietly.
     // 200: a retry would resolve the same number to the same nothing.

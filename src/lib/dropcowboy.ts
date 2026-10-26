@@ -1,7 +1,7 @@
 /**
  * Drop Cowboy ringless voicemail (RVM) — drops a pre-recorded voicemail straight into a
  * prospect's inbox without ringing their phone. A third outreach channel alongside SMS + email:
- * the "call" that a text then follows up. Callbacks route to the TBJ number → Ivy.
+ * the "call" that a text then follows up. Callbacks route to the TBJ number → Maddie.
  *
  * API: POST https://api.dropcowboy.com/v1/rvm — auth via x-team-id + x-secret headers.
  * Content is a recording (recording_id) Joe recorded once in the Drop Cowboy dashboard.
@@ -11,7 +11,7 @@
  *   DROPCOWBOY_SECRET            — account API secret
  *   DROPCOWBOY_BRAND_ID          — registered brand GUID (Trust Center) — required, TCPA
  *   DROPCOWBOY_RECORDING_ID      — the recorded voicemail's GUID (Recordings tab)
- *   DROPCOWBOY_FORWARDING_NUMBER — E.164 number callbacks route to (the TBJ number → Ivy)
+ *   DROPCOWBOY_FORWARDING_NUMBER — E.164 number callbacks route to (the TBJ number → Maddie)
  *   DROPCOWBOY_POOL_ID           — optional private caller-id number pool
  *   DROPCOWBOY_WEBHOOK_SECRET    — token we append to callback_url + verify on delivery webhooks
  */
@@ -26,7 +26,7 @@ const poolId = process.env.DROPCOWBOY_POOL_ID; // the BYOC (Twilio) number pool
 /**
  * True once the account is wired — otherwise drops are skipped (no-op). We deliver over BYOC (Joe's
  * Twilio), so every request carries `byoc: {}` + the Twilio `pool_id`, and NO `forwarding_number`
- * (callbacks are handled by the pool number's own Twilio voice webhook → Ivy) and NO `brand_id`
+ * (callbacks are handled by the pool number's own Twilio voice webhook → Maddie) and NO `brand_id`
  * (per Drop Cowboy support: brand is for their native network, not BYOC). Voicemail source is a
  * hosted audio file (DROPCOWBOY_AUDIO_URL) or a Drop Cowboy recording (DROPCOWBOY_RECORDING_ID).
  */

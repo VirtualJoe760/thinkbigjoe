@@ -15,11 +15,11 @@ import {
 export const dynamic = "force-dynamic";
 
 /**
- * Ivy tool: `start_receptionist_setup`.
+ * Maddie tool: `start_receptionist_setup`.
  *
  * Step 1 of 3. The caller reads their account number; we look up the business, check they're on a
  * plan that includes the receptionist, and text (or email) a one-time code to a destination
- * ALREADY ON FILE. Ivy then asks them to read that code back — see ../verify.
+ * ALREADY ON FILE. Maddie then asks them to read that code back — see ../verify.
  *
  * ORACLE DISCIPLINE. Account numbers are sequential from 100001, so this endpoint is trivially
  * enumerable. Every unsuccessful outcome — no such account, unclaimed site, wrong plan, no
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const args = parseRetellArgs(body);
     const accountNumber = String(args.account_number ?? "").trim();
-    // Ivy may ask for email instead — when the caller says the text isn't coming, or that the
+    // Maddie may ask for email instead — when the caller says the text isn't coming, or that the
     // number we hold is their desk phone. This chooses BETWEEN on-file destinations; it never
     // accepts an address from the caller.
     const prefer = String(args.send_by ?? "").toLowerCase() === "email" ? ("email" as const) : null;

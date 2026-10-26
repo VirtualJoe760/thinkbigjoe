@@ -7,7 +7,7 @@
  * no per-customer webhook URLs, nothing hardcoded to one business.
  *
  * Contrast with `src/lib/voice-booking.ts`, which reads `call.from_number` (the CALLER) because
- * Ivy's job is recognising TBJ's own prospects. Different question, different field.
+ * Maddie's job is recognising TBJ's own prospects. Different question, different field.
  *
  * Note this deliberately does NOT accept a business identifier as a tool argument — a caller could
  * otherwise talk the agent into acting for a different business.

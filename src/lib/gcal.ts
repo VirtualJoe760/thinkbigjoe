@@ -186,7 +186,7 @@ export type ListedEvent = {
 
 /**
  * List calendar events in a window — the source of truth for the appointments calendar (every booked
- * call, however it was created: the funnel, Ivy, or the call room's book-for-lead). singleEvents
+ * call, however it was created: the funnel, Maddie, or the call room's book-for-lead). singleEvents
  * expands recurring series into individual instances so they plot correctly. Returns [] on any error
  * so the calendar page degrades gracefully instead of 500ing.
  */

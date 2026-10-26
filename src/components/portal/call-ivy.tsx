@@ -1,10 +1,10 @@
 import { IVY_PHONE_PRETTY, IVY_PHONE_HREF } from "@/lib/contact";
 
 /**
- * "Call Ivy about X" — the one panel the portal uses everywhere setup used to be a form.
+ * "Call Maddie about X" — the one panel the portal uses everywhere setup used to be a form.
  *
  * The sales model is voice-first: you don't fill in a form to get a receptionist, a website, or a
- * custom agent — you call Ivy and tell her, and she takes it from there. So this single component
+ * custom agent — you call Maddie and tell her, and she takes it from there. So this single component
  * replaces the receptionist setup form, the build-a-site form, and the agents entry. Built once,
  * reused, so all three read identically.
  *
@@ -56,7 +56,7 @@ export function CallIvy({
         Call {IVY_PHONE_PRETTY}
       </a>
       <p className="mt-2 text-sm text-ink-soft">
-        Ivy&apos;s our AI assistant — she answers 24/7 and takes about 5 minutes.
+        Maddie&apos;s our AI assistant — she answers 24/7 and takes about 5 minutes.
       </p>
 
       {steps && steps.length > 0 && (

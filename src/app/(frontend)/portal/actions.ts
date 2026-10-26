@@ -10,7 +10,8 @@ import { normalizeClaimCode, generateClaimCode } from "@/lib/claim-code";
 import { isForgeTemplate } from "@/lib/forge-templates";
 import { normalizePhone } from "@/lib/sms";
 import { notifyTelegram } from "@/lib/telegram";
-import { sendBookingConfirmationEmail, sendNotificationEmail } from "@/lib/email";
+import { sendAdminAlert, sendBookingConfirmationEmail, sendNotificationEmail } from "@/lib/email";
+import { ensureOwnerContact } from "@/lib/contacts";
 import { stripe, ensureStripeCustomer } from "@/lib/stripe";
 import { buildPriceId, firstMonthCouponFor, isSellablePlan, planPriceId, type BillingInterval } from "@/lib/plans";
 import { quoteDomain, domainsConfigured } from "@/lib/domains";
@@ -51,11 +52,11 @@ export async function saveReceptionistSetup(
 
   const str = (k: string) => String(formData.get(k) || "").trim();
 
-  // MERGE, don't replace. Ivy can now capture this config over the phone
+  // MERGE, don't replace. Maddie can now capture this config over the phone
   // (docs/VOICE_ONBOARDING.md), and she collects structured fields this form has no inputs for —
   // notifyPhone, escalationPhone, emergencyDefinition, serviceArea. Overwriting the whole object
   // from the form would silently wipe them, so a customer who did the phone interview and then
-  // opened the portal to check it would destroy the routing numbers Ivy read back to them and
+  // opened the portal to check it would destroy the routing numbers Maddie read back to them and
   // land back on the ambiguous free-text `forwardTo` this all exists to replace.
   const prior =
     site.receptionistConfig && typeof site.receptionistConfig === "object"
@@ -784,9 +785,12 @@ export async function requestCallOutsideWindow(
 export type BuildState = { ok: boolean; message: string };
 
 /**
- * Queue a fresh from-scratch site build for a logged-in customer. Inserts a forge_sites
- * row owned by them with status='approved' so the forge poller builds it. The 7-day trial
- * starts once it's built (see lib/trial.ts).
+ * Business intake for a logged-in customer (2026-10-26 — the no-claim-code front door).
+ * 1. Queues a forge_sites row owned by them with status='approved' → the forge builds it when
+ *    forge_engine.enabled is on (while the forge is paused it simply waits in the queue).
+ * 2. Creates their owner contact in the CRM (contacts table).
+ * 3. Tells Joe: admin email + Telegram, with everything they wrote.
+ * The 7-day trial starts once the site is built (see lib/trial.ts).
  */
 export async function requestSiteBuild(
   _prev: BuildState,
@@ -795,50 +799,87 @@ export async function requestSiteBuild(
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return { ok: false, message: "Please sign in first." };
 
-  const str = (k: string) => String(formData.get(k) || "").trim();
+  const str = (k: string) => String(formData.get(k) || "").trim().slice(0, 2000);
   const businessName = str("businessName");
   const niche = str("niche");
   const city = str("city");
   const phone = str("phone");
   const email = str("email") || session.user.email;
+  const ownerName = str("ownerName") || session.user.name || "";
   const brandColor = str("brandColor");
+  let website = str("website");
+  if (website && !/^https?:\/\//i.test(website)) website = `https://${website}`;
+  const needs = formData.getAll("needs").map((v) => String(v).trim()).filter(Boolean).slice(0, 10);
+  const details = str("details");
+  const bestTime = str("bestTime");
   if (!businessName || !niche) {
-    return { ok: false, message: "Please tell us your business name and what you do." };
+    return { ok: false, message: "Please tell us your business name and what kind of business it is." };
   }
 
   const base = businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "site";
   const slug = `${base}-${Math.random().toString(36).slice(2, 7)}`;
+  const intakeNotes = [
+    "📝 Portal intake (" + new Date().toISOString().slice(0, 10) + ")",
+    needs.length ? `Looking for: ${needs.join("; ")}` : null,
+    details ? `About the business: ${details}` : null,
+    bestTime ? `Best time to call: ${bestTime}` : null,
+  ].filter(Boolean).join("\n");
 
   try {
-    await db.insert(forgeSites).values({
+    const [site] = await db.insert(forgeSites).values({
       slug,
       businessName,
       niche,
       city: city || null,
+      serviceArea: city || null,
       phone: phone || null,
       email: email || null,
+      ownerName: ownerName || null,
+      existingWebsiteUrl: website || null,
       brandColor: brandColor || null,
-      status: "approved", // queues the forge build
-      source: "inbound",
+      contactNotes: intakeNotes,
+      status: "approved", // queues the forge build (waits while the forge is paused)
+      source: "portal_intake",
       claimCode: generateClaimCode(),
       claimedByUserId: session.user.id,
       claimedAt: new Date().toISOString(),
-    });
+    }).returning({ id: forgeSites.id });
+
+    if (site) await ensureOwnerContact(site.id, session.user.id).catch(() => null);
 
     await db.insert(activityLog).values({
       actor: "portal",
       eventType: "forge_prospect_added",
-      summary: `Inbound build request — ${businessName}`,
-      metadata: { detail: { businessName, niche, city, userId: session.user.id, source: "inbound" } },
+      summary: `Portal intake — ${businessName} (${niche}${city ? ` · ${city}` : ""})`,
+      metadata: { detail: { businessName, niche, city, needs, userId: session.user.id, siteId: site?.id, source: "portal_intake" } },
+    }).catch(() => {});
+
+    const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br/>");
+    sendAdminAlert({
+      subject: `New intake: ${businessName}`,
+      heading: "New business intake",
+      message: esc(
+        `${businessName} — ${niche}${city ? ` · ${city}` : ""}\n` +
+        `${ownerName || "(no name)"} · ${phone || "(no phone)"} · ${email}\n` +
+        (website ? `Current site: ${website}\n` : "No current website\n") +
+        `\n${intakeNotes}\n\nQueued for the forge (builds when the forge is on).`,
+      ),
+      ctaUrl: "https://thinkbigjoe.com/command/prospects",
+      ctaLabel: "Open in Command",
     }).catch(() => {});
     notifyTelegram(
-      `🧱 <b>Inbound build request</b>\n${businessName} (${niche}${city ? ` · ${city}` : ""}) — queued to build.`,
+      `📝 <b>New intake</b>\n${businessName} (${niche}${city ? ` · ${city}` : ""})\n${ownerName || ""} ${phone}\n` +
+      (needs.length ? `Wants: ${needs.join("; ")}\n` : "") + (bestTime ? `Best time: ${bestTime}\n` : "") +
+      `Queued for the forge.`,
     ).catch(() => {});
 
     revalidatePath("/portal");
-    return { ok: true, message: "Got it — we're building your site now. It'll show up in your portal shortly, and you'll have 7 days to play with it." };
+    return {
+      ok: true,
+      message: "Joe will look over your info and reach out" + (bestTime ? ` (we noted ${bestTime.toLowerCase()} works best)` : "") + ". Want to pick a time now? Book a call below.",
+    };
   } catch (err) {
     console.error("[requestSiteBuild] failed:", err);
-    return { ok: false, message: "Something went wrong queuing your build — please try again." };
+    return { ok: false, message: "Something went wrong sending your info — please try again." };
   }
 }

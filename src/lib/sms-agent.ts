@@ -13,7 +13,7 @@ import { db } from "@/db";
  * before we're ever called (see `isSoftOptOut` in `sms.ts`).
  *
  * Model: Ollama Cloud when `OLLAMA_API_KEY` is set, else Gemini. Booking tools reuse the SAME voice
- * endpoints Ivy uses (/api/voice/availability, /api/voice/book), so there's one booking path.
+ * endpoints Maddie uses (/api/voice/availability, /api/voice/book), so there's one booking path.
  * Driven from the inbound SMS webhook.
  */
 const OLLAMA_KEY = process.env.OLLAMA_API_KEY;

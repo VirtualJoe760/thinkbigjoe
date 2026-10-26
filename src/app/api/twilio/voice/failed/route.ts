@@ -23,7 +23,7 @@ function xml(body: string) {
  * got ~25 seconds of ringing and then a disconnect, with nothing to tell us it happened.
  *
  * DialCallStatus values: completed | answered | busy | no-answer | failed | canceled.
- * Only `completed`/`answered` mean the caller actually reached Ivy.
+ * Only `completed`/`answered` mean the caller actually reached Maddie.
  *
  * Returning empty TwiML here is what ENDS a successful call — we must not re-dial after a
  * normal hangup, or every finished conversation would immediately ring someone else.
@@ -42,12 +42,12 @@ export async function POST(req: Request) {
 
   const status = params.DialCallStatus || "unknown";
 
-  // The caller reached Ivy and the conversation ended normally. Nothing more to do.
+  // The caller reached Maddie and the conversation ended normally. Nothing more to do.
   if (status === "completed" || status === "answered") {
     return xml(`<Response></Response>`);
   }
 
-  // Ivy did not pick up. This is the case that used to drop the caller silently.
+  // Maddie did not pick up. This is the case that used to drop the caller silently.
   console.error(
     `[twilio:voice:failed] AI leg did not answer (DialCallStatus=${status}) from=${params.From || "?"} — falling back`,
   );

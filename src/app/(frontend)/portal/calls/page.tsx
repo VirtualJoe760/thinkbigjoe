@@ -53,7 +53,7 @@ export default async function PortalCallsPage({
       timezone: forgeSites.bookingTimezone,
     })
     .from(forgeSites)
-    // Exclude internal sites (TBJ's own Ivy line persists calls under one) — never a customer surface.
+    // Exclude internal sites (TBJ's own Maddie line persists calls under one) — never a customer surface.
     .where(and(eq(forgeSites.claimedByUserId, user.id), ne(forgeSites.status, "deleted"), ne(forgeSites.isInternal, true)))
     // Deterministic order is load-bearing, not cosmetic: `sites[0]` is what a multi-site owner
     // sees when `?site=` is absent, and Postgres returns unordered rows in heap order — so
@@ -255,7 +255,7 @@ export default async function PortalCallsPage({
                 <p className="text-2xl" aria-hidden>📞</p>
                 <p className="mt-2 font-bold tracking-tight">Your receptionist isn&apos;t answering yet.</p>
                 <p className="mt-1 text-sm leading-relaxed text-ink-soft">
-                  Call Ivy and we&apos;ll switch it on — then every missed call becomes a message here
+                  Call Maddie and we&apos;ll switch it on — then every missed call becomes a message here
                   instead of a customer calling someone else.
                 </p>
                 <Link

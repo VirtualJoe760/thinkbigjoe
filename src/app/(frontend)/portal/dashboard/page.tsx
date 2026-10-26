@@ -37,7 +37,7 @@ export default async function DashboardPage({
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login?redirect=/portal/dashboard");
   const { user } = session;
-  // Admins get a "your own line" section reviewing Ivy's real calls from Retell (see IvyCalls).
+  // Admins get a "your own line" section reviewing Maddie's real calls from Retell (see IvyCalls).
   // Never rendered for a customer.
   const admin = isAdminEmail(user.email);
 
@@ -52,8 +52,8 @@ export default async function DashboardPage({
       liveUrl: forgeSites.liveUrl,
     })
     .from(forgeSites)
-    // Internal sites (TBJ itself — Ivy's own line now persists calls under it) are edited in code
-    // and reviewed via the admin Ivy log, never shown as a customer receptionist here.
+    // Internal sites (TBJ itself — Maddie's own line now persists calls under it) are edited in code
+    // and reviewed via the admin Maddie log, never shown as a customer receptionist here.
     .where(and(eq(forgeSites.claimedByUserId, user.id), ne(forgeSites.status, "deleted"), ne(forgeSites.isInternal, true)))
     .orderBy(asc(forgeSites.id));
 
@@ -77,7 +77,7 @@ export default async function DashboardPage({
     return (
       <PortalShell active="/portal/dashboard" site={null}>
         {header(false)}
-        {/* The admin isn't a customer — no claim-your-site funnel; their scoreboard is Ivy's own
+        {/* The admin isn't a customer — no claim-your-site funnel; their scoreboard is Maddie's own
             line, reviewed below. Customers get the claim CTA. */}
         {!admin && (
           <>
@@ -94,7 +94,7 @@ export default async function DashboardPage({
         )}
         {admin && (
           <p className="mt-3 leading-relaxed text-ink-soft">
-            Ivy&apos;s line — ThinkBigJoe&apos;s own receptionist — reports below.
+            Maddie&apos;s line — ThinkBigJoe&apos;s own receptionist — reports below.
           </p>
         )}
         {admin && <IvyCalls />}
@@ -139,7 +139,7 @@ export default async function DashboardPage({
     ) : null;
 
   // NO receptionist provisioned yet → this is a SETUP screen, not a scoreboard. Setup happens by
-  // calling Ivy now (the form is gone), so show that, and skip the value queries entirely — there
+  // calling Maddie now (the form is gone), so show that, and skip the value queries entirely — there
   // are no calls to aggregate for a site with no line.
   if (!hasLine) {
     return (
@@ -153,10 +153,10 @@ export default async function DashboardPage({
         <div className="mt-6">
           <CallIvy
             heading="Set up your receptionist"
-            blurb={`Call Ivy and she'll get ${site.businessName}'s phone answered 24/7 — she asks about your services, hours, and where to send messages. About five minutes, and you're live.`}
+            blurb={`Call Maddie and she'll get ${site.businessName}'s phone answered 24/7 — she asks about your services, hours, and where to send messages. About five minutes, and you're live.`}
             steps={[
               "Have your account ID handy — it's at the top of the portal.",
-              "Ivy texts a code to the number on file to confirm it's you.",
+              "Maddie texts a code to the number on file to confirm it's you.",
               "Answer a few questions about your business, and she sets it up.",
             ]}
           />
@@ -229,7 +229,7 @@ export default async function DashboardPage({
   // message still failed, and hiding that is exactly the kind of lie a trust surface can't tell.
   const scoreNote =
     score === null ? null
-    : notifiable > notified ? `One thing to fix: ${notifiable - notified} message${notifiable - notified === 1 ? "" : "s"} couldn't reach your phone — call Ivy to update the number we text.`
+    : notifiable > notified ? `One thing to fix: ${notifiable - notified} message${notifiable - notified === 1 ? "" : "s"} couldn't reach your phone — call Maddie to update the number we text.`
     : score >= 85 ? "Working great — nothing needs your attention."
     : "Filling in as calls come through this month.";
 
@@ -279,7 +279,7 @@ export default async function DashboardPage({
         <CallIvy
           compact
           heading="Change your receptionist, or add another"
-          blurb="Call Ivy to update your greeting, hours, or where messages go — or to set up a line for another business."
+          blurb="Call Maddie to update your greeting, hours, or where messages go — or to set up a line for another business."
         />
       </div>
 

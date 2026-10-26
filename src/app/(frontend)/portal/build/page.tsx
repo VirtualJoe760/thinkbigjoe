@@ -4,41 +4,57 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
-import { CallIvy } from "@/components/portal/call-ivy";
+import { BuildForm } from "./build-form";
 
-export const metadata: Metadata = { title: "Get a site built" };
+export const metadata: Metadata = { title: "Tell us about your business" };
 
 /**
- * "Build a new site" — a call to Ivy now, not a form. She takes the business details on the phone
- * and the forge builds from there. The website is a separate one-time purchase (voice-first model,
- * see docs/PORTAL_REDESIGN.md); Ivy handles the specifics on the call.
+ * Business intake — the front door for anyone who signs up WITHOUT a claim code (2026-10-26).
+ * New accounts with no site are sent here from /portal. The form goes to Joe (email + Telegram),
+ * into the CRM, and onto the forge queue. People who'd rather talk can call Maddie.
  */
-export default async function BuildPage() {
+export default async function BuildPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ welcome?: string }>;
+}) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login?redirect=/portal/build");
+  const { welcome } = await searchParams;
+  const firstName = session.user.name?.split(" ")[0];
 
   return (
-    <main className="mx-auto w-full max-w-xl flex-1 px-6 py-12">
+    <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-12">
       <Link href="/portal" className="text-sm font-semibold text-brand hover:underline">
         ← Back to portal
       </Link>
-      <p className="mt-4 text-sm font-semibold uppercase tracking-wide text-brand">New site</p>
-      <h1 className="mt-2 text-3xl font-extrabold tracking-tight">Get a website built</h1>
+      <p className="mt-4 text-sm font-semibold uppercase tracking-wide text-brand">
+        {welcome ? `Welcome${firstName ? `, ${firstName}` : ""}!` : "Get started"}
+      </p>
+      <h1 className="mt-2 text-3xl font-extrabold tracking-tight">Tell us about your business</h1>
       <p className="mt-3 leading-relaxed text-ink-soft">
-        Tell Ivy about your business and we&apos;ll build your site — it shows up in your portal
-        shortly after.
+        A few quick questions so we know what you need — a website, AI that answers your calls,
+        or a full custom system. Joe looks over every one personally.
       </p>
 
       <div className="mt-8">
-        <CallIvy
-          heading="Call Ivy about a website"
-          blurb="She takes down what your business does and how you want it to look, and the site gets built from there. A website is a one-time build — she'll walk you through it."
-          steps={[
-            "Tell Ivy your business name and what you do.",
-            "Say how you want it to feel — she takes it from there.",
-            "Your new site lands in your portal to review.",
-          ]}
-        />
+        <BuildForm defaultEmail={session.user.email} defaultName={session.user.name ?? ""} />
+      </div>
+
+      <div className="mt-10 grid gap-4 border-t border-line pt-8 text-sm text-ink-soft sm:grid-cols-2">
+        <p>
+          <span className="font-semibold text-ink">Got a code from us?</span>{" "}
+          <Link href="/portal/claim" className="font-semibold text-brand hover:underline">
+            Claim your site instead →
+          </Link>
+        </p>
+        <p>
+          <span className="font-semibold text-ink">Rather talk?</span> Call Maddie, our assistant, at{" "}
+          <a href="tel:+14807642121" className="font-semibold text-brand hover:underline">
+            (480) 764-2121
+          </a>
+          .
+        </p>
       </div>
     </main>
   );

@@ -47,15 +47,19 @@ export function Hero() {
             Call us: (480) 764-2121
           </a>
           <Link
-            href="/portal/claim"
+            href="/login"
             className="inline-flex items-center justify-center rounded-full border border-line bg-background px-7 py-3.5 text-base font-semibold text-ink transition-colors hover:bg-surface"
           >
-            Got a code from us? Claim your site
+            Get started free
           </Link>
         </div>
 
         <p className="mt-5 text-sm text-ink-soft">
-          We answer 24/7 — even right now.
+          We answer 24/7 — even right now. Got a code from us?{" "}
+          <Link href="/portal/claim" className="font-semibold text-ink underline decoration-line underline-offset-4 hover:decoration-brand">
+            Claim your site
+          </Link>
+          .
         </p>
 
         <dl className="mt-16 grid max-w-3xl grid-cols-1 gap-8 border-t border-line pt-8 text-center sm:grid-cols-3">
