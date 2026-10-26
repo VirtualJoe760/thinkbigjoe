@@ -45,44 +45,51 @@ const RepeatIcon = svg(
     <path d="M21 13v2a4 4 0 01-4 4H3" />
   </>,
 );
-const LinkIcon = svg(
+const SunIcon = svg(
   <>
-    <path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7" />
-    <path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7" />
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
   </>,
 );
-const BoltIcon = svg(<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />);
+const ChartIcon = svg(
+  <>
+    <path d="M3 3v18h18" />
+    <path d="M7 15l4-4 3 3 5-6" />
+  </>,
+);
 
+// Plain language for the owner (2026-10-26). No "agentic", no "integrations", no acronyms.
+// Each card = a problem they have + what we do about it, in their words.
 const services = [
   {
     icon: PhoneIcon,
-    title: "AI Receptionist",
-    body: "Answers every call 24/7 in your business's voice — finds out what the job is, how urgent it is, and where, then texts you the details straight away. The 7pm burst pipe stops going to whoever picks up first.",
+    title: "We answer when you can't",
+    body: "Our AI receptionist picks up every call you miss. It finds out what the job is, where it is and how soon they need you — then texts it all to you. No more voicemails nobody calls back.",
+  },
+  {
+    icon: SunIcon,
+    title: "Ready for the busy season",
+    body: "When it's 115° and every AC in the valley quits at once, the phone doesn't stop ringing. We answer all of it, so those jobs don't go to the next company on the list.",
   },
   {
     icon: MoonIcon,
-    title: "Never Miss After Hours",
-    body: "Your phone rings first. We only pick up the calls you'd have lost — nights, weekends, when you're under a sink. You keep every call you can actually take.",
+    title: "Nights and weekends covered",
+    body: "Your phone rings first, like it always has. We only pick up the calls you'd miss — after hours, on the weekend, or when your hands are full.",
   },
   {
     icon: GlobeIcon,
-    title: "Your Website, Included",
-    body: "A fast, modern site built, hosted and maintained for you. It comes with the receptionist rather than costing extra, and it's where you see every call the AI answered.",
+    title: "A website that brings in calls",
+    body: "A clean, fast website that looks great on a phone. We build it, host it and keep it updated. You don't need to know anything about websites.",
   },
   {
     icon: RepeatIcon,
-    title: "Follow-Up That Actually Happens",
-    body: "Quotes chased, dormant customers reactivated, reviews requested after the job. The work that makes money and never gets done because everyone's on a truck.",
+    title: "Follow-ups done for you",
+    body: "We remind customers about quotes they haven't said yes to, ask happy customers for a review, and check in with past customers when it's time for service again.",
   },
   {
-    icon: LinkIcon,
-    title: "Custom AI Integrations",
-    body: "Secure, permissioned connections that give your AI structured access to the data and systems you already run — the connective tissue between AI and your business.",
-  },
-  {
-    icon: BoltIcon,
-    title: "Agentic Software",
-    body: "Autonomous agents that handle real workflows — research, outreach, operations, and support — wired into the tools you already run.",
+    icon: ChartIcon,
+    title: "See it all in one place",
+    body: "Every call we answered and every job we booked, in one simple page you can check from your phone.",
   },
 ];
 
@@ -92,10 +99,10 @@ export function Services() {
       <div className="mx-auto max-w-6xl px-6 py-24 md:py-32">
         <div className="max-w-2xl">
           <p className="text-sm font-semibold tracking-wide text-brand uppercase">
-            What we do
+            What you get
           </p>
           <h2 className="mt-3 text-4xl font-extrabold tracking-tight md:text-5xl">
-            Delight your customers across every interaction.
+            Less time on the phone. More time on the job.
           </h2>
         </div>
 

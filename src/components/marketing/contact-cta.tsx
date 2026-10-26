@@ -18,11 +18,11 @@ export function ContactCTA() {
             Get in touch
           </p>
           <h2 className="mt-3 max-w-3xl text-4xl font-extrabold leading-tight tracking-tight md:text-5xl">
-            Got questions? Let&apos;s talk Ai.
+            Questions? Give us a call.
           </h2>
           <p className="mt-6 max-w-xl leading-relaxed text-white/60">
-            Call our AI receptionist any time — it answers 24/7 and can walk you
-            through getting set up.
+            We answer 24/7 and can walk you through getting set up — no
+            pressure, no sales pitch.
           </p>
 
           <a
@@ -73,7 +73,7 @@ export function ContactCTA() {
                   name="email"
                   type="email"
                   label="Email"
-                  placeholder="jane@company.com"
+                  placeholder="jane@yourbusiness.com"
                   required
                 />
               </div>
@@ -89,7 +89,7 @@ export function ContactCTA() {
                   name="message"
                   rows={5}
                   required
-                  placeholder="What's on your mind?"
+                  placeholder="Tell us about your business and what you need help with."
                   className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/40"
                 />
               </div>

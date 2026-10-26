@@ -2,47 +2,49 @@ import Link from "next/link";
 
 import { Card } from "@/components/ui";
 
+// Plain language (2026-10-26). Same funnel as before — we build first, they claim with a code,
+// then pick services — just said the way an owner would say it.
 const STEPS = [
   {
     n: "01",
-    title: "We build your site — and reserve it",
-    body: "Most clients meet us this way: we build your website before you ever ask, then send a claim code by email, text, or a call from our AI receptionist.",
+    title: "We build your website first",
+    body: "We make a website for your business before you ever ask, so you can see it before you decide anything.",
   },
   {
     n: "02",
-    title: "Create your account & claim it",
-    body: "Log in, create a free account, and enter your claim code. The site becomes yours to manage in your portal — live in minutes.",
+    title: "Claim it with your code",
+    body: "We send you a code by text, email or phone. Make a free account, type in the code, and the site is yours to look over.",
   },
   {
     n: "03",
-    title: "Book a strategy call — from your account",
-    body: "Once you're set up, book a strategy call right from your portal. We map which AI services move the needle for your business — an AI receptionist, agents that run the busywork, or a full-stack custom build.",
+    title: "Pick what helps you most",
+    body: "Talk with our team about what would make the biggest difference — answering your calls, following up on quotes, or tools for your website.",
   },
   {
     n: "04",
-    title: "We build, host, and run it",
-    body: "You make more sales, run more efficiently, and save time and money. We ship it, maintain it, and scale what works as you grow.",
+    title: "We set it up and keep it running",
+    body: "You run your jobs. We handle the setup, the updates and the fixes.",
   },
 ];
 
 const PILLARS = [
   {
-    title: "Senior engineering",
-    body: "You work with the people who actually build your system — no account managers in between.",
+    title: "Local",
+    body: "We work with businesses here in the Coachella Valley.",
   },
   {
-    title: "Embedded, not bolted on",
-    body: "Agents wired into your CRM, ERP, or DMS through secure integrations — automation inside the tools you already run.",
+    title: "No tech skills needed",
+    body: "If you can send a text, you can use everything we build.",
   },
   {
-    title: "Production-grade",
-    body: "We ship systems that run the work and maintain them as you grow — not pilots that get abandoned.",
+    title: "Month to month",
+    body: "No long contracts. Stay because it's working.",
   },
 ];
 
 export function HowItWorks() {
   return (
-    <section id="how" className="border-t border-line bg-surface">
+    <section id="how" className="border-t border-line">
       <div className="mx-auto max-w-6xl px-6 py-24 md:py-32">
         <div className="grid gap-16 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="lg:sticky lg:top-28 lg:self-start">
@@ -50,19 +52,18 @@ export function HowItWorks() {
               How it works
             </p>
             <h2 className="mt-3 text-4xl font-extrabold leading-tight tracking-tight md:text-5xl">
-              From claim code to a business that runs itself.
+              Getting started is simple.
             </h2>
             <p className="mt-6 max-w-md leading-relaxed text-ink-soft">
-              ThinkBigJoe builds websites and AI solutions for qualified,
-              established businesses. Here&apos;s the path from your reserved site
-              to the AI that runs behind it.
+              We help home service businesses in the Coachella Valley look
+              professional online and stop losing calls. Here&apos;s how it goes.
             </p>
 
             <Card className="mt-8">
               <p className="text-sm font-semibold text-ink">Prefer to talk?</p>
               <p className="mt-1 text-sm leading-relaxed text-ink-soft">
-                Call our AI receptionist any time — she&apos;ll walk you through
-                creating your account and claiming your site.
+                Call any time — we&apos;ll walk you through setting up your
+                account and claiming your site.
               </p>
               <a
                 href="tel:+14807642121"

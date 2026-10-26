@@ -8,12 +8,15 @@ export function StructuredData() {
     url: baseUrl,
     logo: `${baseUrl}/opengraph-image`,
     description:
-      "AI agency building custom websites, AI receptionists, and agentic software for established businesses.",
+      "24/7 call answering and websites for home service businesses in the Coachella Valley — contractors, plumbers, HVAC, roofers and remodelers.",
+    areaServed: [
+      "Palm Springs, CA", "Cathedral City, CA", "Rancho Mirage, CA", "Palm Desert, CA",
+      "Indian Wells, CA", "La Quinta, CA", "Indio, CA", "Coachella, CA", "Desert Hot Springs, CA",
+    ],
     knowsAbout: [
-      "Agentic AI",
       "AI receptionists",
-      "AI systems integration",
-      "Full-stack development",
+      "Call answering for contractors",
+      "Websites for home service businesses",
     ],
   };
 

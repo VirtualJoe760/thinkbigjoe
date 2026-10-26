@@ -2,8 +2,8 @@ import { AppHeader, type NavLink } from "@/components/app-nav";
 import { ButtonLink } from "@/components/ui/button";
 
 const links: NavLink[] = [
-  { href: "/#services", label: "Services" },
-  { href: "/#testimonials", label: "Testimonials" },
+  { href: "/#services", label: "What you get" },
+  { href: "/#tools", label: "Tools" },
   { href: "/#how", label: "How it works" },
   { href: "/#contact", label: "Contact" },
 ];

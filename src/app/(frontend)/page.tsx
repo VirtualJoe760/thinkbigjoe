@@ -1,7 +1,8 @@
 import { SiteNav } from "@/components/marketing/site-nav";
 import { Hero } from "@/components/marketing/hero";
 import { Services } from "@/components/marketing/services";
-import { Testimonials } from "@/components/marketing/testimonials";
+import { Situations } from "@/components/marketing/situations";
+import { ContractorTools } from "@/components/marketing/contractor-tools";
 import { HowItWorks } from "@/components/marketing/how-it-works";
 import { ContactCTA } from "@/components/marketing/contact-cta";
 import { SiteFooter } from "@/components/marketing/site-footer";
@@ -15,7 +16,8 @@ export default function Home() {
       <main className="flex-1">
         <Hero />
         <Services />
-        <Testimonials />
+        <Situations />
+        <ContractorTools />
         <HowItWorks />
         <ContactCTA />
       </main>

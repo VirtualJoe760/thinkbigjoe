@@ -20,15 +20,16 @@ export const metadata: Metadata = {
   // lead with a clever brand statement rank for nothing but their own name. "Agentic AI & MCP
   // Development" describes a consultancy nobody is searching for.
   title: {
-    default: "AI Receptionist for Home Services | ThinkBigJoe",
+    // 2026-10-26: local intent ("Coachella Valley") — the market is now the valley only.
+    default: "AI Receptionist & Websites for Coachella Valley Contractors | ThinkBigJoe",
     template: "%s · ThinkBigJoe",
   },
   description:
-    "An AI receptionist that answers every call 24/7 for plumbers, HVAC, electrical and roofing companies — qualifies the caller and texts you the job before you're off the ladder. Website included.",
+    "We answer your business calls 24/7 and text you the job details — for contractors, plumbers, HVAC, roofers and remodelers in Palm Springs, Palm Desert, La Quinta, Indio and across the Coachella Valley. Website included.",
   openGraph: {
-    title: "AI Receptionist for Home Services | ThinkBigJoe",
+    title: "Every call answered. Every job booked. | ThinkBigJoe",
     description:
-      "Answer every call. Book every job. An AI receptionist for home service businesses, 24/7.",
+      "24/7 call answering and websites for Coachella Valley contractors, plumbers, HVAC, roofers and remodelers.",
     type: "website",
   },
   manifest: "/manifest.json",
