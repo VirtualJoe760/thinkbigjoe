@@ -21,6 +21,19 @@ Do not build the brand around Joseph Sardella.
 
 ## Who we sell to
 
+> **2026-10-26 — target market narrowed to the Coachella Valley.** The nationwide sweep
+> (~4,300 leads across 35 metros, 50 free sites built) produced **zero paying customers**. All of
+> it — leads, CRM contacts, LinkedIn prospects, SMS threads, Ivy's call log, contact-form leads —
+> was moved to Postgres schema **`archive_2026_10`** (out of the app's sight; `drizzle` only reads
+> `public`). Only `forge_sites` 723 (Sunrise Plumbing demo) and 1395 (TBJ itself) stayed.
+>
+> **Where:** Palm Springs, Cathedral City, Rancho Mirage, Palm Desert, Indian Wells, La Quinta,
+> Indio, Coachella, Desert Hot Springs, Thousand Palms, Bermuda Dunes, Thermal.
+> **Who:** general contractors, roofers, tile contractors, home renovation/remodeling.
+> Encoded in `scripts/lead-engine.mjs` (TRADES / CITIES), the `TBJ Forge Prospect Scout` cron
+> prompt in `src/lib/venus-crons.mjs`, and the prospector's `AGENTS.md`. The trade list below is
+> the general ICP; the list above is what we actively prospect.
+
 Owner-operated home service companies: **plumbing, HVAC, electrical, roofing, garage door,
 restoration, towing, locksmith, pest control, auto repair.**
 

@@ -113,3 +113,14 @@ becomes redundant once `contacts.name` is authoritative in the messaging UI; ret
 - [`AUTH.md`](AUTH.md) — `better_auth.user`, which `contacts.user_id` links to.
 - [`VOICEMAIL.md`](VOICEMAIL.md) / [`SMS.md`](SMS.md) — senders that still read `forge_sites` contact
   columns (the step-3 cutover targets).
+
+## Archive (2026-10-26)
+
+Every pre-Coachella-Valley contact and lead was moved — not deleted — into Postgres schema
+`archive_2026_10` (same table names: `forge_sites`, `contacts`, `prospects`, `outreach`,
+`conversations`, `follow_ups`, `reply_drafts`, `sms_conversations`, `calls`, `leads`). The app and
+the agents only read `public`, so none of it shows anywhere. It still holds the old opt-outs
+(`lead_stage='declined'`, `do_not_contact`) — **check a newly imported list against
+`archive_2026_10` phones/emails before any first touch.** To restore a row:
+`INSERT INTO public.<t> SELECT * FROM archive_2026_10.<t> WHERE id = …`.
+

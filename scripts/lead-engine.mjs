@@ -40,10 +40,22 @@ const DB = env.DATABASE_URL_UNPOOLED || env.DATABASE_URL;
 // a quota, so raising it costs nothing on a normal night.
 const MAX_SEARCHES = Math.max(1, parseInt(process.argv[2] || "24", 10) || 24);
 
-// A big rotating pool of trade × metro combos (~35×35 = 1225) — cycled via combo_offset
-// so runs don't re-scrape the same searches (which would cost credit for 0 new leads).
-const TRADES = ["plumber", "roofer", "electrician", "landscaper", "hvac contractor", "handyman", "pest control", "garage door repair", "concrete contractor", "fence contractor", "tree service", "pool service", "painter", "appliance repair", "locksmith", "cleaning service", "movers", "drywall contractor", "pressure washing", "window cleaning", "gutter cleaning", "junk removal", "carpet cleaning", "chimney sweep", "septic service", "deck builder", "auto detailing", "mobile mechanic", "welding service", "window tinting", "masonry contractor", "paving contractor", "irrigation repair", "flooring contractor", "epoxy flooring"];
-const METROS = ["Denver, CO", "Dallas, TX", "Atlanta, GA", "Charlotte, NC", "Columbus, OH", "Nashville, TN", "Tampa, FL", "Kansas City, MO", "Indianapolis, IN", "San Antonio, TX", "Portland, OR", "Las Vegas, NV", "Sacramento, CA", "Boise, ID", "Salt Lake City, UT", "Pittsburgh, PA", "Tucson, AZ", "Fresno, CA", "Jacksonville, FL", "Oklahoma City, OK", "Raleigh, NC", "Minneapolis, MN", "Cincinnati, OH", "Louisville, KY", "Richmond, VA", "Grand Rapids, MI", "Omaha, NE", "Memphis, TN", "Birmingham, AL", "Houston, TX", "San Diego, CA", "Phoenix, AZ", "Austin, TX", "Miami, FL", "Seattle, WA"];
+// TARGET MARKET (2026-10-26): the Coachella Valley only, building/renovation trades only.
+// Joe's call — the nationwide sweep (35 trades × 35 metros) produced ~4,300 leads and zero
+// paying customers; that pool was archived to schema archive_2026_10. A local market Joe can
+// actually visit beats a national list. Change TRADES / CITIES here to retarget.
+// The pool is walked ONCE via combo_offset; when it's exhausted the engine stops instead of
+// looping (re-scraping the same search costs credit for zero new leads). Reset
+// lead_engine.combo_offset to 0 to sweep again.
+const TRADES = ["general contractor", "roofing contractor", "roof repair", "tile contractor", "tile installer", "home remodeling contractor", "kitchen remodeler", "bathroom remodeler", "home renovation", "construction company"];
+const CITIES = ["Palm Springs, CA", "Cathedral City, CA", "Rancho Mirage, CA", "Palm Desert, CA", "Indian Wells, CA", "La Quinta, CA", "Indio, CA", "Coachella, CA", "Desert Hot Springs, CA", "Thousand Palms, CA", "Bermuda Dunes, CA", "Thermal, CA"];
+// Only keep results whose address is actually in the valley — Maps happily returns
+// Riverside / San Bernardino businesses for a "near Palm Springs" search.
+const CV_CITY = /\b(palm springs|cathedral city|rancho mirage|palm desert|indian wells|la quinta|indio|coachella|desert hot springs|thousand palms|bermuda dunes|thermal|mecca|sky valley|north palm springs)\b/i;
+// Contractors here mostly HAVE a website (often a bad one). The pitch leads with the voice
+// agent (docs/BUSINESS_PLAN.md), so keep them — the site is stored in existing_website_url.
+const NO_WEBSITE_ONLY = false;
+const METROS = CITIES;
 const COMBOS = TRADES.flatMap((t) => METROS.map((m) => [t, m]));
 
 async function apifyUsage() {
@@ -104,14 +116,16 @@ async function maps(q, loc, max = 40) {
   let offset = cfg.combo_offset || 0, queued = 0, searches = 0, note = "";
 
   while (leadsToday + queued < dailyTarget && searches < MAX_SEARCHES) {
+    if (offset >= COMBOS.length) { note = `search pool exhausted (${COMBOS.length} trade×city searches done) — reset combo_offset to sweep again`; break; }
     const s = await apifyUsage();
     if (s != null && s >= budget) { note = "budget reached mid-run"; break; }
-    const [q, loc] = COMBOS[offset % COMBOS.length];
+    const [q, loc] = COMBOS[offset];
     offset++;
     const { items, error } = await maps(q, loc, 40);
     if (error) { note = `Apify error ${error} — credit/budget exhausted; browser scraping takes over`; break; }
     for (const b of items || []) {
-      if (b.website) continue;
+      if (NO_WEBSITE_ONLY && b.website) continue;
+      if (!CV_CITY.test(`${b.city || ""} ${b.address || ""}`)) continue;
       const sl = slug(b.title);
       if (!sl || existing.has(sl)) continue;
       if (black.has(`${sl}|${slug(b.city || "")}`)) continue;
@@ -123,9 +137,9 @@ async function maps(q, loc, max = 40) {
       const photo = b.imageUrl || (b.imageUrls || [])[0] || null;
       try {
         await c.query(
-          `INSERT INTO forge_sites (slug,business_name,niche,city,service_area,address,phone,email,instagram_url,facebook_url,photo_url,google_rating,review_count,google_maps_url,fit_reason,source,status)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'lead_engine','discovered') ON CONFLICT (slug) DO NOTHING`,
-          [sl, b.title, b.categoryName || q, b.city || null, [b.city, b.state].filter(Boolean).join(", ") || null, b.address || null, b.phone || null, email, insta, fbook, photo, b.totalScore ? String(b.totalScore) : null, b.reviewsCount != null ? String(b.reviewsCount) : null, mu, `No website — ${b.categoryName || q}${b.reviewsCount ? `, ${b.reviewsCount} reviews` : ""}`],
+          `INSERT INTO forge_sites (slug,business_name,niche,city,service_area,address,phone,email,instagram_url,facebook_url,photo_url,google_rating,review_count,google_maps_url,fit_reason,existing_website_url,source,status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'lead_engine','discovered') ON CONFLICT (slug) DO NOTHING`,
+          [sl, b.title, b.categoryName || q, b.city || null, [b.city, b.state].filter(Boolean).join(", ") || null, b.address || null, b.phone || null, email, insta, fbook, photo, b.totalScore ? String(b.totalScore) : null, b.reviewsCount != null ? String(b.reviewsCount) : null, mu, `${b.website ? "Has website" : "No website"} — ${b.categoryName || q}, Coachella Valley${b.reviewsCount ? `, ${b.reviewsCount} reviews` : ""}`, b.website || null],
         );
         existing.add(sl);
         queued++;
