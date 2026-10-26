@@ -95,6 +95,9 @@ async function maps(q, loc, max = 40) {
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
   const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
   const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+  // --now: a one-off burst — fill the rest of the MONTHLY goal in this run instead of
+  // trickling it out at the daily pace (e.g. "get 250 leads right now"). Budget still gates.
+  const BURST = process.argv.includes("--now");
   const dailyTarget = Math.ceil(goal / daysInMonth);
 
   const leadsMonth = Number((await c.query("SELECT count(*) n FROM forge_sites WHERE created_at >= $1", [monthStart])).rows[0].n);
@@ -111,14 +114,16 @@ async function maps(q, loc, max = 40) {
 
   if (leadsMonth >= goal) return finish(`Monthly goal met — ${leadsMonth}/${goal} leads. Resting until next month.`);
   if (spend != null && spend >= budget) return finish(`Apify budget spent ($${spend.toFixed(2)}/$${budget}); browser scraping covers the rest of the goal.`);
-  if (leadsToday >= dailyTarget) return finish(`Today's pace met — ${leadsToday}/${dailyTarget} leads. Waiting for tomorrow.`);
+  if (!BURST && leadsToday >= dailyTarget) return finish(`Today's pace met — ${leadsToday}/${dailyTarget} leads. Waiting for tomorrow.`);
 
   // Scrape toward today's target within budget.
   const existing = new Set((await c.query("SELECT slug FROM forge_sites")).rows.map((r) => r.slug));
   const black = new Set((await c.query("SELECT norm_key FROM forge_blacklist")).rows.map((r) => r.norm_key));
   let offset = cfg.combo_offset || 0, queued = 0, searches = 0, note = "";
 
-  while (leadsToday + queued < dailyTarget && searches < MAX_SEARCHES) {
+  const runTarget = BURST ? goal - leadsMonth : dailyTarget - leadsToday;
+  const searchCap = BURST ? COMBOS.length : MAX_SEARCHES;
+  while (queued < runTarget && searches < searchCap) {
     if (offset >= COMBOS.length) { note = `search pool exhausted (${COMBOS.length} trade×city searches done) — reset combo_offset to sweep again`; break; }
     const s = await apifyUsage();
     if (s != null && s >= budget) { note = "budget reached mid-run"; break; }
