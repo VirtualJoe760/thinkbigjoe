@@ -58,6 +58,11 @@ const CV_CITY = /\b(palm springs|cathedral city|rancho mirage|palm desert|indian
 // this server-side (an add-on, ~$0.001/place) so we don't pay to scrape places we'd discard;
 // the in-code check below is a backstop.
 const NO_WEBSITE_ONLY = true;
+// Minimum Google reviews for a lead — screens out brand-new / empty profiles.
+const MIN_REVIEWS = 3;
+// Prefer active businesses: fetch each place's single NEWEST review (~$0.0005) and skip any whose
+// newest review is older than this. The date + quote are saved on the lead for call prep.
+const MAX_REVIEW_AGE_DAYS = 730;
 // Maps returns loosely related businesses for a trade search. Keep a result only if its Google
 // category is one of our trades AND none of the excluded ones (plumbing/HVAC are out by Joe's
 // call; pools, paving, landscaping etc. were never in).
@@ -79,7 +84,7 @@ async function maps(q, loc, max = 40) {
     method: "POST", headers: { "Content-Type": "application/json" },
     // scrapeContacts only works for places WITH a website (it crawls the site), so it's off when
     // we only want no-website places — it would be paid for and return nothing.
-    body: JSON.stringify({ searchStringsArray: [q], locationQuery: loc, maxCrawledPlacesPerSearch: max, language: "en", skipClosedPlaces: true, scrapeContacts: !NO_WEBSITE_ONLY, ...(NO_WEBSITE_ONLY ? { website: "withoutWebsite" } : {}) }),
+    body: JSON.stringify({ searchStringsArray: [q], locationQuery: loc, maxCrawledPlacesPerSearch: max, language: "en", skipClosedPlaces: true, scrapeContacts: !NO_WEBSITE_ONLY, ...(NO_WEBSITE_ONLY ? { website: "withoutWebsite" } : {}), maxReviews: 1, reviewsSort: "newest", scrapeReviewsPersonalData: false }),
     signal: AbortSignal.timeout(180000),
   });
   if (!r.ok) return { error: `${r.status}` };
@@ -141,9 +146,17 @@ async function maps(q, loc, max = 40) {
       if (NO_WEBSITE_ONLY && b.website) continue;
       // Joe works these leads by phone — a lead with no number is useless (2026-10-26).
       if (!b.phone) continue;
+      // Established businesses only — a Google profile with a few reviews (Joe, 2026-10-26).
+      if ((b.reviewsCount || 0) < MIN_REVIEWS) continue;
+      const newest = (b.reviews || [])[0] || null;
+      const newestAt = newest?.publishedAtDate ? new Date(newest.publishedAtDate) : null;
+      if (!newestAt || Date.now() - newestAt.getTime() > MAX_REVIEW_AGE_DAYS * 864e5) continue;
+      const lastReviewed = newestAt.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+      const reviewQuote = newest.text ? [{ stars: newest.stars ?? null, text: String(newest.text).slice(0, 400), date: newestAt.toISOString().slice(0, 10) }] : null;
       if (!CV_CITY.test(`${b.city || ""} ${b.address || ""}`)) continue;
-      const cats = [b.categoryName, ...(b.categories || [])].filter(Boolean).join(" ");
-      if (!TRADE_CATEGORY.test(cats) || EXCLUDE_CATEGORY.test(`${b.categoryName || ""} ${b.title || ""}`)) continue;
+      // Match the MAIN category only — secondary categories are noisy (a hose supplier listed
+      // "contractor" as a side category and got through).
+      if (!TRADE_CATEGORY.test(b.categoryName || "") || EXCLUDE_CATEGORY.test(`${b.categoryName || ""} ${b.title || ""}`)) continue;
       const sl = slug(b.title);
       if (!sl || existing.has(sl)) continue;
       if (black.has(`${sl}|${slug(b.city || "")}`)) continue;
@@ -155,9 +168,9 @@ async function maps(q, loc, max = 40) {
       const photo = b.imageUrl || (b.imageUrls || [])[0] || null;
       try {
         await c.query(
-          `INSERT INTO forge_sites (slug,business_name,niche,city,service_area,address,phone,email,instagram_url,facebook_url,photo_url,google_rating,review_count,google_maps_url,fit_reason,existing_website_url,source,status)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'lead_engine','discovered') ON CONFLICT (slug) DO NOTHING`,
-          [sl, b.title, b.categoryName || q, b.city || null, [b.city, b.state].filter(Boolean).join(", ") || null, b.address || null, b.phone || null, email, insta, fbook, photo, b.totalScore ? String(b.totalScore) : null, b.reviewsCount != null ? String(b.reviewsCount) : null, mu, `${b.website ? "Has website" : "No website"} — ${b.categoryName || q}, Coachella Valley${b.reviewsCount ? `, ${b.reviewsCount} reviews` : ""}`, b.website || null],
+          `INSERT INTO forge_sites (slug,business_name,niche,city,service_area,address,phone,email,instagram_url,facebook_url,photo_url,google_rating,review_count,google_maps_url,fit_reason,existing_website_url,review_quotes,source,status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,'lead_engine','discovered') ON CONFLICT (slug) DO NOTHING`,
+          [sl, b.title, b.categoryName || q, b.city || null, [b.city, b.state].filter(Boolean).join(", ") || null, b.address || null, b.phone || null, email, insta, fbook, photo, b.totalScore ? String(b.totalScore) : null, b.reviewsCount != null ? String(b.reviewsCount) : null, mu, `${b.website ? "Has website" : "No website"} — ${b.categoryName || q}, Coachella Valley, ${b.reviewsCount} reviews, last reviewed ${lastReviewed}`, b.website || null, reviewQuote ? JSON.stringify(reviewQuote) : null],
         );
         existing.add(sl);
         queued++;
