@@ -59,10 +59,10 @@ const CV_CITY = /\b(palm springs|cathedral city|rancho mirage|palm desert|indian
 // the in-code check below is a backstop.
 const NO_WEBSITE_ONLY = true;
 // Minimum Google reviews for a lead — screens out brand-new / empty profiles.
-const MIN_REVIEWS = 3;
+const MIN_REVIEWS = 1;
 // Prefer active businesses: fetch each place's single NEWEST review (~$0.0005) and skip any whose
 // newest review is older than this. The date + quote are saved on the lead for call prep.
-const MAX_REVIEW_AGE_DAYS = 730;
+const MAX_REVIEW_AGE_DAYS = 1095;
 // Maps returns loosely related businesses for a trade search. Keep a result only if its Google
 // category is one of our trades AND none of the excluded ones (plumbing/HVAC are out by Joe's
 // call; pools, paving, landscaping etc. were never in).
