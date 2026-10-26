@@ -36,7 +36,7 @@ Do not build the brand around Joseph Sardella.
 >
 > **Where:** Palm Springs, Cathedral City, Rancho Mirage, Palm Desert, Indian Wells, La Quinta,
 > Indio, Coachella, Desert Hot Springs, Thousand Palms, Bermuda Dunes, Thermal.
-> **Who:** general contractors, plumbers, HVAC, roofers, home remodelers — **with no website**.
+> **Who (updated 2026-10-26):** general contractors, renovation/remodeling companies, tile contractors and roofers — **with no website and a phone number**. Plumbing and HVAC are deliberately NOT a priority.
 > Encoded in `scripts/lead-engine.mjs` (TRADES / CITIES), the `TBJ Forge Prospect Scout` cron
 > prompt in `src/lib/venus-crons.mjs`, and the prospector's `AGENTS.md`. The trade list below is
 > the general ICP; the list above is what we actively prospect.

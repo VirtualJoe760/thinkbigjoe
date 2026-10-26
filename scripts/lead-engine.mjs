@@ -47,8 +47,9 @@ const MAX_SEARCHES = Math.max(1, parseInt(process.argv[2] || "24", 10) || 24);
 // The pool is walked ONCE via combo_offset; when it's exhausted the engine stops instead of
 // looping (re-scraping the same search costs credit for zero new leads). Reset
 // lead_engine.combo_offset to 0 to sweep again.
-// 2026-10-26 (later): GC, plumbing, HVAC, roofing, home remodel — no-website businesses only.
-const TRADES = ["general contractor", "plumber", "hvac contractor", "air conditioning repair", "roofing contractor", "home remodeling contractor", "kitchen remodeler", "bathroom remodeler"];
+// 2026-10-26 (Joe): GCs, renovation/remodeling, tile and roofing — NOT plumbing or HVAC.
+// "general contractor" stays first so the search already done (offset 0) isn't repeated.
+const TRADES = ["general contractor", "home remodeling contractor", "home renovation", "kitchen remodeler", "bathroom remodeler", "tile contractor", "roofing contractor", "construction company"];
 const CITIES = ["Palm Springs, CA", "Cathedral City, CA", "Rancho Mirage, CA", "Palm Desert, CA", "Indian Wells, CA", "La Quinta, CA", "Indio, CA", "Coachella, CA", "Desert Hot Springs, CA", "Thousand Palms, CA", "Bermuda Dunes, CA", "Thermal, CA"];
 // Only keep results whose address is actually in the valley — Maps happily returns
 // Riverside / San Bernardino businesses for a "near Palm Springs" search.
@@ -57,9 +58,11 @@ const CV_CITY = /\b(palm springs|cathedral city|rancho mirage|palm desert|indian
 // this server-side (an add-on, ~$0.001/place) so we don't pay to scrape places we'd discard;
 // the in-code check below is a backstop.
 const NO_WEBSITE_ONLY = true;
-// Maps returns loosely related businesses for a trade search (welders, gardeners, cabinet makers,
-// real estate developers…). Keep only the trades we target, matched on the Google category.
-const TRADE_CATEGORY = /contractor|construction|builder|plumb|drain|hvac|air condition|heating|cooling|roof|remodel|renovat|kitchen|bath/i;
+// Maps returns loosely related businesses for a trade search. Keep a result only if its Google
+// category is one of our trades AND none of the excluded ones (plumbing/HVAC are out by Joe's
+// call; pools, paving, landscaping etc. were never in).
+const TRADE_CATEGORY = /contractor|construction|builder|remodel|renovat|kitchen|bath|tile|roof|drywall|countertop|cabinet|carpent|flooring/i;
+const EXCLUDE_CATEGORY = /plumb|drain|hvac|air condition|heating|cooling|pool|spa\b|paving|asphalt|sprinkler|irrigation|landscap|concrete|masonry|electric|solar|fenc|pest|septic/i;
 const METROS = CITIES;
 const COMBOS = TRADES.flatMap((t) => METROS.map((m) => [t, m]));
 
@@ -139,7 +142,8 @@ async function maps(q, loc, max = 40) {
       // Joe works these leads by phone — a lead with no number is useless (2026-10-26).
       if (!b.phone) continue;
       if (!CV_CITY.test(`${b.city || ""} ${b.address || ""}`)) continue;
-      if (!TRADE_CATEGORY.test([b.categoryName, ...(b.categories || [])].filter(Boolean).join(" "))) continue;
+      const cats = [b.categoryName, ...(b.categories || [])].filter(Boolean).join(" ");
+      if (!TRADE_CATEGORY.test(cats) || EXCLUDE_CATEGORY.test(`${b.categoryName || ""} ${b.title || ""}`)) continue;
       const sl = slug(b.title);
       if (!sl || existing.has(sl)) continue;
       if (black.has(`${sl}|${slug(b.city || "")}`)) continue;
