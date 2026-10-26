@@ -47,14 +47,16 @@ const MAX_SEARCHES = Math.max(1, parseInt(process.argv[2] || "24", 10) || 24);
 // The pool is walked ONCE via combo_offset; when it's exhausted the engine stops instead of
 // looping (re-scraping the same search costs credit for zero new leads). Reset
 // lead_engine.combo_offset to 0 to sweep again.
-const TRADES = ["general contractor", "roofing contractor", "roof repair", "tile contractor", "tile installer", "home remodeling contractor", "kitchen remodeler", "bathroom remodeler", "home renovation", "construction company"];
+// 2026-10-26 (later): GC, plumbing, HVAC, roofing, home remodel — no-website businesses only.
+const TRADES = ["general contractor", "plumber", "hvac contractor", "air conditioning repair", "roofing contractor", "home remodeling contractor", "kitchen remodeler", "bathroom remodeler"];
 const CITIES = ["Palm Springs, CA", "Cathedral City, CA", "Rancho Mirage, CA", "Palm Desert, CA", "Indian Wells, CA", "La Quinta, CA", "Indio, CA", "Coachella, CA", "Desert Hot Springs, CA", "Thousand Palms, CA", "Bermuda Dunes, CA", "Thermal, CA"];
 // Only keep results whose address is actually in the valley — Maps happily returns
 // Riverside / San Bernardino businesses for a "near Palm Springs" search.
 const CV_CITY = /\b(palm springs|cathedral city|rancho mirage|palm desert|indian wells|la quinta|indio|coachella|desert hot springs|thousand palms|bermuda dunes|thermal|mecca|sky valley|north palm springs)\b/i;
-// Contractors here mostly HAVE a website (often a bad one). The pitch leads with the voice
-// agent (docs/BUSINESS_PLAN.md), so keep them — the site is stored in existing_website_url.
-const NO_WEBSITE_ONLY = false;
+// Joe wants NO-website businesses only. Apify's own `website: "withoutWebsite"` filter does
+// this server-side (an add-on, ~$0.001/place) so we don't pay to scrape places we'd discard;
+// the in-code check below is a backstop.
+const NO_WEBSITE_ONLY = true;
 const METROS = CITIES;
 const COMBOS = TRADES.flatMap((t) => METROS.map((m) => [t, m]));
 
@@ -69,8 +71,9 @@ async function apifyUsage() {
 async function maps(q, loc, max = 40) {
   const r = await fetch(`https://api.apify.com/v2/acts/compass~crawler-google-places/run-sync-get-dataset-items?token=${TOKEN}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    // scrapeContacts enriches results that have a website with email + all socials.
-    body: JSON.stringify({ searchStringsArray: [q], locationQuery: loc, maxCrawledPlacesPerSearch: max, language: "en", skipClosedPlaces: true, scrapeContacts: true }),
+    // scrapeContacts only works for places WITH a website (it crawls the site), so it's off when
+    // we only want no-website places — it would be paid for and return nothing.
+    body: JSON.stringify({ searchStringsArray: [q], locationQuery: loc, maxCrawledPlacesPerSearch: max, language: "en", skipClosedPlaces: true, scrapeContacts: !NO_WEBSITE_ONLY, ...(NO_WEBSITE_ONLY ? { website: "withoutWebsite" } : {}) }),
     signal: AbortSignal.timeout(180000),
   });
   if (!r.ok) return { error: `${r.status}` };
@@ -121,7 +124,7 @@ async function maps(q, loc, max = 40) {
     if (s != null && s >= budget) { note = "budget reached mid-run"; break; }
     const [q, loc] = COMBOS[offset];
     offset++;
-    const { items, error } = await maps(q, loc, 40);
+    const { items, error } = await maps(q, loc, 120);
     if (error) { note = `Apify error ${error} — credit/budget exhausted; browser scraping takes over`; break; }
     for (const b of items || []) {
       if (NO_WEBSITE_ONLY && b.website) continue;
