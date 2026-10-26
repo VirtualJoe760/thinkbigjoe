@@ -118,7 +118,7 @@ function buildCallPrep({ name, niche, city, rating, reviewCount, quotes, fb, ig 
         rating: p.totalScore ?? null,
         reviewCount: p.reviewsCount ?? null,
         photo: p.imageUrl || (p.imageUrls || [])[0] || null,
-        quotes: (p.reviews || []).filter((r) => r.text).slice(0, 4).map((r) => ({ stars: r.stars, name: r.name, text: r.text })),
+        quotes: (p.reviews || []).filter((r) => r.text).slice(0, 4).map((r) => ({ stars: r.stars, name: r.name, text: r.text, date: r.publishedAtDate ? String(r.publishedAtDate).slice(0, 10) : undefined })), // date feeds the "Recently reviewed" sort
       });
     }
     log(`  reviews chunk ${Math.floor(i / 10) + 1}: ${Math.min(10, mapLeads.length - i)} places`);

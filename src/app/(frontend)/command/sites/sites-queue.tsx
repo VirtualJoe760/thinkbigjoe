@@ -48,7 +48,8 @@ export type ForgeSiteItem = {
   facebookUrl: string;
   contactNotes: string;
   socialStats: { facebook?: { followers?: number; likes?: number }; instagram?: { followers?: number }; linkedin?: { followers?: number } } | null;
-  reviewQuotes: Array<{ stars?: number; name?: string; text?: string }>;
+  // `date` (YYYY-MM-DD) = when the review was posted; the lead engine saves each lead's newest one.
+  reviewQuotes: Array<{ stars?: number; name?: string; text?: string; date?: string }>;
   callPrep: string;
   photoUrl: string;
   marketingApprovedAt: string;

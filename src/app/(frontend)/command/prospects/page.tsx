@@ -62,7 +62,7 @@ export default async function ProspectsPage({
   const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
   const gf = sp.gf === "only" ? "only" : "";
   const f = (["email", "phone", "social", "reviews"] as const).includes(sp.f as never) ? (sp.f as string) : "";
-  const sort = (["reviews", "rating"] as const).includes(sp.sort as never) ? (sp.sort as string) : "";
+  const sort = (["reviews", "rating", "recent"] as const).includes(sp.sort as never) ? (sp.sort as string) : "";
   const q = (sp.q || "").trim();
   const qLower = q.toLowerCase();
 
@@ -258,8 +258,15 @@ export default async function ProspectsPage({
     Number(b.reviewCount || 0) - Number(a.reviewCount || 0) || Number(b.googleRating || 0) - Number(a.googleRating || 0);
   const byRating = (a: ForgeSiteItem, b: ForgeSiteItem) =>
     Number(b.googleRating || 0) - Number(a.googleRating || 0) || Number(b.reviewCount || 0) - Number(a.reviewCount || 0);
+  // Newest Google review first — active businesses rank above quiet ones (no date = last).
+  const lastReviewed = (i: ForgeSiteItem) =>
+    i.reviewQuotes.reduce((m, r) => (r.date && r.date > m ? r.date : m), "");
+  const byRecent = (a: ForgeSiteItem, b: ForgeSiteItem) =>
+    lastReviewed(b).localeCompare(lastReviewed(a)) || byReviews(a, b);
   siteItems.sort(
-    sort === "reviews"
+    sort === "recent"
+      ? byRecent
+      : sort === "reviews"
       ? byReviews
       : sort === "rating"
         ? byRating
@@ -386,6 +393,7 @@ export default async function ProspectsPage({
               { key: "", label: "Following" },
               { key: "reviews", label: "Most reviews" },
               { key: "rating", label: "Top rated" },
+              { key: "recent", label: "Recently reviewed" },
             ].map((s) => (
               <a
                 key={s.key || "default"}

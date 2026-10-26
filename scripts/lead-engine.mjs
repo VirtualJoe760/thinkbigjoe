@@ -50,7 +50,10 @@ const MAX_SEARCHES = Math.max(1, parseInt(process.argv[2] || "24", 10) || 24);
 // 2026-10-26 (Joe): GCs, renovation/remodeling, tile and roofing — NOT plumbing or HVAC.
 // "general contractor" stays first so the search already done (offset 0) isn't repeated.
 const TRADES = ["general contractor", "home remodeling contractor", "home renovation", "kitchen remodeler", "bathroom remodeler", "tile contractor", "roofing contractor", "construction company"];
-const CITIES = ["Palm Springs, CA", "Cathedral City, CA", "Rancho Mirage, CA", "Palm Desert, CA", "Indian Wells, CA", "La Quinta, CA", "Indio, CA", "Coachella, CA", "Desert Hot Springs, CA", "Thousand Palms, CA", "Bermuda Dunes, CA", "Thermal, CA"];
+// 4 ANCHOR cities, not all 12: Maps results already spread to the neighbouring towns, and the 12-city
+// grid paid for the same businesses again (45% duplicates across Palm Springs + Cathedral City).
+// CV_CITY below still accepts every valley town.
+const CITIES = ["Palm Springs, CA", "Palm Desert, CA", "La Quinta, CA", "Indio, CA"];
 // Only keep results whose address is actually in the valley — Maps happily returns
 // Riverside / San Bernardino businesses for a "near Palm Springs" search.
 const CV_CITY = /\b(palm springs|cathedral city|rancho mirage|palm desert|indian wells|la quinta|indio|coachella|desert hot springs|thousand palms|bermuda dunes|thermal|mecca|sky valley|north palm springs)\b/i;
@@ -60,9 +63,11 @@ const CV_CITY = /\b(palm springs|cathedral city|rancho mirage|palm desert|indian
 const NO_WEBSITE_ONLY = true;
 // Minimum Google reviews for a lead — screens out brand-new / empty profiles.
 const MIN_REVIEWS = 1;
-// Prefer active businesses: fetch each place's single NEWEST review (~$0.0005) and skip any whose
-// newest review is older than this. The date + quote are saved on the lead for call prep.
-const MAX_REVIEW_AGE_DAYS = 1095;
+// Fetch each place's single NEWEST review (~$0.0005). Skip only clearly dormant businesses (newest
+// review older than 6 years — Joe, 2026-10-26); everything else is KEPT and the date is saved so
+// /command/prospects can RANK by "recently reviewed". A strict recency filter was the breaking rule:
+// no-website contractors rarely chase reviews, so a 3-year cutoff threw away 80% of good leads.
+const MAX_REVIEW_AGE_DAYS = 2190;
 // Maps returns loosely related businesses for a trade search. Keep a result only if its Google
 // category is one of our trades AND none of the excluded ones (plumbing/HVAC are out by Joe's
 // call; pools, paving, landscaping etc. were never in).
@@ -150,9 +155,9 @@ async function maps(q, loc, max = 40) {
       if ((b.reviewsCount || 0) < MIN_REVIEWS) continue;
       const newest = (b.reviews || [])[0] || null;
       const newestAt = newest?.publishedAtDate ? new Date(newest.publishedAtDate) : null;
-      if (!newestAt || Date.now() - newestAt.getTime() > MAX_REVIEW_AGE_DAYS * 864e5) continue;
-      const lastReviewed = newestAt.toLocaleDateString("en-US", { month: "short", year: "numeric" });
-      const reviewQuote = newest.text ? [{ stars: newest.stars ?? null, text: String(newest.text).slice(0, 400), date: newestAt.toISOString().slice(0, 10) }] : null;
+      if (newestAt && Date.now() - newestAt.getTime() > MAX_REVIEW_AGE_DAYS * 864e5) continue;
+      const lastReviewed = newestAt ? newestAt.toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "unknown";
+      const reviewQuote = newestAt ? [{ stars: newest.stars ?? null, text: newest.text ? String(newest.text).slice(0, 400) : "", date: newestAt.toISOString().slice(0, 10) }] : null;
       if (!CV_CITY.test(`${b.city || ""} ${b.address || ""}`)) continue;
       // Match the MAIN category only — secondary categories are noisy (a hose supplier listed
       // "contractor" as a side category and got through).
