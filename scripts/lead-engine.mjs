@@ -57,6 +57,9 @@ const CV_CITY = /\b(palm springs|cathedral city|rancho mirage|palm desert|indian
 // this server-side (an add-on, ~$0.001/place) so we don't pay to scrape places we'd discard;
 // the in-code check below is a backstop.
 const NO_WEBSITE_ONLY = true;
+// Maps returns loosely related businesses for a trade search (welders, gardeners, cabinet makers,
+// real estate developers…). Keep only the trades we target, matched on the Google category.
+const TRADE_CATEGORY = /contractor|construction|builder|plumb|drain|hvac|air condition|heating|cooling|roof|remodel|renovat|kitchen|bath/i;
 const METROS = CITIES;
 const COMBOS = TRADES.flatMap((t) => METROS.map((m) => [t, m]));
 
@@ -134,6 +137,7 @@ async function maps(q, loc, max = 40) {
     for (const b of items || []) {
       if (NO_WEBSITE_ONLY && b.website) continue;
       if (!CV_CITY.test(`${b.city || ""} ${b.address || ""}`)) continue;
+      if (!TRADE_CATEGORY.test([b.categoryName, ...(b.categories || [])].filter(Boolean).join(" "))) continue;
       const sl = slug(b.title);
       if (!sl || existing.has(sl)) continue;
       if (black.has(`${sl}|${slug(b.city || "")}`)) continue;
