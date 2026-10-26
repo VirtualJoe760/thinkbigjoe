@@ -87,7 +87,7 @@ const tools = [
 
 export function ContractorTools() {
   return (
-    <section id="tools" className="border-t border-line bg-surface">
+    <section id="tools" className="border-t border-line">
       <div className="mx-auto max-w-6xl px-6 py-24 md:py-32">
         <div className="max-w-2xl">
           <p className="text-sm font-semibold tracking-wide text-brand uppercase">

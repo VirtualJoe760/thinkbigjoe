@@ -21,8 +21,8 @@ export function ContactCTA() {
             Questions? Give us a call.
           </h2>
           <p className="mt-6 max-w-xl leading-relaxed text-white/60">
-            We answer 24/7 and can walk you through getting set up — no
-            pressure, no sales pitch.
+            Tell us about your business and we&apos;ll tell you what we&apos;d
+            build. We answer 24/7 — no pressure, no sales pitch.
           </p>
 
           <a

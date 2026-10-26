@@ -1,12 +1,9 @@
 /*
- * ORDER IS THE MESSAGE. This list used to open with "Websites That Convert" and run eight
- * co-equal services, which read as "we do a bit of everything" — the least persuasive thing an
- * agency can say, and it buried the receptionist at position two.
- *
- * The phone is what a contractor is actually losing money on, so it goes first and gets the most
- * space. The website stays in the offer (it costs us almost nothing and every voice-only
- * competitor charges more for the phone alone) but it is now the thing that comes WITH the
- * receptionist rather than the headline act.
+ * WHAT WE BUILD (2026-10-26 repositioning). The site used to sell the voice receptionist first and
+ * the website as a freebie. Joe's call: we sell the WHOLE solution — a website sized to the
+ * business (simple → enterprise-grade) with AI agents built in, voice being one of them. Order:
+ * the website, the bigger systems, then the AI that runs inside them, then the support.
+ * Plain words only — no "agentic", "integrations", acronyms.
  */
 import type { ReactNode } from "react";
 
@@ -30,7 +27,6 @@ const svg = (paths: ReactNode) => (props: IconProps) => (
 const PhoneIcon = svg(
   <path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012 4.2 2 2 0 014 2h3a2 2 0 012 1.7c.1.9.4 1.8.7 2.7a2 2 0 01-.5 2.1L8.1 9.9a16 16 0 006 6l1.4-1.1a2 2 0 012.1-.5c.9.3 1.8.6 2.7.7a2 2 0 011.7 2z" />,
 );
-const MoonIcon = svg(<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" />);
 const GlobeIcon = svg(
   <>
     <circle cx="12" cy="12" r="9" />
@@ -45,12 +41,6 @@ const RepeatIcon = svg(
     <path d="M21 13v2a4 4 0 01-4 4H3" />
   </>,
 );
-const SunIcon = svg(
-  <>
-    <circle cx="12" cy="12" r="4" />
-    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-  </>,
-);
 const ChartIcon = svg(
   <>
     <path d="M3 3v18h18" />
@@ -58,38 +48,49 @@ const ChartIcon = svg(
   </>,
 );
 
-// Plain language for the owner (2026-10-26). No "agentic", no "integrations", no acronyms.
-// Each card = a problem they have + what we do about it, in their words.
+const LayersIcon = svg(
+  <>
+    <path d="M12 2L2 7l10 5 10-5-10-5z" />
+    <path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
+  </>,
+);
+const BotIcon = svg(
+  <>
+    <rect x="4" y="8" width="16" height="12" rx="2" />
+    <path d="M12 4v4M9 13h.01M15 13h.01M9 17h6" />
+  </>,
+);
+
 const services = [
   {
-    icon: PhoneIcon,
-    title: "We answer when you can't",
-    body: "Our AI receptionist picks up every call you miss. It finds out what the job is, where it is and how soon they need you — then texts it all to you. No more voicemails nobody calls back.",
-  },
-  {
-    icon: SunIcon,
-    title: "Ready for the busy season",
-    body: "When it's 115° and every AC in the valley quits at once, the phone doesn't stop ringing. We answer all of it, so those jobs don't go to the next company on the list.",
-  },
-  {
-    icon: MoonIcon,
-    title: "Nights and weekends covered",
-    body: "Your phone rings first, like it always has. We only pick up the calls you'd miss — after hours, on the weekend, or when your hands are full.",
-  },
-  {
     icon: GlobeIcon,
-    title: "A website that brings in calls",
-    body: "A clean, fast website that looks great on a phone. We build it, host it and keep it updated. You don't need to know anything about websites.",
+    title: "Websites that win work",
+    body: "A fast, good-looking website that works great on a phone and makes it easy to call, book or ask for a quote. Perfect for getting started or replacing an old site.",
   },
   {
-    icon: RepeatIcon,
-    title: "Follow-ups done for you",
-    body: "We remind customers about quotes they haven't said yes to, ask happy customers for a review, and check in with past customers when it's time for service again.",
+    icon: LayersIcon,
+    title: "Custom systems as you grow",
+    body: "Customer logins, job tracking, online booking, payments and dashboards for your team. Built for one truck or fifty, and it grows with you.",
+  },
+  {
+    icon: BotIcon,
+    title: "AI that does the busywork",
+    body: "AI helpers built into your site that follow up on quotes, ask for reviews, answer customer questions and remind past customers when it's time for service.",
+  },
+  {
+    icon: PhoneIcon,
+    title: "AI that answers your phone",
+    body: "When you can't pick up, our AI receptionist does — day or night. It finds out what the job is and texts you the details.",
   },
   {
     icon: ChartIcon,
-    title: "See it all in one place",
-    body: "Every call we answered and every job we booked, in one simple page you can check from your phone.",
+    title: "See your business in one place",
+    body: "Calls, leads, booked jobs and reviews on one simple page you can check from your phone.",
+  },
+  {
+    icon: RepeatIcon,
+    title: "We run it for you",
+    body: "Hosting, updates, fixes and new features. No tech skills needed — just tell us what you want changed.",
   },
 ];
 
@@ -99,10 +100,10 @@ export function Services() {
       <div className="mx-auto max-w-6xl px-6 py-24 md:py-32">
         <div className="max-w-2xl">
           <p className="text-sm font-semibold tracking-wide text-brand uppercase">
-            What you get
+            What we build
           </p>
           <h2 className="mt-3 text-4xl font-extrabold tracking-tight md:text-5xl">
-            Less time on the phone. More time on the job.
+            One team for your website, your systems and your AI.
           </h2>
         </div>
 

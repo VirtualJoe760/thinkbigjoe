@@ -8,6 +8,13 @@
 
 ## The business in five lines
 
+> **2026-10-26 — public positioning changed (Joe's call).** The home page no longer leads with the
+> voice agent. We sell the **whole solution**: websites sized to the business, from a simple
+> starter site to an enterprise-grade custom platform, with **AI agents built in — voice being one
+> of them**. The home page shows three levels (Get found → Get organized → Run it all, no prices —
+> `build-levels.tsx`) and a contractor-tools section (`docs/CONTRACTOR_TOOLS.md`). Lines 2 and 5
+> below describe the older voice-first motion; treat the website + AI bundle as the lead offer.
+
 1. We sell an **AI operations system** to home service businesses.
 2. The **voice agent** is what they buy first — it answers every call and books the job.
 3. The **portal** is where all of it manifests, and it is what makes us hard to replace.

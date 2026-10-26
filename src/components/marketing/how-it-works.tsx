@@ -18,7 +18,7 @@ const STEPS = [
   {
     n: "03",
     title: "Pick what helps you most",
-    body: "Talk with our team about what would make the biggest difference — answering your calls, following up on quotes, or tools for your website.",
+    body: "Talk with our team about what you need — a better website, AI that handles calls and follow-ups, or a full custom system. We size it to your business.",
   },
   {
     n: "04",
@@ -44,7 +44,7 @@ const PILLARS = [
 
 export function HowItWorks() {
   return (
-    <section id="how" className="border-t border-line">
+    <section id="how" className="border-t border-line bg-surface">
       <div className="mx-auto max-w-6xl px-6 py-24 md:py-32">
         <div className="grid gap-16 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="lg:sticky lg:top-28 lg:self-start">
@@ -55,8 +55,9 @@ export function HowItWorks() {
               Getting started is simple.
             </h2>
             <p className="mt-6 max-w-md leading-relaxed text-ink-soft">
-              We help home service businesses in the Coachella Valley look
-              professional online and stop losing calls. Here&apos;s how it goes.
+              We build websites and AI for home service businesses in the
+              Coachella Valley — from a first website to a full custom system.
+              Here&apos;s how it goes.
             </p>
 
             <Card className="mt-8">

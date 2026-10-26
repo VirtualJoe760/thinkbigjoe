@@ -1,6 +1,7 @@
 import { SiteNav } from "@/components/marketing/site-nav";
 import { Hero } from "@/components/marketing/hero";
 import { Services } from "@/components/marketing/services";
+import { BuildLevels } from "@/components/marketing/build-levels";
 import { Situations } from "@/components/marketing/situations";
 import { ContractorTools } from "@/components/marketing/contractor-tools";
 import { HowItWorks } from "@/components/marketing/how-it-works";
@@ -16,6 +17,7 @@ export default function Home() {
       <main className="flex-1">
         <Hero />
         <Services />
+        <BuildLevels />
         <Situations />
         <ContractorTools />
         <HowItWorks />
